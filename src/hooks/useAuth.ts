@@ -1,10 +1,13 @@
 import { useState, useEffect } from 'react';
 import { authAPI } from '../api/client';
+import { Hero } from '../types/Hero';
 
 interface User {
-  id: string;
+  id: string | null;
   twitchUsername: string;
+  twitchId: string;
   tiktokUsername?: string;
+  hero?: Hero | null;
 }
 
 export function useAuth() {

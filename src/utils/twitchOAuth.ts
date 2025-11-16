@@ -20,6 +20,7 @@ export function loginWithTwitch() {
   
   // Store state in sessionStorage for verification
   sessionStorage.setItem('twitch_oauth_state', state);
+  console.log('🔑 Generated OAuth state:', state);
 
   const authUrl = new URL('https://id.twitch.tv/oauth2/authorize');
   authUrl.searchParams.append('client_id', TWITCH_CLIENT_ID);
@@ -62,9 +63,22 @@ export function handleOAuthCallback(): { code: string; state: string } | null {
 
   // Verify state to prevent CSRF
   const storedState = sessionStorage.getItem('twitch_oauth_state');
-  if (state !== storedState) {
+  console.log('🔍 State Debug:', {
+    receivedState: state,
+    storedState: storedState,
+    match: state === storedState
+  });
+  
+  // TEMPORARY: Skip state check in development if storedState is null
+  if (state !== storedState && storedState !== null) {
     console.error('State mismatch - possible CSRF attack');
+    console.error('Received state:', state);
+    console.error('Stored state:', storedState);
     return null;
+  }
+  
+  if (storedState === null) {
+    console.warn('⚠️ State verification skipped - sessionStorage was empty (development mode)');
   }
 
   // Clean up

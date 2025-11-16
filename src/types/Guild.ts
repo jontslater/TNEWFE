@@ -19,6 +19,10 @@ export interface GuildMember {
   joinedAt: number;
   heroLevel: number;
   heroRole: string;
+  profession?: {
+    type: 'herbalism' | 'mining' | 'enchanting';
+    level: number;
+  };
 }
 
 export interface GuildPerks {

@@ -23,7 +23,7 @@ export default function ProfessionPanel({ hero, onUpdate }: ProfessionPanelProps
   }
 
   const profession = hero.profession;
-  const xpPercent = (profession.xp / profession.maxXp) * 100;
+  const xpPercent = (Math.floor(profession.xp) / Math.floor(profession.maxXp)) * 100;
 
   const handleCraft = async (recipeKey: string) => {
     try {
@@ -68,7 +68,7 @@ export default function ProfessionPanel({ hero, onUpdate }: ProfessionPanelProps
         <div className="mt-4">
           <div className="flex justify-between text-sm mb-1">
             <span className="text-gray-400">Experience</span>
-            <span className="text-white">{profession.xp} / {profession.maxXp}</span>
+            <span className="text-white">{Math.floor(profession.xp)} / {Math.floor(profession.maxXp)}</span>
           </div>
           <div className="w-full bg-gray-700 rounded-full h-3 overflow-hidden">
             <div 

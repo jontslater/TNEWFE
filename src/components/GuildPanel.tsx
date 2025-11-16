@@ -100,33 +100,49 @@ export default function GuildPanel({ guild }: GuildPanelProps) {
 
       {/* Members */}
       <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-        <h3 className="text-xl font-bold text-white mb-4">Members</h3>
-        <div className="space-y-2">
-          {sortedMembers.map((member) => (
-            <div 
-              key={member.userId}
-              className="bg-gray-700 rounded-lg p-4 flex items-center justify-between hover:bg-gray-600 transition-colors"
-            >
-              <div className="flex items-center space-x-4">
-                <div className="text-2xl">
-                  {member.rank === 'leader' ? '👑' : member.rank === 'officer' ? '⭐' : '🗡️'}
-                </div>
-                <div>
-                  <div className="font-semibold text-white">{member.username}</div>
-                  <div className="flex items-center space-x-2 mt-1 text-sm">
-                    <span className={`px-2 py-0.5 rounded text-xs font-semibold ${getRoleBg(member.heroRole)} text-white`}>
-                      {member.heroRole}
-                    </span>
-                    <span className="text-gray-400">Lv {member.heroLevel}</span>
+        <h3 className="text-xl font-bold text-white mb-4">Members ({guild.members.length})</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          {sortedMembers.map((member) => {
+            const professionIcon = member.profession?.type === 'herbalism' ? '🌿' : 
+                                  member.profession?.type === 'mining' ? '⛏️' : 
+                                  member.profession?.type === 'enchanting' ? '✨' : null;
+            
+            return (
+              <div 
+                key={member.userId}
+                className="bg-gray-700 rounded-lg p-3 hover:bg-gray-600 transition-colors border border-gray-600"
+              >
+                <div className="flex items-center space-x-2 mb-2">
+                  <div className="text-lg">
+                    {member.rank === 'leader' ? '👑' : member.rank === 'officer' ? '⭐' : '🗡️'}
+                  </div>
+                  <div className="flex-grow min-w-0">
+                    <div className="font-semibold text-white text-sm truncate">{member.username}</div>
                   </div>
                 </div>
+                
+                <div className="flex items-center justify-between text-xs mb-1">
+                  <span className={`px-2 py-0.5 rounded font-semibold ${getRoleBg(member.heroRole)} text-white`}>
+                    {member.heroRole}
+                  </span>
+                  <span className="text-gray-400">Lv {member.heroLevel}</span>
+                </div>
+                
+                {member.profession && (
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-gray-400">
+                      {professionIcon} {member.profession.type}
+                    </span>
+                    <span className="text-gray-400">Lv {member.profession.level}</span>
+                  </div>
+                )}
+                
+                <div className="text-xs text-gray-500 mt-2 text-right">
+                  {formatNumber(member.contributionPoints)} pts
+                </div>
               </div>
-              <div className="text-right">
-                <div className="text-sm text-gray-400">Contribution</div>
-                <div className="font-semibold text-purple-400">{formatNumber(member.contributionPoints)}</div>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>

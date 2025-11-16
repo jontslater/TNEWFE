@@ -1,34 +1,65 @@
-import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useState, useRef } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { handleOAuthCallback } from '../utils/twitchOAuth';
+import { handleTikTokCallback } from '../services/tiktokOAuth';
 import { authAPI } from '../api/client';
 
 /**
- * OAuth callback page - handles the redirect from Twitch after authentication
+ * OAuth callback page - handles the redirect from Twitch or TikTok after authentication
  */
 export default function AuthCallback() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { login } = useAuth();
   const [error, setError] = useState<string | null>(null);
+  const processingRef = useRef(false);
 
   useEffect(() => {
     const processCallback = async () => {
-      try {
-        // Extract code and state from URL
-        const result = handleOAuthCallback();
+      // Prevent multiple executions
+      if (processingRef.current) {
+        console.log('Already processing, skipping...');
+        return;
+      }
+      processingRef.current = true;
 
-        if (!result) {
-          setError('Invalid callback parameters');
-          setTimeout(() => navigate('/'), 3000);
-          return;
+      try {
+        // Check if this is TikTok or Twitch callback
+        const isTikTok = location.pathname.includes('/auth/tiktok/callback');
+        
+        let result;
+        let response;
+        
+        if (isTikTok) {
+          // TikTok OAuth flow
+          const params = new URLSearchParams(location.search);
+          const code = params.get('code');
+          const state = params.get('state');
+          
+          if (!code || !state) {
+            setError('Invalid callback parameters');
+            setTimeout(() => navigate('/'), 3000);
+            return;
+          }
+          
+          result = await handleTikTokCallback(code, state);
+          response = await authAPI.loginWithTikTok(result.code);
+        } else {
+          // Twitch OAuth flow
+          result = handleOAuthCallback();
+          
+          if (!result) {
+            setError('Invalid callback parameters');
+            setTimeout(() => navigate('/'), 3000);
+            return;
+          }
+          
+          response = await authAPI.loginWithTwitch(result.code);
         }
 
-        // Exchange code for token with backend
-        const { user, token } = await authAPI.loginWithTwitch(result.code);
-
         // Store token and update auth state
-        login(token, user);
+        login(response.token, response.user);
 
         // Redirect to home
         navigate('/');
@@ -40,7 +71,7 @@ export default function AuthCallback() {
     };
 
     processCallback();
-  }, [navigate, login]);
+  }, [navigate, login, location]);
 
   if (error) {
     return (

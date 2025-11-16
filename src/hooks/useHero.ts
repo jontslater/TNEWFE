@@ -1,48 +1,100 @@
 import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Hero } from '../types/Hero';
 import { heroAPI } from '../api/client';
 
+// NOTE: userId here is expected to be the Twitch user ID for the player,
+// which the backend uses to find the correct hero document.
 export function useHero(userId: string | null) {
   const [hero, setHero] = useState<Hero | null>(null);
+  const [heroes, setHeroes] = useState<Hero[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!userId) {
       setLoading(false);
+      setHero(null);
+      setHeroes([]);
       return;
     }
 
-    loadHero();
+    loadHeroes();
   }, [userId]);
 
-  const loadHero = async () => {
+  const loadHeroes = async () => {
     if (!userId) return;
     
     try {
       setLoading(true);
-      const data = await heroAPI.getHero(userId);
-      setHero(data);
+      // Load all heroes for this Twitch ID
+      const list = await heroAPI.getHeroesByTwitchId(userId);
+      // Sort alphabetically by name to make hero list easier to scan
+      list.sort((a, b) => {
+        const nameA = (a.name || '').toLowerCase();
+        const nameB = (b.name || '').toLowerCase();
+        if (nameA < nameB) return -1;
+        if (nameA > nameB) return 1;
+        return 0;
+      });
+      setHeroes(list);
+      // Default hero: most recently updated (backend returns newest first)
+      setHero(list.length > 0 ? list[0] : null);
       setError(null);
     } catch (err) {
-      setError('Failed to load hero');
+      setError('Failed to load heroes');
       console.error(err);
+      setHeroes([]);
+      setHero(null);
     } finally {
       setLoading(false);
     }
   };
 
   const updateHero = async (updates: Partial<Hero>) => {
-    if (!userId) return;
+    if (!userId || !hero) return;
     
     try {
-      const updated = await heroAPI.updateHero(userId, updates);
+      const updated = await heroAPI.updateHero(hero.id, updates);
       setHero(updated);
+      // Also update it in the heroes list
+      setHeroes(prev =>
+        prev.map(h => (h.id === updated.id ? updated : h))
+      );
     } catch (err) {
       setError('Failed to update hero');
       console.error(err);
     }
   };
 
-  return { hero, loading, error, refetch: loadHero, updateHero };
+  const deleteHero = async (heroId: string) => {
+    try {
+      try {
+        await heroAPI.deleteHero(heroId);
+      } catch (err: any) {
+        // If the backend says 404, assume it was already deleted and still clean up local state
+        const status = err?.response?.status;
+        if (status && status !== 404) {
+          throw err;
+        }
+      }
+      setHeroes(prev => prev.filter(h => h.id !== heroId));
+      setHero(prev => {
+        if (!prev || prev.id !== heroId) return prev;
+        const remaining = heroes.filter(h => h.id !== heroId);
+        return remaining.length > 0 ? remaining[0] : null;
+      });
+    } catch (err) {
+      setError('Failed to delete hero');
+      console.error(err);
+    }
+  };
+
+  // Allow callers to change the active hero from the list
+  const selectHero = (heroId: string) => {
+    const found = heroes.find(h => h.id === heroId) || null;
+    setHero(found);
+  };
+
+  return { hero, heroes, loading, error, refetch: loadHeroes, updateHero, deleteHero, selectHero };
 }

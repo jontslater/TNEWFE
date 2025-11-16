@@ -1,5 +1,6 @@
 import { Hero } from '../types/Hero';
 import { formatNumber, getRarityColor, getRarityBg, getRoleBg, formatTime, getItemScore } from '../utils/format';
+import ItemTooltip from './ItemTooltip';
 
 interface HeroDashboardProps {
   hero: Hero;
@@ -7,7 +8,7 @@ interface HeroDashboardProps {
 
 export default function HeroDashboard({ hero }: HeroDashboardProps) {
   const hpPercent = (hero.hp / hero.maxHp) * 100;
-  const xpPercent = (hero.xp / hero.maxXp) * 100;
+  const xpPercent = (Math.floor(hero.xp) / Math.floor(hero.maxXp)) * 100;
   const itemScore = getItemScore(hero.equipment);
 
   return (
@@ -26,6 +27,15 @@ export default function HeroDashboard({ hero }: HeroDashboardProps) {
                   {hero.role}
                 </span>
                 <span className="text-gray-400">Level {hero.level}</span>
+                {hero.profession && (
+                  <>
+                    <span className="text-gray-400">•</span>
+                    <span className="text-green-400 text-sm">
+                      {hero.profession.type === 'herbalism' ? '🌿' : hero.profession.type === 'mining' ? '⛏️' : '✨'} 
+                      {' '}{hero.profession.type} Lv{hero.profession.level}
+                    </span>
+                  </>
+                )}
                 <span className="text-gray-400">•</span>
                 <span className="text-yellow-500">⚡ {itemScore} Item Score</span>
               </div>
@@ -64,7 +74,7 @@ export default function HeroDashboard({ hero }: HeroDashboardProps) {
         <div className="mt-2">
           <div className="flex justify-between text-sm mb-1">
             <span className="text-gray-400">XP</span>
-            <span className="text-white">{hero.xp} / {hero.maxXp}</span>
+            <span className="text-white">{Math.floor(hero.xp)} / {Math.floor(hero.maxXp)}</span>
           </div>
           <div className="w-full bg-gray-700 rounded-full h-2 overflow-hidden">
             <div 
@@ -73,6 +83,25 @@ export default function HeroDashboard({ hero }: HeroDashboardProps) {
             />
           </div>
         </div>
+        
+        {/* Rested XP Indicator */}
+        {hero.restedXp && hero.restedXp.hoursRemaining > 0 && (
+          <div className="mt-3 bg-gradient-to-r from-blue-900 to-purple-900 border-2 border-blue-400 rounded-lg p-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <span className="text-2xl">😴</span>
+                <div>
+                  <div className="text-blue-300 font-bold text-sm">Rested XP</div>
+                  <div className="text-white text-lg font-bold">{hero.restedXp.hoursRemaining.toFixed(1)} hours</div>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-green-400 font-bold text-xl">+50% XP</div>
+                <div className="text-xs text-gray-400">while chatting</div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Stats Grid */}
@@ -95,25 +124,74 @@ export default function HeroDashboard({ hero }: HeroDashboardProps) {
       <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
         <h3 className="text-xl font-bold text-white mb-4">Equipment</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {Object.entries(hero.equipment).map(([slot, item]) => (
-            <div key={slot} className="bg-gray-700 rounded-lg p-4 border-2 border-gray-600">
-              <div className="text-sm text-gray-400 mb-2 capitalize">{slot}</div>
-              {item ? (
-                <>
-                  <div className={`font-semibold ${getRarityColor(item.rarity)}`}>
-                    {item.name}
-                  </div>
-                  <div className="mt-2 space-y-1 text-sm">
-                    {item.attack > 0 && <div className="text-red-400">+{item.attack} ATK</div>}
-                    {item.defense > 0 && <div className="text-blue-400">+{item.defense} DEF</div>}
-                    {item.hp > 0 && <div className="text-green-400">+{item.hp} HP</div>}
-                  </div>
-                </>
-              ) : (
-                <div className="text-gray-500 italic">Empty</div>
-              )}
-            </div>
-          ))}
+          {(() => {
+            // Define all equipment slots based on role
+            // Tanks: weapon, armor, accessory, shield, helm, cloak, gloves, ring1, ring2, boots (10 slots)
+            // Others: weapon, armor, accessory, helm, cloak, gloves, ring1, ring2, boots (9 slots)
+            const tankRoles = ['guardian', 'paladin', 'warden', 'bloodknight', 'vanguard', 'brewmaster'];
+            const isTank = tankRoles.includes(hero.role.toLowerCase());
+            
+            // Base slots for all roles
+            const allSlots: Array<{ key: keyof typeof hero.equipment; label: string }> = [
+              { key: 'weapon', label: 'Weapon' },
+              { key: 'armor', label: 'Armor' },
+              { key: 'accessory', label: 'Accessory' },
+              ...(isTank ? [{ key: 'shield' as keyof typeof hero.equipment, label: 'Shield' }] : []),
+              { key: 'helm', label: 'Helm' },
+              { key: 'cloak', label: 'Cloak' },
+              { key: 'gloves', label: 'Gloves' },
+              { key: 'ring1', label: 'Ring 1' },
+              { key: 'ring2', label: 'Ring 2' },
+              { key: 'boots', label: 'Boots' }
+            ];
+            
+            return allSlots.map(({ key, label }) => {
+              const item = hero.equipment[key];
+              return (
+                <div key={key} className="bg-gray-700 rounded-lg p-4 border-2 border-gray-600 hover:border-purple-500 hover:shadow-lg transition-all">
+                  <div className="text-sm text-gray-400 mb-2">{label}</div>
+                  {item ? (
+                    <ItemTooltip item={item} position="above">
+                      <div className="hover:bg-gray-600/30 rounded p-1 -m-1 transition-colors">
+                        <div className={`font-semibold ${getRarityColor(item.rarity)}`}>
+                          {item.name}
+                        </div>
+                        <div className="mt-2 space-y-1 text-sm">
+                          {item.attack > 0 && <div className="text-red-400">+{item.attack} ATK</div>}
+                          {item.defense > 0 && <div className="text-blue-400">+{item.defense} DEF</div>}
+                          {item.hp > 0 && <div className="text-green-400">+{item.hp} HP</div>}
+                        </div>
+                        
+                        {/* Applied Upgrades/Enchantments */}
+                        {(item as any).appliedUpgrades && (item as any).appliedUpgrades.length > 0 && (
+                          <div className="mt-3 pt-2 border-t border-gray-600">
+                            <div className="text-xs text-purple-400 font-semibold mb-1">Enhancements:</div>
+                            <div className="space-y-1">
+                              {(item as any).appliedUpgrades.map((upgrade: any, idx: number) => {
+                                const isEnchantment = upgrade.recipeKey?.includes('fiery') || 
+                                                     upgrade.recipeKey?.includes('vampiric') || 
+                                                     upgrade.recipeKey?.includes('arcane');
+                                const type = isEnchantment ? 'Enchantment' : 'Upgrade';
+                                const name = upgrade.recipeKey?.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase());
+                                
+                                return (
+                                  <div key={idx} className="text-xs text-white">
+                                    • {name} ({type})
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </ItemTooltip>
+                  ) : (
+                    <div className="text-gray-500 italic text-sm">Empty</div>
+                  )}
+                </div>
+              );
+            });
+          })()}
         </div>
       </div>
 

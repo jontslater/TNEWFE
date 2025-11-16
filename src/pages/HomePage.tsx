@@ -8,10 +8,12 @@ import HeroDashboard from '../components/HeroDashboard';
 import ProfessionPanel from '../components/ProfessionPanel';
 import GuildPanel from '../components/GuildPanel';
 import RaidBrowser from '../components/RaidBrowser';
+import { loginWithTwitch } from '../utils/twitchOAuth';
+import logo from '../logos/TheNeverEndingWarLogo.png';
 
 export default function HomePage() {
-  const { user, isAuthenticated } = useAuth();
-  const { hero, loading: heroLoading, refetch: refetchHero } = useHero(user?.id || null);
+  const { user, isAuthenticated, logout } = useAuth();
+  const { hero, loading: heroLoading, refetch: refetchHero } = useHero(user?.twitchId || null);
   const { guild, loading: guildLoading } = useGuild(user?.id || null);
   const [raids, setRaids] = useState<Raid[]>([]);
   const [worldBoss, setWorldBoss] = useState<WorldBoss | null>(null);
@@ -46,9 +48,17 @@ export default function HomePage() {
     return (
       <div className="min-h-screen bg-gradient-to-b from-gray-900 via-gray-800 to-gray-900 flex items-center justify-center">
         <div className="text-center">
+          <img 
+            src={logo} 
+            alt="The Never Ending War" 
+            className="w-96 mx-auto mb-8"
+          />
           <h1 className="text-5xl font-bold text-white mb-4">Welcome to The Never Ending War</h1>
           <p className="text-xl text-gray-400 mb-8">Your Epic RPG Adventure Awaits</p>
-          <button className="bg-purple-600 hover:bg-purple-700 text-white font-bold px-8 py-4 rounded-lg text-lg transition-colors">
+          <button 
+            onClick={loginWithTwitch}
+            className="bg-purple-600 hover:bg-purple-700 text-white font-bold px-8 py-4 rounded-lg text-lg transition-colors"
+          >
             Login with Twitch
           </button>
         </div>
@@ -68,6 +78,14 @@ export default function HomePage() {
     return (
       <div className="min-h-screen bg-gradient-to-b from-gray-900 via-gray-800 to-gray-900 flex items-center justify-center">
         <div className="text-center">
+          <div className="absolute top-4 right-4">
+            <button 
+              onClick={logout}
+              className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded transition-colors"
+            >
+              Logout
+            </button>
+          </div>
           <h2 className="text-3xl font-bold text-white mb-4">No Hero Found</h2>
           <p className="text-gray-400 mb-6">Join the game in the Electron app first!</p>
           <p className="text-sm text-gray-500">Use !join [class] in Twitch or TikTok chat</p>
@@ -84,7 +102,10 @@ export default function HomePage() {
           <h1 className="text-2xl font-bold text-white">The Never Ending War - Player Portal</h1>
           <div className="flex items-center space-x-4">
             <span className="text-gray-300">Welcome, {user?.twitchUsername}</span>
-            <button className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded transition-colors">
+            <button 
+              onClick={logout}
+              className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded transition-colors"
+            >
               Logout
             </button>
           </div>
@@ -144,7 +165,7 @@ export default function HomePage() {
         {activeTab === 'hero' && <HeroDashboard hero={hero} />}
         {activeTab === 'profession' && <ProfessionPanel hero={hero} onUpdate={refetchHero} />}
         {activeTab === 'guild' && <GuildPanel guild={guild} />}
-        {activeTab === 'raids' && <RaidBrowser raids={raids} worldBoss={worldBoss} />}
+        {activeTab === 'raids' && <RaidBrowser />}
       </main>
     </div>
   );

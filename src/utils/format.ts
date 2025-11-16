@@ -73,15 +73,13 @@ export function getItemScore(equipment: any): number {
   
   Object.values(equipment).forEach((item: any) => {
     if (item) {
-      const rarityMultiplier = {
-        common: 1,
-        uncommon: 2,
-        rare: 3,
-        epic: 4,
-        legendary: 5
-      }[item.rarity] || 1;
-      
-      score += (item.attack + item.defense + item.hp) * rarityMultiplier;
+      // Match backend calculation formula
+      const baseScore = (item.attack || 0) + (item.defense || 0) + ((item.hp || 0) / 2);
+      const rarityBonus = item.rarity === 'legendary' ? 1.5 : 
+                          item.rarity === 'epic' ? 1.3 : 
+                          item.rarity === 'rare' ? 1.1 : 1.0;
+      const procBonus = (item.procEffects?.length || 0) * 50;
+      score += Math.floor((baseScore * rarityBonus) + procBonus);
     }
   });
   

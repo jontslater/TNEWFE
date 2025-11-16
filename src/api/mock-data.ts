@@ -308,17 +308,270 @@ export const mockWorldBoss: WorldBoss = {
 };
 
 // Herbalism Recipes (from game.js for reference)
+// Mining Recipes
+export const MINING_RECIPES = {
+  // Armor Upgrades
+  iron_plating: {
+    name: 'Iron Plating',
+    tier: 1,
+    minProfessionLevel: 1,
+    cost: { ore: { iron: 10 } },
+    description: '+5% Defense (Permanent)',
+    effect: 'defenseBonus',
+    value: 0.05
+  },
+  steel_reinforcement: {
+    name: 'Steel Reinforcement',
+    tier: 2,
+    minProfessionLevel: 25,
+    cost: { ore: { iron: 15, steel: 10 } },
+    description: '+8% Defense, +3% HP (Permanent)',
+    effect: 'defenseAndHpBonus',
+    value: { defense: 0.08, hp: 0.03 }
+  },
+  mithril_enhancement: {
+    name: 'Mithril Enhancement',
+    tier: 3,
+    minProfessionLevel: 50,
+    cost: { ore: { steel: 20, mithril: 10 } },
+    description: '+12% Defense, +5% HP (Permanent)',
+    effect: 'defenseAndHpBonus',
+    value: { defense: 0.12, hp: 0.05 }
+  },
+  adamantite_fortification: {
+    name: 'Adamantite Fortification',
+    tier: 4,
+    minProfessionLevel: 75,
+    cost: { ore: { mithril: 15, adamantite: 5 } },
+    description: '+20% Defense, +10% HP (Permanent)',
+    effect: 'defenseAndHpBonus',
+    value: { defense: 0.20, hp: 0.10 }
+  },
+  
+  // Weapon Sharpening
+  basic_whetstone: {
+    name: 'Basic Whetstone',
+    tier: 1,
+    minProfessionLevel: 1,
+    cost: { ore: { iron: 10 } },
+    description: '+5% Attack (Permanent)',
+    effect: 'attackBonus',
+    value: 0.05
+  },
+  refined_oil: {
+    name: 'Refined Oil',
+    tier: 2,
+    minProfessionLevel: 25,
+    cost: { ore: { iron: 15, steel: 10 } },
+    description: '+8% Attack (Permanent)',
+    effect: 'attackBonus',
+    value: 0.08
+  },
+  elemental_core: {
+    name: 'Elemental Core',
+    tier: 3,
+    minProfessionLevel: 50,
+    cost: { ore: { steel: 20, mithril: 10 } },
+    description: '+12% Attack (Permanent)',
+    effect: 'attackBonus',
+    value: 0.12
+  },
+  legendary_edge: {
+    name: 'Legendary Edge',
+    tier: 4,
+    minProfessionLevel: 75,
+    cost: { ore: { mithril: 15, adamantite: 5 } },
+    description: '+20% Attack (Permanent)',
+    effect: 'attackBonus',
+    value: 0.20
+  }
+};
+
+// Enchanting Recipes
+export const ENCHANTING_RECIPES = {
+  fiery_weapon: {
+    name: 'Fiery Weapon',
+    tier: 1,
+    minProfessionLevel: 1,
+    cost: { essence: 50 },
+    description: '10% chance: +50% fire damage (Permanent)',
+    effect: 'fireProc',
+    value: { chance: 0.10, damage: 0.50 }
+  },
+  frozen_armor: {
+    name: 'Frozen Armor',
+    tier: 1,
+    minProfessionLevel: 10,
+    cost: { essence: 75 },
+    description: '15% chance: freeze attacker 3s (Permanent)',
+    effect: 'freezeProc',
+    value: { chance: 0.15, duration: 3 }
+  },
+  vampiric_touch: {
+    name: 'Vampiric Touch',
+    tier: 2,
+    minProfessionLevel: 25,
+    cost: { essence: 150 },
+    description: '5% Lifesteal on attacks (Permanent)',
+    effect: 'lifesteal',
+    value: 0.05
+  },
+  thorns_nature: {
+    name: 'Thorns of Nature',
+    tier: 2,
+    minProfessionLevel: 30,
+    cost: { essence: 175 },
+    description: 'Reflect 20% damage to attacker (Permanent)',
+    effect: 'reflectDamage',
+    value: 0.20
+  },
+  swiftness: {
+    name: 'Swiftness',
+    tier: 3,
+    minProfessionLevel: 50,
+    cost: { essence: 300 },
+    description: 'Reduce all cooldowns by 10% (Permanent)',
+    effect: 'cooldownReduction',
+    value: 0.10
+  },
+  resilience: {
+    name: 'Resilience',
+    tier: 3,
+    minProfessionLevel: 55,
+    cost: { essence: 350 },
+    description: '+15% Debuff Resistance (Permanent)',
+    effect: 'debuffResistance',
+    value: 0.15
+  },
+  
+  // Temporary Runes
+  rune_of_power: {
+    name: 'Rune of Power',
+    tier: 3,
+    minProfessionLevel: 40,
+    cost: { essence: 200 },
+    description: '+30% Damage (20min combat)',
+    effect: 'damageBonus',
+    value: 0.30,
+    duration: 1200000
+  },
+  rune_of_warding: {
+    name: 'Rune of Warding',
+    tier: 3,
+    minProfessionLevel: 40,
+    cost: { essence: 200 },
+    description: '+30% Damage Reduction (20min combat)',
+    effect: 'damageReduction',
+    value: 0.30,
+    duration: 1200000
+  },
+  rune_of_vitality: {
+    name: 'Rune of Vitality',
+    tier: 4,
+    minProfessionLevel: 75,
+    cost: { essence: 500 },
+    description: 'Revive at 25% HP once (20min combat)',
+    effect: 'cheatDeath',
+    value: 0.25,
+    duration: 1200000
+  }
+};
+
 export const HERBALISM_RECIPES = {
-  health_elixir_basic: { name: 'Basic Health Elixir', tier: 1, cost: { common: 5 }, effect: '+10% HP (15min)' },
-  strength_elixir_basic: { name: 'Basic Strength Elixir', tier: 1, cost: { common: 5, uncommon: 1 }, effect: '+10% ATK (15min)' },
-  defense_elixir_basic: { name: 'Basic Defense Elixir', tier: 1, cost: { common: 5, uncommon: 1 }, effect: '+10% DEF (15min)' },
-  health_elixir_advanced: { name: 'Advanced Health Elixir', tier: 2, cost: { common: 10, uncommon: 5, rare: 1 }, effect: '+20% HP (20min)' },
-  strength_elixir_advanced: { name: 'Advanced Strength Elixir', tier: 2, cost: { common: 10, uncommon: 5, rare: 1 }, effect: '+20% ATK (20min)' },
-  defense_elixir_advanced: { name: 'Advanced Defense Elixir', tier: 2, cost: { common: 10, uncommon: 5, rare: 1 }, effect: '+20% DEF (20min)' },
-  haste_elixir: { name: 'Haste Elixir', tier: 2, cost: { uncommon: 8, rare: 2 }, effect: '+25% Combat Speed (20min)' },
-  health_elixir_superior: { name: 'Superior Health Elixir', tier: 3, cost: { uncommon: 15, rare: 5, epic: 1 }, effect: '+30% HP (30min)' },
-  strength_elixir_superior: { name: 'Superior Strength Elixir', tier: 3, cost: { uncommon: 15, rare: 5, epic: 1 }, effect: '+30% ATK (30min)' },
-  clarity_elixir: { name: 'Clarity Elixir', tier: 3, cost: { uncommon: 10, rare: 5 }, effect: '+40% XP (30min)' },
-  flask_of_titan: { name: 'Flask of the Titan', tier: 4, cost: { rare: 10, epic: 3 }, effect: '+25% HP (60min, death-proof)' },
-  flask_of_power: { name: 'Flask of Power', tier: 4, cost: { rare: 10, epic: 3 }, effect: '+15% All Stats (60min, death-proof)' }
+  health_elixir_basic: {
+    name: 'Basic Health Elixir',
+    tier: 1,
+    minProfessionLevel: 1,
+    cost: { herbs: { common: 5 } },
+    description: '+10% Max HP (15min combat)',
+    effect: '+10% HP (15min)'
+  },
+  strength_elixir_basic: {
+    name: 'Basic Strength Elixir',
+    tier: 1,
+    minProfessionLevel: 5,
+    cost: { herbs: { common: 5, uncommon: 1 } },
+    description: '+10% Attack (15min combat)',
+    effect: '+10% ATK (15min)'
+  },
+  defense_elixir_basic: {
+    name: 'Basic Defense Elixir',
+    tier: 1,
+    minProfessionLevel: 5,
+    cost: { herbs: { common: 5, uncommon: 1 } },
+    description: '+10% Defense (15min combat)',
+    effect: '+10% DEF (15min)'
+  },
+  health_elixir_advanced: {
+    name: 'Advanced Health Elixir',
+    tier: 2,
+    minProfessionLevel: 20,
+    cost: { herbs: { common: 10, uncommon: 5, rare: 1 } },
+    description: '+20% Max HP (20min combat)',
+    effect: '+20% HP (20min)'
+  },
+  strength_elixir_advanced: {
+    name: 'Advanced Strength Elixir',
+    tier: 2,
+    minProfessionLevel: 20,
+    cost: { herbs: { common: 10, uncommon: 5, rare: 1 } },
+    description: '+20% Attack (20min combat)',
+    effect: '+20% ATK (20min)'
+  },
+  defense_elixir_advanced: {
+    name: 'Advanced Defense Elixir',
+    tier: 2,
+    minProfessionLevel: 20,
+    cost: { herbs: { common: 10, uncommon: 5, rare: 1 } },
+    description: '+20% Defense (20min combat)',
+    effect: '+20% DEF (20min)'
+  },
+  haste_elixir: {
+    name: 'Haste Elixir',
+    tier: 2,
+    minProfessionLevel: 25,
+    cost: { herbs: { uncommon: 8, rare: 2 } },
+    description: '+25% Combat Speed (20min)',
+    effect: '+25% Speed (20min)'
+  },
+  health_elixir_superior: {
+    name: 'Superior Health Elixir',
+    tier: 3,
+    minProfessionLevel: 50,
+    cost: { herbs: { uncommon: 15, rare: 5, epic: 1 } },
+    description: '+30% Max HP (30min combat)',
+    effect: '+30% HP (30min)'
+  },
+  strength_elixir_superior: {
+    name: 'Superior Strength Elixir',
+    tier: 3,
+    minProfessionLevel: 50,
+    cost: { herbs: { uncommon: 15, rare: 5, epic: 1 } },
+    description: '+30% Attack (30min combat)',
+    effect: '+30% ATK (30min)'
+  },
+  clarity_elixir: {
+    name: 'Clarity Elixir',
+    tier: 3,
+    minProfessionLevel: 50,
+    cost: { herbs: { uncommon: 10, rare: 5 } },
+    description: '+40% XP Gain (30min combat)',
+    effect: '+40% XP (30min)'
+  },
+  flask_of_titan: {
+    name: 'Flask of the Titan',
+    tier: 4,
+    minProfessionLevel: 75,
+    cost: { herbs: { rare: 10, epic: 3 } },
+    description: '+25% Max HP (60min, death-proof)',
+    effect: '+25% HP (60min, persists)'
+  },
+  flask_of_power: {
+    name: 'Flask of Power',
+    tier: 4,
+    minProfessionLevel: 75,
+    cost: { herbs: { rare: 10, epic: 3 } },
+    description: '+15% All Stats (60min, death-proof)',
+    effect: '+15% All Stats (60min, persists)'
+  }
 };
