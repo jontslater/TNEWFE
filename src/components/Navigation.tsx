@@ -112,6 +112,24 @@ export default function Navigation() {
                   >
                     Portal
                   </button>
+                  <button
+                    onClick={() => navigate('/auction')}
+                    className="text-green-400 hover:text-green-300 transition-colors font-semibold"
+                  >
+                    Auction
+                  </button>
+                  <button
+                    onClick={() => navigate('/achievements')}
+                    className="text-yellow-400 hover:text-yellow-300 transition-colors font-semibold"
+                  >
+                    Achievements
+                  </button>
+                  <button
+                    onClick={() => navigate('/leaderboards')}
+                    className="text-cyan-400 hover:text-cyan-300 transition-colors font-semibold"
+                  >
+                    Leaderboards
+                  </button>
                 </>
               )}
             </div>

@@ -1,15 +1,45 @@
+import { useState } from 'react';
 import { Hero } from '../types/Hero';
 import { formatNumber, getRarityColor, getRarityBg, getRoleBg, formatTime, getItemScore } from '../utils/format';
 import ItemTooltip from './ItemTooltip';
+import { useAuth } from '../hooks/useAuth';
+import { heroAPI } from '../api/client';
 
 interface HeroDashboardProps {
   hero: Hero;
+  onHeroUpdate?: (updatedHero: Hero) => void;
+  onHeroDelete?: () => void;
 }
 
-export default function HeroDashboard({ hero }: HeroDashboardProps) {
+export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: HeroDashboardProps) {
+  const { user } = useAuth();
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const hpPercent = (hero.hp / hero.maxHp) * 100;
   const xpPercent = (Math.floor(hero.xp) / Math.floor(hero.maxXp)) * 100;
   const itemScore = getItemScore(hero.equipment);
+  
+  const handleDelete = async () => {
+    try {
+      const userId = user?.twitchId || user?.id;
+      if (!userId) {
+        alert('You must be logged in to delete your hero');
+        return;
+      }
+      
+      setIsDeleting(true);
+      await heroAPI.deleteHero(hero.id, userId);
+      alert('Hero deleted successfully');
+      if (onHeroDelete) {
+        onHeroDelete();
+      }
+    } catch (error: any) {
+      alert(error.response?.data?.error || 'Failed to delete hero');
+      setIsDeleting(false);
+      setShowDeleteConfirm(false);
+    }
+  };
+
 
   return (
     <div className="space-y-6">
@@ -52,6 +82,35 @@ export default function HeroDashboard({ hero }: HeroDashboardProps) {
                 <div className="text-2xl font-bold text-blue-400">{hero.tokens}</div>
                 <div className="text-xs text-gray-400">Tokens</div>
               </div>
+            </div>
+            <div className="flex items-center space-x-2 mt-2">
+              {!showDeleteConfirm ? (
+                <button
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="px-3 py-1 text-sm bg-red-600 hover:bg-red-700 text-white rounded transition-colors"
+                  disabled={isDeleting}
+                >
+                  Delete Hero
+                </button>
+              ) : (
+                <div className="flex items-center space-x-2">
+                  <span className="text-xs text-red-400">Confirm delete?</span>
+                  <button
+                    onClick={handleDelete}
+                    className="px-3 py-1 text-sm bg-red-700 hover:bg-red-800 text-white rounded transition-colors"
+                    disabled={isDeleting}
+                  >
+                    {isDeleting ? 'Deleting...' : 'Yes, Delete'}
+                  </button>
+                  <button
+                    onClick={() => setShowDeleteConfirm(false)}
+                    className="px-3 py-1 text-sm bg-gray-600 hover:bg-gray-700 text-white rounded transition-colors"
+                    disabled={isDeleting}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -233,6 +292,7 @@ export default function HeroDashboard({ hero }: HeroDashboardProps) {
           </div>
         </div>
       </div>
+
     </div>
   );
 }

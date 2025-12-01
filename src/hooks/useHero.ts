@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { useState, useEffect } from 'react';
 import { Hero } from '../types/Hero';
 import { heroAPI } from '../api/client';
 
@@ -29,8 +28,20 @@ export function useHero(userId: string | null) {
       setLoading(true);
       // Load all heroes for this Twitch ID
       const list = await heroAPI.getHeroesByTwitchId(userId);
-      // Sort alphabetically by name to make hero list easier to scan
+      // Sort: pinned first, then by level (descending), then by name
       list.sort((a, b) => {
+        const aPinned = (a as any).pinned || false;
+        const bPinned = (b as any).pinned || false;
+        
+        // Pinned heroes first
+        if (aPinned && !bPinned) return -1;
+        if (!aPinned && bPinned) return 1;
+        
+        // Then by level (descending)
+        const levelDiff = (b.level || 0) - (a.level || 0);
+        if (levelDiff !== 0) return levelDiff;
+        
+        // Finally by name
         const nameA = (a.name || '').toLowerCase();
         const nameB = (b.name || '').toLowerCase();
         if (nameA < nameB) return -1;

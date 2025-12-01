@@ -25,6 +25,9 @@ export interface Item {
   strength?: number;
   dexterity?: number;
   stamina?: number;
+  wisdom?: number;
+  // Set name for gear sets
+  setName?: string;
   // Secondary stats
   secondaryStats?: {
     healingPower?: number;
@@ -92,6 +95,7 @@ export interface RestedXp {
 }
 
 export interface Hero {
+  id?: string;
   name: string;
   role: string;
   level: number;
@@ -117,6 +121,13 @@ export interface Hero {
   profession: Profession | null;
   restedXp?: RestedXp;
   joinedAt: number;
+  // Skills system
+  skills?: Record<string, { points: number }>;
+  skillPoints?: number;
+  skillPointsEarned?: number;
+  // User identification
+  twitchUserId?: string;
+  tiktokUserId?: string;
 }
 
 export interface Profession {

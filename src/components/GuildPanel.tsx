@@ -1,19 +1,139 @@
+import { useState } from 'react';
 import { Guild } from '../types/Guild';
 import { formatNumber, getRoleBg } from '../utils/format';
+import { useAuth } from '../hooks/useAuth';
+import { guildAPI } from '../api/client';
 
 interface GuildPanelProps {
   guild: Guild | null;
 }
 
 export default function GuildPanel({ guild }: GuildPanelProps) {
+  const { user } = useAuth();
+  const [showCreateGuild, setShowCreateGuild] = useState(false);
+  const [guildName, setGuildName] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [showGuildList, setShowGuildList] = useState(false);
+  const [guilds, setGuilds] = useState<Guild[]>([]);
+  const [loadingGuilds, setLoadingGuilds] = useState(false);
+
+  const handleCreateGuild = async () => {
+    if (!guildName.trim() || !user?.id) return;
+    
+    try {
+      setCreating(true);
+      const newGuild = await guildAPI.createGuild(guildName.trim(), user.id);
+      alert(`Guild "${newGuild.name}" created successfully!`);
+      setShowCreateGuild(false);
+      setGuildName('');
+      window.location.reload(); // Refresh to load the new guild
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to create guild');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleLeaveGuild = async () => {
+    if (!guild || !user?.id) return;
+    if (!confirm(`Are you sure you want to leave ${guild.name}?`)) return;
+    
+    try {
+      await guildAPI.leaveGuild(guild.id, user.id);
+      alert('Left guild successfully');
+      window.location.reload();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to leave guild');
+    }
+  };
+
+  const loadGuilds = async () => {
+    try {
+      setLoadingGuilds(true);
+      // Note: This would need a backend endpoint to list all guilds
+      // For now, we'll just show the create form
+      setShowGuildList(true);
+    } catch (err) {
+      console.error('Failed to load guilds:', err);
+    } finally {
+      setLoadingGuilds(false);
+    }
+  };
+
   if (!guild) {
     return (
-      <div className="bg-gray-800 rounded-lg p-6 border border-gray-700 text-center">
-        <h3 className="text-xl font-bold text-white mb-4">No Guild</h3>
-        <p className="text-gray-400 mb-4">You're not in a guild yet!</p>
-        <button className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded transition-colors">
-          Find a Guild
-        </button>
+      <div className="space-y-6">
+        <div className="bg-gray-800 rounded-lg p-6 border border-gray-700 text-center">
+          <h3 className="text-2xl font-bold text-white mb-2">No Guild</h3>
+          <p className="text-gray-400 mb-6">You're not in a guild yet!</p>
+          <div className="flex gap-4 justify-center">
+            <button 
+              onClick={() => setShowCreateGuild(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition-colors font-semibold"
+            >
+              Create Guild
+            </button>
+            <button 
+              onClick={loadGuilds}
+              className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-lg transition-colors font-semibold"
+            >
+              Find a Guild
+            </button>
+          </div>
+        </div>
+
+        {showCreateGuild && (
+          <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+            <h3 className="text-xl font-bold text-white mb-4">Create New Guild</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-white mb-2 font-semibold">Guild Name</label>
+                <input
+                  type="text"
+                  value={guildName}
+                  onChange={(e) => setGuildName(e.target.value)}
+                  placeholder="Enter guild name..."
+                  maxLength={30}
+                  className="w-full p-3 bg-gray-900 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                />
+                <div className="text-xs text-gray-400 mt-1">{guildName.length}/30 characters</div>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={handleCreateGuild}
+                  disabled={!guildName.trim() || creating}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors font-semibold disabled:bg-gray-600 disabled:cursor-not-allowed"
+                >
+                  {creating ? 'Creating...' : 'Create Guild'}
+                </button>
+                <button
+                  onClick={() => {
+                    setShowCreateGuild(false);
+                    setGuildName('');
+                  }}
+                  className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showGuildList && (
+          <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+            <h3 className="text-xl font-bold text-white mb-4">Find a Guild</h3>
+            <p className="text-gray-400 text-sm mb-4">
+              Guild browser coming soon! For now, you can create your own guild or ask other players for an invite.
+            </p>
+            <button
+              onClick={() => setShowGuildList(false)}
+              className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+            >
+              Close
+            </button>
+          </div>
+        )}
       </div>
     );
   }
@@ -38,15 +158,25 @@ export default function GuildPanel({ guild }: GuildPanelProps) {
           </div>
         </div>
         
-        <div className="mt-4 flex items-center space-x-6 text-sm">
-          <div>
-            <span className="text-gray-400">Members: </span>
-            <span className="text-white font-semibold">{guild.members.length} / {guild.maxMembers}</span>
+        <div className="mt-4 flex items-center justify-between">
+          <div className="flex items-center space-x-6 text-sm">
+            <div>
+              <span className="text-gray-400">Members: </span>
+              <span className="text-white font-semibold">{guild.members.length} / {guild.maxMembers}</span>
+            </div>
+            <div>
+              <span className="text-gray-400">Founded by: </span>
+              <span className="text-purple-400 font-semibold">{guild.createdBy}</span>
+            </div>
           </div>
-          <div>
-            <span className="text-gray-400">Founded by: </span>
-            <span className="text-purple-400 font-semibold">{guild.createdBy}</span>
-          </div>
+          {user?.id && guild.members.find(m => m.userId === user.id && m.rank !== 'leader') && (
+            <button
+              onClick={handleLeaveGuild}
+              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors text-sm font-semibold"
+            >
+              Leave Guild
+            </button>
+          )}
         </div>
       </div>
 

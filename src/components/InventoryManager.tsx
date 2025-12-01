@@ -9,11 +9,14 @@ interface InventoryManagerProps {
   onEquipChange: (slot: string, item: Item | null) => void;
   onApplyUpgrade?: (itemId: string, equipmentSlot: string) => void;
   onUseConsumable?: (itemId: string) => void;
+  userId?: string;
+  onUpdate?: () => void;
 }
 
-export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, onUseConsumable }: InventoryManagerProps) {
+export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, onUseConsumable, userId, onUpdate }: InventoryManagerProps) {
   const [draggedItem, setDraggedItem] = useState<{ item: Item; source: 'inventory' | 'equipment'; slot?: string } | null>(null);
   const [applyingItem, setApplyingItem] = useState<{ craftedItem: CraftedItem; recipeKey: string } | null>(null);
+  
 
   // Handle drag start
   const handleDragStart = (item: Item, source: 'inventory' | 'equipment', slot?: string) => {
@@ -67,10 +70,20 @@ export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, 
   };
 
   // Get all inventory items (gear, loot, and crafted profession items)
-  const inventoryItems: Item[] = (hero as any).inventory || [];
+  const allInventoryItems: Item[] = (hero as any).inventory || [];
   
-  console.log('🎒 InventoryManager - Total items:', inventoryItems.length);
-  console.log('🎒 Raw inventory data:', (hero as any).inventory);
+  // Get equipped item IDs to filter them out from inventory display
+  const equippedItemIds = new Set(
+    Object.values(hero.equipment || {})
+      .filter(item => item !== null)
+      .map(item => (item as any).id)
+  );
+  
+  // Filter out equipped items from inventory
+  const inventoryItems = allInventoryItems.filter(item => !equippedItemIds.has(item.id));
+  
+  console.log('🎒 InventoryManager - Total items in inventory:', inventoryItems.length);
+  console.log('🎒 Equipped items:', equippedItemIds.size);
   
   // Separate profession items from regular items for better display
   const professionItems = inventoryItems.filter(item => (item as any).professionItem);
@@ -80,7 +93,7 @@ export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, 
   console.log('⚔️ Regular items:', regularItems.length);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-8">
       {/* Equipment Slots */}
       <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
         <h3 className="text-2xl font-bold text-white mb-4">Equipment</h3>
@@ -203,14 +216,26 @@ export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, 
                           : ENCHANTING_RECIPES;
                       const recipe = allRecipes[recipeKey as keyof typeof allRecipes];
                       
+                      // Get applicable slots from item or recipe
+                      const applicableSlots = firstItem.applicableSlots || recipe?.applicableSlots || [];
+                      const canApply = (isUpgrade || isEnchantment) && applicableSlots.length > 0;
+                      
                       return (
                         <div
                           key={recipeKey}
-                          className={`rounded-lg p-3 border-2 transition-all cursor-help hover:shadow-lg ${
-                            isConsumable ? 'border-green-500 bg-green-900/20 hover:border-green-400' :
-                            isUpgrade ? 'border-orange-500 bg-orange-900/20 hover:border-orange-400' :
-                            'border-purple-500 bg-purple-900/20 hover:border-purple-400'
+                          className={`rounded-lg p-3 border-2 transition-all hover:shadow-lg ${
+                            isConsumable ? 'border-green-500 bg-green-900/20 hover:border-green-400 cursor-pointer' :
+                            isUpgrade ? 'border-orange-500 bg-orange-900/20 hover:border-orange-400 cursor-pointer' :
+                            'border-purple-500 bg-purple-900/20 hover:border-purple-400 cursor-pointer'
                           }`}
+                          onClick={() => {
+                            // If it's an enchantment or upgrade with applicable slots, open apply modal
+                            if (canApply) {
+                              // Ensure the item has applicableSlots for the modal
+                              const itemWithSlots = { ...firstItem, applicableSlots };
+                              setApplyingItem({ craftedItem: itemWithSlots, recipeKey });
+                            }
+                          }}
                         >
                           <div className="flex items-start justify-between mb-2">
                             <div className="text-xl">
@@ -241,7 +266,8 @@ export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, 
                           {/* Action Buttons */}
                           {isConsumable && (
                             <button 
-                              onClick={() => {
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 if (onUseConsumable) onUseConsumable(firstItem.id);
                               }}
                               className="w-full bg-green-600 hover:bg-green-700 text-white py-1.5 rounded text-xs font-semibold transition-colors"
@@ -250,9 +276,14 @@ export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, 
                             </button>
                           )}
                           
-                          {(isUpgrade || isEnchantment) && (
+                          {canApply && (
                             <button 
-                              onClick={() => setApplyingItem({ craftedItem: firstItem, recipeKey })}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                // Ensure the item has applicableSlots for the modal
+                                const itemWithSlots = { ...firstItem, applicableSlots };
+                                setApplyingItem({ craftedItem: itemWithSlots, recipeKey });
+                              }}
                               className={`w-full ${isUpgrade ? 'bg-orange-600 hover:bg-orange-700' : 'bg-purple-600 hover:bg-purple-700'} text-white py-1.5 rounded text-xs font-semibold transition-colors`}
                             >
                               Apply
@@ -261,7 +292,8 @@ export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, 
                           
                           {isRune && (
                             <button 
-                              onClick={() => {
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 if (onUseConsumable) onUseConsumable(firstItem.id);
                               }}
                               className="w-full bg-purple-600 hover:bg-purple-700 text-white py-1.5 rounded text-xs font-semibold transition-colors"
@@ -285,15 +317,17 @@ export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, 
                 </h4>
                 <div 
                   className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4"
-                  onDragOver={handleDragOver}
-                  onDrop={handleDropOnInventory}
                 >
                   {regularItems.map((item, idx) => (
                     <div
                       key={idx}
-                      draggable
-                      onDragStart={() => handleDragStart(item, 'inventory')}
-                      className={`${getRarityBg(item.rarity)} rounded-lg p-3 border-2 cursor-move hover:scale-105 transition-transform hover:border-blue-400`}
+                      onDoubleClick={() => {
+                        // Double-click to equip
+                        if (item.slot && onEquipChange) {
+                          onEquipChange(item.slot, item);
+                        }
+                      }}
+                      className={`${getRarityBg(item.rarity)} rounded-lg p-3 border-2 cursor-pointer hover:scale-105 transition-transform hover:border-blue-400`}
                     >
                       <ItemTooltip item={item}>
                         <div className="hover:brightness-110 transition-all">
@@ -301,11 +335,32 @@ export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, 
                             {item.name}
                           </div>
                           <div className="text-xs text-gray-400 capitalize mb-2">{item.slot}</div>
-                          <div className="space-y-1 text-xs">
-                            {item.attack > 0 && <div className="text-red-400">+{item.attack}</div>}
-                            {item.defense > 0 && <div className="text-blue-400">+{item.defense}</div>}
-                            {item.hp > 0 && <div className="text-green-400">+{item.hp}</div>}
+                          <div className="space-y-1 text-xs mb-2">
+                            {item.attack > 0 && <div className="text-red-400">+{item.attack} ATK</div>}
+                            {item.defense > 0 && <div className="text-blue-400">+{item.defense} DEF</div>}
+                            {item.hp > 0 && <div className="text-green-400">+{item.hp} HP</div>}
                           </div>
+                          {item.slot && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (onEquipChange && item.slot) {
+                                  console.log('Equipping item:', item.name, 'to slot:', item.slot);
+                                  onEquipChange(item.slot, item);
+                                } else {
+                                  console.error('Cannot equip: missing slot or onEquipChange handler', { slot: item.slot, hasHandler: !!onEquipChange });
+                                }
+                              }}
+                              className="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs py-1.5 rounded font-semibold transition-colors"
+                            >
+                              Equip
+                            </button>
+                          )}
+                          {!item.slot && (
+                            <div className="text-xs text-gray-500 text-center py-1">
+                              No slot
+                            </div>
+                          )}
                         </div>
                       </ItemTooltip>
                     </div>
@@ -331,8 +386,17 @@ export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, 
             <p className="text-gray-400 mb-6">Select which piece of equipment to apply this to:</p>
             
             <div className="grid grid-cols-2 gap-4 mb-6">
-              {Object.entries(hero.equipment).map(([slot, item]) => (
-                item && (
+              {Object.entries(hero.equipment)
+                .filter(([slot, item]) => {
+                  if (!item) return false;
+                  // Filter by applicable slots if the item has restrictions
+                  if (applyingItem.craftedItem.applicableSlots && applyingItem.craftedItem.applicableSlots.length > 0) {
+                    return applyingItem.craftedItem.applicableSlots.includes(slot);
+                  }
+                  // If no restrictions, show all slots (for consumables that shouldn't be applied to gear)
+                  return false; // Don't show slots for consumables
+                })
+                .map(([slot, item]) => (
                   <button
                     key={slot}
                     onClick={() => {
@@ -353,8 +417,23 @@ export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, 
                       {item.hp > 0 && `+${item.hp} HP`}
                     </div>
                   </button>
-                )
-              ))}
+                ))}
+              {Object.entries(hero.equipment).filter(([slot, item]) => {
+                if (!item) return false;
+                if (applyingItem.craftedItem.applicableSlots && applyingItem.craftedItem.applicableSlots.length > 0) {
+                  return applyingItem.craftedItem.applicableSlots.includes(slot);
+                }
+                return false;
+              }).length === 0 && (
+                <div className="col-span-2 text-center text-gray-400 py-4">
+                  No compatible equipment slots available for this item.
+                  {applyingItem.craftedItem.applicableSlots && applyingItem.craftedItem.applicableSlots.length > 0 && (
+                    <div className="text-xs mt-2">
+                      This item can only be applied to: {applyingItem.craftedItem.applicableSlots.join(', ')}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <button

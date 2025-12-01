@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Load Test Script</title>
+</head>
+<body>
+    <h1>Test Script Loader</h1>
+    <p>Open this file and copy the script below, or use the bookmarklet.</p>
+    
+    <h2>Method 1: Bookmarklet</h2>
+    <p>Drag this link to your bookmarks bar, then click it on the browser source page:</p>
+    <a href="javascript:(function(){var s=document.createElement('script');s.src='http://localhost:3000/test-script-minified.js';document.body.appendChild(s);})();">Load Test Script</a>
+    
+    <h2>Method 2: Direct Copy</h2>
+    <p>Copy the contents of <code>test-script-minified.js</code> and paste into browser console.</p>
+    
+    <h2>Method 3: Import Script</h2>
+    <p>Add this to your browser source page HTML (in development only):</p>
+    <pre>&lt;script src="/test-script-minified.js"&gt;&lt;/script&gt;</pre>
+</body>
+</html>

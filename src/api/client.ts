@@ -101,6 +101,33 @@ export const heroAPI = {
     return response.data;
   },
   
+  async getHeroById(heroId: string): Promise<Hero> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve(mockHero), 300);
+      });
+    }
+
+    const response = await apiClient.get(`/api/heroes/${heroId}`);
+    try {
+      console.log('[HeroAPI] getHeroById response:', {
+        heroId,
+        id: response.data?.id,
+        name: response.data?.name,
+        role: response.data?.role,
+        level: response.data?.level
+      });
+    } catch (e) {
+      // ignore logging errors
+    }
+    return response.data;
+  },
+  
+  async pinHero(userId: string): Promise<Hero> {
+    const response = await apiClient.post(`/api/heroes/${userId}/pin`);
+    return response.data;
+  },
+
   async updateHero(userId: string, updates: Partial<Hero>): Promise<Hero> {
     if (USE_MOCK) {
       return new Promise((resolve) => {
@@ -109,6 +136,66 @@ export const heroAPI = {
     }
     
     const response = await apiClient.put(`/api/heroes/${userId}`, updates);
+    return response.data;
+  },
+  
+  async deleteHero(heroId: string, userId: string): Promise<{ message: string }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({ message: 'Hero deleted successfully' }), 300);
+      });
+    }
+    
+    const response = await apiClient.delete(`/api/heroes/${heroId}`, { data: { userId } });
+    return response.data;
+  },
+  
+  async getHeroCreationCostInfo(twitchUserId?: string, tiktokUserId?: string): Promise<{
+    heroCount: number;
+    maxHeroes: number;
+    canCreateMore: boolean;
+    cost: { tokens: number; price: number };
+    availableTokens: number;
+    canAffordWithTokens: boolean;
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          heroCount: 0,
+          maxHeroes: 10,
+          canCreateMore: true,
+          cost: { tokens: 0, price: 0 },
+          availableTokens: 0,
+          canAffordWithTokens: true
+        }), 300);
+      });
+    }
+
+    const params = new URLSearchParams();
+    if (twitchUserId) params.append('twitchUserId', twitchUserId);
+    if (tiktokUserId) params.append('tiktokUserId', tiktokUserId);
+
+    const response = await apiClient.get(`/api/heroes/create/cost-info?${params.toString()}`);
+    return response.data;
+  },
+
+  async createHero(classKey: string, twitchUserId?: string, tiktokUserId?: string, paymentMethod?: 'tokens' | 'payment'): Promise<Hero & { heroCount: number; maxHeroes: number }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          ...mockHero,
+          heroCount: 1,
+          maxHeroes: 10
+        }), 300);
+      });
+    }
+
+    const response = await apiClient.post('/api/heroes/create', {
+      class: classKey,
+      twitchUserId,
+      tiktokUserId,
+      paymentMethod
+    });
     return response.data;
   },
   
@@ -224,11 +311,70 @@ export const heroAPI = {
     
     const response = await apiClient.post(`/api/heroes/${userId}/purchase/tokens`, { rarity, slot });
     return response.data;
+  },
+
+  async upgradeItem(userId: string, itemId: string, levels: number = 1): Promise<{success: boolean, message: string, item: any, newGold: number}> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({ 
+          success: true, 
+          message: 'Item upgraded!',
+          item: { id: itemId, level: 1 },
+          newGold: 0
+        }), 300);
+      });
+    }
+    
+    const response = await apiClient.post(`/api/heroes/${userId}/upgrade-item`, { itemId, levels });
+    return response.data;
+  },
+
+  async reforgeItem(userId: string, itemId: string): Promise<{success: boolean, message: string, item: any, newGold: number}> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({ 
+          success: true, 
+          message: 'Item reforged!',
+          item: { id: itemId },
+          newGold: 0
+        }), 300);
+      });
+    }
+    
+    const response = await apiClient.post(`/api/heroes/${userId}/reforge-item`, { itemId });
+    return response.data;
+  },
+
+  async expandStorage(userId: string, slots: number = 10): Promise<{success: boolean, message: string, newBankSize: number, newGold: number}> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({ 
+          success: true, 
+          message: 'Storage expanded!',
+          newBankSize: 50,
+          newGold: 0
+        }), 300);
+      });
+    }
+    
+    const response = await apiClient.post(`/api/heroes/${userId}/expand-storage`, { slots });
+    return response.data;
   }
 };
 
 // Guild API
 export const guildAPI = {
+  async getAllGuilds(): Promise<Guild[]> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve([mockGuild]), 300);
+      });
+    }
+    
+    const response = await apiClient.get('/api/guilds');
+    return response.data;
+  },
+  
   async getGuild(guildId: string): Promise<Guild> {
     if (USE_MOCK) {
       return new Promise((resolve) => {
@@ -263,7 +409,7 @@ export const guildAPI = {
       });
     }
     
-    const response = await apiClient.post('/api/guilds', { name, userId });
+    const response = await apiClient.post('/api/guilds', { name, createdBy: userId });
     return response.data;
   },
   
@@ -297,6 +443,11 @@ export const guildAPI = {
     }
     
     const response = await apiClient.post(`/api/guilds/${guildId}/bank/deposit`, { userId, materials });
+    return response.data;
+  },
+  
+  async getGuildMembersWithHeroes(guildId: string): Promise<{members: Array<{userId: string, username: string, hero: any | null}>}> {
+    const response = await apiClient.get(`/api/guilds/${guildId}/members-with-heroes`);
     return response.data;
   }
 };
@@ -358,6 +509,62 @@ export const raidAPI = {
     const response = await apiClient.post(`/api/raids/${raidId}/signup`, { guildId, participants });
     return response.data;
   },
+
+  async getUpcomingRaids(): Promise<{scheduledRaids: any[]}> {
+    const response = await apiClient.get('/api/raids/upcoming');
+    return response.data;
+  },
+
+  async getRaidInstance(instanceId: string, userId?: string): Promise<any> {
+    const params = userId ? { userId } : {};
+    const response = await apiClient.get(`/api/raids/instance/${instanceId}`, { params });
+    return response.data;
+  },
+
+  async sendInstanceCommand(instanceId: string, userId: string, command: string): Promise<{success: boolean}> {
+    const response = await apiClient.post(`/api/raids/instance/${instanceId}/command`, {
+      userId,
+      command
+    });
+    return response.data;
+  },
+
+  async sendInstanceChat(instanceId: string, userId: string, message: string): Promise<{success: boolean}> {
+    const response = await apiClient.post(`/api/raids/instance/${instanceId}/chat`, {
+      userId,
+      message
+    });
+    return response.data;
+  },
+
+  async joinRaidQueue(raidId: string, userId: string, heroName: string, heroLevel: number, heroRole: string, itemScore: number): Promise<{success: boolean}> {
+    const response = await apiClient.post(`/api/raids/queue/${raidId}/join`, {
+      userId,
+      heroName,
+      heroLevel,
+      heroRole,
+      itemScore
+    });
+    return response.data;
+  },
+
+  async leaveRaidQueue(raidId: string, userId: string): Promise<{success: boolean}> {
+    const response = await apiClient.post(`/api/raids/queue/${raidId}/leave`, { userId });
+    return response.data;
+  },
+
+  async getRaidQueueStatus(raidId: string): Promise<any> {
+    const response = await apiClient.get(`/api/raids/queue/${raidId}`);
+    return response.data;
+  },
+
+  async createTestRaidInstance(organizerId: string, raidId?: string): Promise<{success: boolean, instanceId: string}> {
+    const response = await apiClient.post('/api/raids/test-instance', {
+      organizerId,
+      raidId
+    });
+    return response.data;
+  },
   
   async getWorldBoss(): Promise<WorldBoss | null> {
     if (USE_MOCK) {
@@ -405,7 +612,50 @@ export const raidAPI = {
     
     const response = await apiClient.post('/api/worldboss/signup', { userId });
     return response.data;
-  }
+  },
+  
+  // Queue methods
+  async joinQueue(raidId: string, userId: string, heroName: string, heroLevel: number, heroRole: string, itemScore: number): Promise<{success: boolean, message: string, position?: number, queueSize?: number, spotsRemaining?: number, autoStarted?: boolean, instanceId?: string}> {
+    const response = await apiClient.post(`/api/raids/queue/${raidId}/join`, {
+      userId,
+      heroName,
+      heroLevel,
+      heroRole,
+      itemScore
+    });
+    return response.data;
+  },
+  
+  async leaveQueue(raidId: string, userId: string): Promise<{success: boolean, message: string}> {
+    const response = await apiClient.post(`/api/raids/queue/${raidId}/leave`, { userId });
+    return response.data;
+  },
+  
+  async getQueueStatus(raidId: string): Promise<{queueSize: number, participants: any[], lastUpdated?: any}> {
+    const response = await apiClient.get(`/api/raids/queue/${raidId}`);
+    return response.data;
+  },
+  
+  // Guild signup methods
+  async getGuildRaidSignup(raidId: string, guildId: string): Promise<{signedUp: boolean, signup: any | null}> {
+    const response = await apiClient.get(`/api/raids/${raidId}/guild-signup/${guildId}`);
+    return response.data;
+  },
+  
+  async guildSignupForRaid(raidId: string, guildId: string, assignedPlayers: any[]): Promise<{success: boolean, signupId?: string, message: string}> {
+    const response = await apiClient.post(`/api/raids/${raidId}/guild-signup`, {
+      guildId,
+      assignedPlayers
+    });
+    return response.data;
+  },
+  
+  async updateGuildRaidSignup(raidId: string, guildId: string, assignedPlayers: any[]): Promise<{success: boolean, message: string}> {
+    const response = await apiClient.put(`/api/raids/${raidId}/guild-signup/${guildId}`, {
+      assignedPlayers
+    });
+    return response.data;
+  },
 };
 
 // Auth API
@@ -470,6 +720,328 @@ export const questAPI = {
   
   async claimAllQuests(userId: string, type?: 'daily' | 'weekly' | 'monthly') {
     const response = await apiClient.post(`/api/quests/claim-all/${userId}`, { type });
+    return response.data;
+  },
+
+  async updateQuestProgressBatch(userId: string, updates: Array<{ trackingKey: string; type: 'daily' | 'weekly' | 'monthly'; increment: number }>) {
+    const response = await apiClient.post(`/api/quests/${userId}/update-batch`, { updates });
+    return response.data;
+  }
+};
+
+// Skills API
+export const skillsAPI = {
+  async getAllSkills() {
+    const response = await apiClient.get('/api/skills');
+    return response.data;
+  },
+  
+  async getClassSkills(className: string) {
+    const response = await apiClient.get(`/api/skills/class/${className}`);
+    return response.data;
+  },
+  
+  async getHeroSkills(userId: string) {
+    const response = await apiClient.get(`/api/skills/${userId}`);
+    return response.data;
+  },
+  
+  async allocateSkillPoint(userId: string, skillId: string) {
+    const response = await apiClient.post(`/api/skills/${userId}/allocate`, { skillId });
+    return response.data;
+  },
+  
+  async resetSkills(userId: string, cost?: number) {
+    const response = await apiClient.post(`/api/skills/${userId}/reset`, { cost });
+    return response.data;
+  },
+
+  async addRetroactivePoints(userId: string) {
+    const response = await apiClient.post(`/api/skills/retroactive-points/${userId}`);
+    return response.data;
+  }
+};
+
+// Auction House API
+export const auctionAPI = {
+  async getListings(filters?: any) {
+    const response = await apiClient.get('/api/auction/listings', { params: filters });
+    return response.data;
+  },
+  
+  async createListing(sellerId: string, sellerUsername: string, item: any, startingPrice: number, buyoutPrice?: number, currency: 'gold' | 'tokens' = 'gold') {
+    const response = await apiClient.post('/api/auction/list', {
+      sellerId,
+      sellerUsername,
+      item,
+      startingPrice,
+      buyoutPrice,
+      currency
+    });
+    return response.data;
+  },
+  
+  async placeBid(listingId: string, userId: string, username: string, amount: number) {
+    const response = await apiClient.post(`/api/auction/${listingId}/bid`, {
+      userId,
+      username,
+      amount
+    });
+    return response.data;
+  },
+  
+  async buyout(listingId: string, userId: string, username: string) {
+    const response = await apiClient.post(`/api/auction/${listingId}/buyout`, {
+      userId,
+      username
+    });
+    return response.data;
+  },
+  
+  async cancelListing(listingId: string, userId: string) {
+    const response = await apiClient.post(`/api/auction/${listingId}/cancel`, { userId });
+    return response.data;
+  },
+  
+  async getMyListings(userId: string) {
+    const response = await apiClient.get(`/api/auction/my-listings/${userId}`);
+    return response.data;
+  },
+  
+  async getMyBids(userId: string) {
+    const response = await apiClient.get(`/api/auction/my-bids/${userId}`);
+    return response.data;
+  },
+  
+  async getHistory(userId: string) {
+    const response = await apiClient.get(`/api/auction/history/${userId}`);
+    return response.data;
+  }
+};
+
+// Enhanced Guild API
+export const enhancedGuildAPI = {
+  ...guildAPI,
+  
+  async applyToGuild(guildId: string, userId: string, username: string, message?: string) {
+    const response = await apiClient.post(`/api/guilds/${guildId}/apply`, {
+      userId,
+      username,
+      message
+    });
+    return response.data;
+  },
+  
+  async approveApplication(guildId: string, userId: string, approverId: string) {
+    const response = await apiClient.post(`/api/guilds/${guildId}/approve/${userId}`, {
+      approverId
+    });
+    return response.data;
+  },
+  
+  async rejectApplication(guildId: string, userId: string, approverId: string) {
+    const response = await apiClient.post(`/api/guilds/${guildId}/reject/${userId}`, {
+      approverId
+    });
+    return response.data;
+  },
+  
+  async updateGuildSettings(guildId: string, userId: string, joinMode?: 'open' | 'approval') {
+    const response = await apiClient.put(`/api/guilds/${guildId}/settings`, {
+      userId,
+      joinMode
+    });
+    return response.data;
+  },
+  
+  async assignLoot(guildId: string, userId: string, itemId: string, assignedTo: string) {
+    const response = await apiClient.post(`/api/guilds/${guildId}/loot/assign`, {
+      userId,
+      itemId,
+      assignedTo
+    });
+    return response.data;
+  },
+  
+  async getGuildLoot(guildId: string) {
+    const response = await apiClient.get(`/api/guilds/${guildId}/loot`);
+    return response.data;
+  },
+  
+  async getGuildLootHistory(guildId: string) {
+    const response = await apiClient.get(`/api/guilds/${guildId}/loot/history`);
+    return response.data;
+  }
+};
+
+// Battlefield API
+export const battlefieldAPI = {
+  async getBattlefieldHeroes(battlefieldId: string) {
+    const response = await apiClient.get(`/api/battlefields/${battlefieldId}/heroes`);
+    return response.data;
+  },
+  
+  async getBattlefieldState(battlefieldId: string) {
+    // URL encode the battlefieldId to handle colons and special characters
+    const encodedId = encodeURIComponent(battlefieldId);
+    const response = await apiClient.get(`/api/battlefields/${encodedId}/state`);
+    return response.data;
+  },
+  
+  async getActiveBattlefields() {
+    const response = await apiClient.get('/api/battlefields/active');
+    return response.data;
+  },
+  
+  async portHero(userId: string, battlefieldId: string, battlefieldType?: 'world' | 'streamer') {
+    const response = await apiClient.post(`/api/heroes/${userId}/port`, {
+      battlefieldId,
+      battlefieldType
+    });
+    return response.data;
+  },
+  
+  async registerBrowserSource(battlefieldId: string, userId: string, token: string) {
+    const response = await apiClient.post('/api/battlefields/register', {
+      battlefieldId,
+      userId,
+      token
+    });
+    return response.data;
+  },
+  
+  async saveSpriteFacingPreference(userId: string, spriteName: string, facing: 'left' | 'right') {
+    const response = await apiClient.post('/api/battlefields/preferences/sprite-facing', {
+      userId,
+      spriteName,
+      facing
+    });
+    return response.data;
+  },
+  
+  async getSpriteFacingPreferences(userId: string) {
+    const response = await apiClient.get(`/api/battlefields/preferences/sprite-facing/${userId}`);
+    return response.data.preferences || {};
+  },
+  
+  async saveBulkSpriteFacingPreferences(userId: string, preferences: Record<string, 'left' | 'right'>) {
+    const response = await apiClient.post('/api/battlefields/preferences/sprite-facing/bulk', {
+      userId,
+      preferences
+    });
+    return response.data;
+  }
+};
+
+// Achievement API
+export const achievementAPI = {
+  async getAllAchievements(category?: string) {
+    const response = await apiClient.get('/api/achievements', { params: { category } });
+    return response.data;
+  },
+  
+  async getHeroAchievements(userId: string) {
+    const response = await apiClient.get(`/api/achievements/${userId}`);
+    return response.data;
+  },
+  
+  async checkAchievements(userId: string, actionType: string, actionValue?: number) {
+    const response = await apiClient.post('/api/achievements/check', {
+      userId,
+      actionType,
+      actionValue
+    });
+    return response.data;
+  },
+  
+  async setActiveTitle(userId: string, title: string) {
+    const response = await apiClient.put(`/api/achievements/${userId}/title`, { title });
+    return response.data;
+  }
+};
+
+// Leaderboard API
+export const leaderboardAPI = {
+  async getLeaderboard(type: 'global' | 'guild', category: string, timeframe?: string) {
+    const params = timeframe ? { timeframe } : {};
+    const response = await apiClient.get(`/api/leaderboards/${type}/${category}`, { params });
+    return response.data;
+  },
+  
+  async getUserRankings(userId: string) {
+    const response = await apiClient.get(`/api/leaderboards/user/${userId}`);
+    return response.data;
+  }
+};
+
+// Login Reward API
+export const loginRewardAPI = {
+  async claimReward(userId: string, provider: 'twitch' | 'tiktok' = 'twitch') {
+    const response = await apiClient.post(`/api/heroes/login-reward/${userId}`, { provider });
+    return response.data;
+  },
+  
+  async getStatus(userId: string, provider: 'twitch' | 'tiktok' = 'twitch') {
+    const response = await apiClient.get(`/api/heroes/login-reward/${userId}/status`);
+    return response.data;
+  }
+};
+
+// Dungeon Finder API
+export const dungeonAPI = {
+  async joinQueue(userId: string, heroId: string, role: 'tank' | 'healer' | 'dps', itemScore: number, dungeonType: 'normal' | 'heroic' | 'mythic' = 'normal') {
+    const response = await apiClient.post('/api/dungeon/queue', {
+      userId,
+      heroId,
+      role,
+      itemScore,
+      dungeonType
+    });
+    return response.data;
+  },
+  
+  async leaveQueue(userId: string) {
+    const response = await apiClient.delete('/api/dungeon/queue', { data: { userId } });
+    return response.data;
+  },
+  
+  async getQueueStatus(userId: string) {
+    const response = await apiClient.get('/api/dungeon/queue/status', { params: { userId } });
+    return response.data;
+  },
+  
+  async acceptGroupInvite(userId: string, groupId: string) {
+    const response = await apiClient.post('/api/dungeon/group/accept', {
+      userId,
+      groupId
+    });
+    return response.data;
+  }
+};
+
+// Enchanting API
+export const enchantingAPI = {
+  async applyEnchantment(userId: string, itemId: string, enchantmentType: string, enchantmentLevel: number) {
+    const response = await apiClient.post(`/api/enchanting/${userId}/enchant`, {
+      itemId,
+      enchantmentType,
+      enchantmentLevel
+    });
+    return response.data;
+  },
+  
+  async getEnchantments(userId: string) {
+    const response = await apiClient.get(`/api/enchanting/${userId}/enchantments`);
+    return response.data;
+  },
+  
+  async getEnchantmentsForSlot(slot: string) {
+    const response = await apiClient.get(`/api/enchanting/enchantments/${slot}`);
+    return response.data;
+  },
+  
+  async getAllEnchantments() {
+    const response = await apiClient.get('/api/enchanting/enchantments');
     return response.data;
   }
 };

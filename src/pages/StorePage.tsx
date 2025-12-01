@@ -5,11 +5,11 @@ import { useHero } from '../hooks/useHero';
 import Navigation from '../components/Navigation';
 import { heroAPI } from '../api/client';
 
-// Shop item definitions (matches game.js)
+// Shop item definitions (balanced for monetization)
 const GOLD_SHOP_ITEMS = {
   healthpotion: { 
     name: 'Health Potion', 
-    cost: 50, 
+    cost: 10, // Reduced from 50 (balanced economy)
     description: 'Auto-heal when HP < 30%', 
     type: 'potion',
     icon: '🧪',
@@ -17,7 +17,7 @@ const GOLD_SHOP_ITEMS = {
   },
   xpboost: { 
     name: 'XP Boost Scroll', 
-    cost: 100, 
+    cost: 25, // Reduced from 100 (balanced economy)
     description: '+50% XP for 5min combat time', 
     type: 'buff',
     icon: '📜',
@@ -25,7 +25,7 @@ const GOLD_SHOP_ITEMS = {
   },
   attackbuff: { 
     name: 'Sharpening Stone', 
-    cost: 150, 
+    cost: 15, // Reduced from 150 (balanced economy)
     description: '+10% ATK for 10min combat time', 
     type: 'buff',
     icon: '⚔️',
@@ -33,7 +33,7 @@ const GOLD_SHOP_ITEMS = {
   },
   defensebuff: { 
     name: 'Armor Polish', 
-    cost: 150, 
+    cost: 15, // Reduced from 150 (balanced economy)
     description: '+10% DEF for 10min combat time', 
     type: 'buff',
     icon: '🛡️',
@@ -42,13 +42,14 @@ const GOLD_SHOP_ITEMS = {
 };
 
 const TOKEN_SHOP_PRICES = {
-  common: 25,
-  rare: 100,
-  epic: 300,
-  legendary: 1000
+  common: 50, // Increased from 25 (2x for monetization)
+  rare: 200, // Increased from 100 (2x for monetization)
+  epic: 600, // Increased from 300 (2x for monetization)
+  legendary: 2500, // Increased from 1000 (2.5x for monetization)
+  mythic: 10000 // NEW - ultra-rare tier
 };
 
-const RARITIES = ['common', 'rare', 'epic', 'legendary'] as const;
+const RARITIES = ['common', 'rare', 'epic', 'legendary', 'mythic'] as const;
 const SLOTS = ['weapon', 'armor', 'accessory', 'shield'] as const;
 
 export default function StorePage() {
@@ -107,7 +108,8 @@ export default function StorePage() {
       common: 'text-gray-400',
       rare: 'text-blue-400',
       epic: 'text-purple-400',
-      legendary: 'text-yellow-400'
+      legendary: 'text-yellow-400',
+      mythic: 'text-red-400'
     }[rarity] || 'text-gray-400';
   };
 
@@ -116,7 +118,8 @@ export default function StorePage() {
       common: 'bg-gray-700 border-gray-500',
       rare: 'bg-blue-900/30 border-blue-500',
       epic: 'bg-purple-900/30 border-purple-500',
-      legendary: 'bg-yellow-900/30 border-yellow-500'
+      legendary: 'bg-yellow-900/30 border-yellow-500',
+      mythic: 'bg-red-900/30 border-red-500'
     }[rarity] || 'bg-gray-700';
   };
 
@@ -289,6 +292,102 @@ export default function StorePage() {
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+
+          {/* Gold Sinks - Balanced, Not Gacha */}
+          <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+            <h2 className="text-3xl font-bold text-white mb-4 flex items-center gap-3">
+              <span>⚡</span> Gold Sinks
+            </h2>
+            <p className="text-gray-400 mb-6">
+              Improve your gear and expand storage with gold • Balanced prices, meaningful upgrades
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Equipment Upgrade */}
+              <div className="bg-gray-700 rounded-lg p-6 border-2 border-gray-600">
+                <div className="text-4xl mb-3 text-center">⬆️</div>
+                <div className="font-bold text-white text-center mb-2">Upgrade Equipment</div>
+                <div className="text-sm text-gray-400 mb-4 text-center min-h-[60px]">
+                  Increase item level by 1-5 levels<br />
+                  Cost: 100g per level (scales with item level)
+                </div>
+                <div className="text-center mb-4">
+                  <div className="text-lg font-bold text-yellow-400">100g+ per level</div>
+                </div>
+                <button
+                  onClick={() => alert('Select an item from your inventory or equipment to upgrade!')}
+                  className="w-full py-2 rounded font-semibold transition-colors bg-yellow-600 hover:bg-yellow-700 text-white"
+                >
+                  Upgrade Item
+                </button>
+                <div className="text-xs text-gray-500 mt-2 text-center">
+                  +5% stats per level
+                </div>
+              </div>
+
+              {/* Stat Reforge */}
+              <div className="bg-gray-700 rounded-lg p-6 border-2 border-gray-600">
+                <div className="text-4xl mb-3 text-center">🔨</div>
+                <div className="font-bold text-white text-center mb-2">Reforge Stats</div>
+                <div className="text-sm text-gray-400 mb-4 text-center min-h-[60px]">
+                  Reroll secondary stats on rare+ items<br />
+                  Keeps primary stats, rerolls secondary
+                </div>
+                <div className="text-center mb-4">
+                  <div className="text-lg font-bold text-yellow-400">500g</div>
+                </div>
+                <button
+                  onClick={() => alert('Select a rare+ item from your inventory or equipment to reforge!')}
+                  className="w-full py-2 rounded font-semibold transition-colors bg-yellow-600 hover:bg-yellow-700 text-white"
+                >
+                  Reforge Item
+                </button>
+                <div className="text-xs text-gray-500 mt-2 text-center">
+                  Rare+ items only
+                </div>
+              </div>
+
+              {/* Storage Expansion */}
+              <div className="bg-gray-700 rounded-lg p-6 border-2 border-gray-600">
+                <div className="text-4xl mb-3 text-center">📦</div>
+                <div className="font-bold text-white text-center mb-2">Expand Storage</div>
+                <div className="text-sm text-gray-400 mb-4 text-center min-h-[60px]">
+                  Add bank slots for item storage<br />
+                  Current: {hero.bankSize || 50} slots
+                </div>
+                <div className="text-center mb-4">
+                  <div className="text-lg font-bold text-yellow-400">50g per slot</div>
+                </div>
+                <button
+                  onClick={async () => {
+                    const slots = prompt('How many slots? (1-50, default 10)', '10');
+                    if (slots) {
+                      const numSlots = parseInt(slots);
+                      if (numSlots >= 1 && numSlots <= 50) {
+                        setPurchasing(true);
+                        try {
+                          await heroAPI.expandStorage(user?.id || '', numSlots);
+                          alert(`✅ Expanded bank by ${numSlots} slots!`);
+                          refetchHero();
+                        } catch (error: any) {
+                          alert(error.response?.data?.error || 'Failed to expand storage');
+                        } finally {
+                          setPurchasing(false);
+                        }
+                      }
+                    }
+                  }}
+                  disabled={purchasing}
+                  className="w-full py-2 rounded font-semibold transition-colors bg-yellow-600 hover:bg-yellow-700 text-white disabled:bg-gray-600"
+                >
+                  {purchasing ? 'Expanding...' : 'Expand Bank'}
+                </button>
+                <div className="text-xs text-gray-500 mt-2 text-center">
+                  Max: 500 slots
+                </div>
+              </div>
             </div>
           </div>
 

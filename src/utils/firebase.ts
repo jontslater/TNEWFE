@@ -18,7 +18,14 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase
+console.log('[Firebase] Initializing Firebase with config:', {
+  apiKey: firebaseConfig.apiKey ? '***' + firebaseConfig.apiKey.slice(-4) : 'missing',
+  projectId: firebaseConfig.projectId || 'missing',
+  authDomain: firebaseConfig.authDomain || 'missing'
+});
+
 const app = initializeApp(firebaseConfig);
 
 // Initialize Firestore
 export const db = getFirestore(app);
+console.log('[Firebase] ✅ Firestore initialized');

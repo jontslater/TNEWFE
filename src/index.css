@@ -9,6 +9,12 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  background-color: #111827; /* gray-900 */
+  min-height: 100vh;
+}
+
+html {
+  background-color: #111827; /* gray-900 */
 }
 
 code {
@@ -18,6 +24,27 @@ code {
 
 * {
   box-sizing: border-box;
+}
+
+/* CRITICAL: Disable transitions on background-position to prevent interpolation
+   Sprite frame changes must be discrete - no smooth transitions for background-position
+   But allow smooth transitions for other properties like opacity and transform */
+.sprite-container {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.sprite-img,
+[class*="-sprite"],
+[id^="battle-hero-"] .sprite-img,
+[id^="battle-enemy-"] .sprite-img,
+[id^="battle-enemy-"] > div > div > div,
+.enemy-sprite-js-element,
+.enemy-sprite-container > div > div > div {
+  transition: none !important; /* No transitions for background-position or transform */
+  animation: none !important; /* No CSS animations */
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+  will-change: transform; /* Optimize for transform-based frame animation */
 }
 
 #root {
@@ -41,4 +68,2031 @@ code {
 
 ::-webkit-scrollbar-thumb:hover {
   background: #6b7280;
+}
+
+/* Browser Source Page - Force transparent background */
+.browser-source-page {
+  background-color: transparent !important;
+  background: transparent !important;
+}
+
+/* Override global body/html background for browser source route */
+body:has(.browser-source-page),
+html:has(.browser-source-page),
+body.browser-source-body,
+html.browser-source-html {
+  background-color: transparent !important;
+  background: transparent !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Loading spinner animation for OBS page */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ============================================
+   SPRITE ANIMATIONS - Matching Electron App
+   ============================================ */
+
+/* Sprite container - Matching Electron App */
+.sprite-container {
+  width: 150px;
+  height: 140px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  margin: 10px auto;
+  overflow: visible;
+  position: relative;
+}
+
+/* Base sprite styling - Matching Electron App */
+.sprite-img {
+  width: 48px;
+  height: 48px;
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+  transform-origin: center center;
+  background-position: 0px 0px;
+  margin-bottom: 15px;
+  flex-shrink: 0;
+  /* Transform is applied by individual sprite components, not here */
+}
+
+/* HUGE KNIGHT (Tanks) - 64px frames */
+.huge-knight-sprite {
+  width: 220px; /* Larger container for 64px sprite */
+  height: 130px;
+}
+
+.huge-knight-sprite .sprite-img {
+  width: 64px;
+  height: 64px;
+}
+
+.huge-knight-sprite[data-animation="idle"] .sprite-img {
+  background-size: 512px 64px;
+  animation: hugeKnightIdle 2.4s steps(8) infinite;
+}
+
+@keyframes hugeKnightIdle {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -512px 0px; }
+}
+
+.huge-knight-sprite[data-animation="attack"] .sprite-img {
+  background-size: 704px 64px;
+  animation: hugeKnightAttack 1.32s steps(11) 1 !important;
+}
+
+@keyframes hugeKnightAttack {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -704px 0px; }
+}
+
+.huge-knight-sprite[data-animation="hurt"] .sprite-img {
+  background-size: 384px 64px;
+  animation: hugeKnightHurt 0.6s steps(6) 1 !important;
+}
+
+@keyframes hugeKnightHurt {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -384px 0px; }
+}
+
+.huge-knight-sprite[data-animation="death"] .sprite-img {
+  background-size: 448px 64px;
+  animation: hugeKnightDeath 0.7s steps(7) 1 forwards !important;
+}
+
+@keyframes hugeKnightDeath {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -448px 0px; }
+}
+
+/* WIZARD (Healers) - 48px frames */
+.wizard-sprite[data-animation="idle"] .sprite-img {
+  background-size: 288px 48px;
+  animation: wizardIdle 1.8s steps(6) infinite;
+}
+
+@keyframes wizardIdle {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -288px 0px; }
+}
+
+.wizard-sprite[data-animation="attack"] .sprite-img {
+  background-size: 480px 48px;
+  animation: wizardAttack 1.2s steps(10) 1 !important;
+}
+
+@keyframes wizardAttack {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -480px 0px; }
+}
+
+.wizard-sprite[data-animation="hurt"] .sprite-img {
+  background-size: 192px 48px;
+  animation: wizardHurt 0.4s steps(4) 1 !important;
+}
+
+@keyframes wizardHurt {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -192px 0px; }
+}
+
+.wizard-sprite[data-animation="death"] .sprite-img {
+  background-size: 288px 48px;
+  animation: wizardDeath 0.6s steps(6) 1 forwards !important;
+}
+
+@keyframes wizardDeath {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -288px 0px; }
+}
+
+/* BARD (Healer) - 48px frames, 4 frames per animation */
+.bard-sprite[data-animation="idle"] .sprite-img {
+  background-size: 192px 48px;
+  animation: bardIdle 1.2s steps(4) infinite;
+}
+
+@keyframes bardIdle {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -192px 0px; }
+}
+
+.bard-sprite[data-animation="attack"] .sprite-img {
+  background-size: 192px 48px;
+  animation: bardAttack 0.8s steps(4) 1 !important;
+}
+
+@keyframes bardAttack {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -192px 0px; }
+}
+
+.bard-sprite[data-animation="hurt"] .sprite-img {
+  background-size: 192px 48px;
+  animation: bardHurt 0.4s steps(4) 1 !important;
+}
+
+@keyframes bardHurt {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -192px 0px; }
+}
+
+.bard-sprite[data-animation="death"] .sprite-img {
+  background-size: 192px 48px;
+  animation: bardDeath 0.6s steps(4) 1 forwards !important;
+}
+
+@keyframes bardDeath {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -192px 0px; }
+}
+
+/* DWARF WARRIOR (Melee DPS) - 48px frames */
+.dwarf-warrior-sprite[data-animation="idle"] .sprite-img {
+  background-size: 480px 48px;
+  animation: dwarfWarriorIdle 3.0s steps(10) infinite;
+}
+
+@keyframes dwarfWarriorIdle {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -480px 0px; }
+}
+
+.dwarf-warrior-sprite[data-animation="attack"] .sprite-img {
+  background-size: 384px 48px;
+  animation: dwarfWarriorAttack 0.96s steps(8) 1 !important;
+}
+
+@keyframes dwarfWarriorAttack {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -384px 0px; }
+}
+
+.dwarf-warrior-sprite[data-animation="hurt"] .sprite-img {
+  background-size: 288px 48px;
+  animation: dwarfWarriorHurt 0.6s steps(6) 1 !important;
+}
+
+@keyframes dwarfWarriorHurt {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -288px 0px; }
+}
+
+.dwarf-warrior-sprite[data-animation="death"] .sprite-img {
+  background-size: 480px 48px;
+  animation: dwarfWarriorDeath 1.0s steps(10) 1 forwards !important;
+}
+
+@keyframes dwarfWarriorDeath {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -480px 0px; }
+}
+
+/* PYROMANCER (Ranged DPS) - 48px frames */
+.pyromancer-sprite[data-animation="idle"] .sprite-img {
+  background-size: 192px 48px;
+  animation: pyromancerIdle 1.2s steps(4) infinite;
+}
+
+@keyframes pyromancerIdle {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -192px 0px; }
+}
+
+.pyromancer-sprite[data-animation="attack"] .sprite-img {
+  background-size: 288px 48px;
+  animation: pyromancerAttack 0.72s steps(6) 1 !important;
+}
+
+@keyframes pyromancerAttack {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -288px 0px; }
+}
+
+.pyromancer-sprite[data-animation="hurt"] .sprite-img {
+  background-size: 144px 48px;
+  animation: pyromancerHurt 0.3s steps(3) 1 !important;
+}
+
+@keyframes pyromancerHurt {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -144px 0px; }
+}
+
+.pyromancer-sprite[data-animation="death"] .sprite-img {
+  background-size: 480px 48px;
+  animation: pyromancerDeath 1.0s steps(10) 1 forwards !important;
+}
+
+@keyframes pyromancerDeath {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -480px 0px; }
+}
+
+/* ============================================
+   ENEMY SPRITE ANIMATIONS
+   Based on IdleDnD style.css
+   ============================================ */
+
+/* KOBOLD WARRIOR - Ref-based animation classes */
+.kobold-sprite-container {
+  width: 140px;
+  height: 130px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 10px auto;
+  overflow: visible;
+}
+
+/* CSS variables for animation durations */
+/* Standard durations are calculated from frameCount * 120ms (standard frame duration) */
+.enemy-sprite-container {
+  /* Core animations */
+  --anim-duration-idle: 1.8s;
+  --anim-duration-attack: 0.6s;
+  --anim-duration-attack2: 0.6s;
+  --anim-duration-attack3: 0.72s;
+  --anim-duration-strongAttack: 1.44s;
+  --anim-duration-hurt: 0.4s;
+  --anim-duration-death: 1s;
+  
+  /* Special animations */
+  --anim-duration-transformation: 0.96s;
+  --anim-duration-idleHuman: 1.8s;
+  --anim-duration-flying: 0.48s;
+  --anim-duration-transition: 0.36s;
+  
+  /* Projectile animations */
+  --anim-duration-projectile: 0.72s;
+  --anim-duration-projectileDiagonal: 0.72s;
+  
+  /* Movement animations */
+  --anim-duration-walk: 1.2s;
+  --anim-duration-run: 0.96s;
+  --anim-duration-dash: 0.84s;
+  --anim-duration-jump: 0.36s;
+  --anim-duration-move: 0.72s;
+  --anim-duration-appear: 1.92s;
+}
+
+/* DISABLED: Using JS-driven animation system (EnemySpriteJS component) instead
+.kobold-sprite {
+  width: 48px;
+  height: 48px;
+  background-image: url('/Sprites/KoboldWarrior/with_outline/IDLE.png');
+  background-size: 288px 48px;
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+  transform: scale(2.5) scaleX(-1);
+  background-position: 0px 0px;
+  transform-origin: center center;
+}
+*/
+
+/* Generic: Idle animation - works for all enemies */
+.enemy-sprite-container.anim-idle .sprite-img,
+.enemy-sprite-container.anim-idle .kobold-sprite {
+  /* Background size and animation name are set per-enemy type below */
+  animation-duration: var(--anim-duration-idle);
+  animation-iteration-count: infinite;
+  animation-fill-mode: none;
+}
+
+/* Kobold Warrior specific idle */
+.enemy-sprite-container.anim-idle .kobold-sprite {
+  animation-name: koboldIdleCycle;
+  animation-timing-function: steps(6);
+  background-size: 288px 48px;
+}
+
+@keyframes koboldIdleCycle {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -288px 0px; }
+}
+
+/* Generic: Attack animations - work for all enemies */
+/* DISABLED for Kobold Warrior: Using JS-driven animation system instead
+.enemy-sprite-container.anim-attack .sprite-img,
+.enemy-sprite-container.anim-attack .kobold-sprite,
+.enemy-sprite-container.anim-attack2 .sprite-img,
+.enemy-sprite-container.anim-attack2 .kobold-sprite,
+.enemy-sprite-container.anim-attack3 .sprite-img,
+.enemy-sprite-container.anim-attack3 .kobold-sprite {
+  animation-duration: var(--anim-duration-attack);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards;
+}
+*/
+
+/* Kobold Warrior specific attack */
+/* DISABLED: Using JS-driven animation system instead of CSS animations
+.enemy-sprite-container[data-enemy-type="Kobold Warrior"].anim-attack .kobold-sprite {
+  animation-name: koboldAttackFrames;
+  animation-timing-function: steps(5);
+  background-size: 240px 48px;
+}
+*/
+.enemy-sprite-container[data-enemy-type="Kobold Warrior"].anim-attack2 .kobold-sprite {
+  animation-name: koboldAttack2Frames;
+  animation-timing-function: steps(5);
+  background-size: 240px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Kobold Warrior"].anim-attack3 .kobold-sprite {
+  animation-name: koboldAttack3Frames;
+  animation-timing-function: steps(6);
+  background-size: 288px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Kobold Warrior"].anim-strongAttack .kobold-sprite {
+  animation-name: koboldStrongAttackFrames;
+  animation-timing-function: steps(12);
+  animation-duration: var(--anim-duration-strongAttack);
+  background-size: 576px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Kobold Warrior"].anim-dash .kobold-sprite {
+  animation-name: koboldDashFrames;
+  animation-timing-function: steps(7);
+  animation-duration: var(--anim-duration-dash);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards;
+  background-size: 336px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Kobold Warrior"].anim-jump .kobold-sprite {
+  animation-name: koboldJumpFrames;
+  animation-timing-function: steps(3);
+  animation-duration: var(--anim-duration-jump);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards;
+  background-size: 144px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Kobold Warrior"].anim-run .kobold-sprite {
+  animation-name: koboldRunFrames;
+  animation-timing-function: steps(8);
+  animation-duration: var(--anim-duration-run);
+  animation-iteration-count: infinite;
+  animation-fill-mode: none;
+  background-size: 384px 48px;
+}
+
+/* DISABLED: Using JS-driven animation system instead of CSS animations
+@keyframes koboldAttackFrames {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -240px 0px; }
+}
+*/
+@keyframes koboldAttack2Frames {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -240px 0px; }
+}
+@keyframes koboldAttack3Frames {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -288px 0px; }
+}
+@keyframes koboldStrongAttackFrames {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -576px 0px; }
+}
+@keyframes koboldDashFrames {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -336px 0px; }
+}
+@keyframes koboldJumpFrames {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -144px 0px; }
+}
+@keyframes koboldRunFrames {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -384px 0px; }
+}
+
+/* Generic: Hurt animation - works for all enemies */
+.enemy-sprite-container.anim-hurt .sprite-img,
+.enemy-sprite-container.anim-hurt .kobold-sprite {
+  animation-duration: var(--anim-duration-hurt);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards !important;
+  transition: none !important;
+}
+
+/* Kobold Warrior specific hurt */
+.enemy-sprite-container.anim-hurt .kobold-sprite {
+  animation-name: koboldHurtFrames;
+  animation-timing-function: steps(4);
+  background-size: 192px 48px;
+}
+
+@keyframes koboldHurtFrames {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -192px 0px; }
+}
+
+/* Generic: Death animation - works for all enemies */
+.enemy-sprite-container.anim-death .sprite-img,
+.enemy-sprite-container.anim-death .kobold-sprite {
+  animation-duration: var(--anim-duration-death);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards !important;
+}
+
+/* Kobold Warrior specific death */
+.enemy-sprite-container.anim-death .kobold-sprite {
+  animation-name: koboldDeathFrames;
+  animation-timing-function: steps(10);
+  background-size: 480px 48px;
+}
+
+@keyframes koboldDeathFrames {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -480px 0px; }
+}
+
+/* Generic sprite container for all other enemies */
+.sprite-container {
+  width: 150px;
+  height: 140px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  margin: 10px auto;
+  overflow: visible;
+  position: relative;
+}
+
+.sprite-img {
+  width: 48px;
+  height: 48px;
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+  transform: scale(2.5) scaleX(-1);
+  transform-origin: center center;
+  background-position: 0px 0px;
+  margin-bottom: 15px;
+  flex-shrink: 0;
+}
+
+/* BABY DRAGON - New anim-* class system */
+.enemy-sprite-container[data-enemy-type="Baby Dragon"].anim-idle .sprite-img {
+  animation-name: babyDragonIdle;
+  animation-timing-function: steps(4);
+  background-size: 192px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Baby Dragon"].anim-attack .sprite-img {
+  animation-name: babyDragonAttack;
+  animation-timing-function: steps(6);
+  background-size: 288px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Baby Dragon"].anim-hurt .sprite-img {
+  animation-name: babyDragonHurt;
+  animation-timing-function: steps(3);
+  background-size: 144px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Baby Dragon"].anim-death .sprite-img {
+  animation-name: babyDragonDeath;
+  animation-timing-function: steps(5);
+  background-size: 240px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Baby Dragon"].anim-projectile .sprite-img {
+  animation-name: babyDragonProjectile;
+  animation-timing-function: steps(6);
+  animation-duration: var(--anim-duration-projectile);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards;
+  background-size: 288px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Baby Dragon"].anim-projectileDiagonal .sprite-img {
+  animation-name: babyDragonProjectileDiagonal;
+  animation-timing-function: steps(6);
+  animation-duration: var(--anim-duration-projectileDiagonal);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards;
+  background-size: 288px 48px;
+}
+
+/* BABY DRAGON - Old system (legacy support) */
+.baby-dragon-sprite[data-animation="idle"] .sprite-img {
+  background-size: 192px 48px;
+  animation: babyDragonIdle 1.2s steps(4) infinite;
+}
+@keyframes babyDragonIdle {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -192px 0px; }
+}
+
+.baby-dragon-sprite[data-animation="attack"] .sprite-img {
+  background-size: 288px 48px;
+  animation: babyDragonAttack 0.72s steps(6) 1 !important;
+}
+@keyframes babyDragonAttack {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -288px 0px; }
+}
+
+.baby-dragon-sprite[data-animation="hurt"] .sprite-img {
+  background-size: 144px 48px;
+  animation: babyDragonHurt 0.3s steps(3) 1 forwards !important;
+  transition: none !important;
+}
+@keyframes babyDragonHurt {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -144px 0px; }
+}
+
+.baby-dragon-sprite[data-animation="death"] .sprite-img {
+  background-size: 240px 48px;
+  animation: babyDragonDeath 0.5s steps(5) 1 forwards !important;
+}
+@keyframes babyDragonDeath {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -240px 0px; }
+}
+@keyframes babyDragonProjectile {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -288px 0px; }
+}
+@keyframes babyDragonProjectileDiagonal {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -288px 0px; }
+}
+
+/* IMP - New anim-* class system */
+.enemy-sprite-container[data-enemy-type="Imp"].anim-idle .sprite-img {
+  animation-name: impIdle;
+  animation-timing-function: steps(7);
+  background-size: 336px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Imp"].anim-attack .sprite-img {
+  animation-name: impAttack;
+  animation-timing-function: steps(9);
+  background-size: 432px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Imp"].anim-hurt .sprite-img {
+  animation-name: impHurt;
+  animation-timing-function: steps(6);
+  background-size: 288px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Imp"].anim-death .sprite-img {
+  animation-name: impDeath;
+  animation-timing-function: steps(8);
+  background-size: 384px 48px;
+}
+
+/* IMP - Old system (legacy support) */
+.imp-sprite[data-animation="idle"] .sprite-img {
+  background-size: 336px 48px;
+  animation: impIdle 2.1s steps(7) infinite;
+}
+@keyframes impIdle {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -336px 0px; }
+}
+
+.imp-sprite[data-animation="attack"] .sprite-img {
+  background-size: 432px 48px;
+  animation: impAttack 1.08s steps(9) 1 !important;
+}
+@keyframes impAttack {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -432px 0px; }
+}
+
+.imp-sprite[data-animation="hurt"] .sprite-img {
+  background-size: 288px 48px;
+  animation: impHurt 0.6s steps(6) 1 forwards !important;
+  transition: none !important;
+}
+@keyframes impHurt {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -288px 0px; }
+}
+
+.imp-sprite[data-animation="death"] .sprite-img {
+  background-size: 384px 48px;
+  animation: impDeath 0.8s steps(8) 1 forwards !important;
+}
+@keyframes impDeath {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -384px 0px; }
+}
+
+/* LIZARDMAN - New anim-* class system */
+.enemy-sprite-container[data-enemy-type="Lizardman"].anim-idle .sprite-img {
+  animation-name: lizardmanIdle;
+  animation-timing-function: steps(14);
+  animation-duration: var(--anim-duration-idle);
+  animation-iteration-count: infinite;
+  animation-fill-mode: none;
+  background-size: 672px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Lizardman"].anim-attack .sprite-img {
+  animation-name: lizardmanAttack;
+  animation-timing-function: steps(7);
+  animation-duration: var(--anim-duration-attack);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards;
+  background-size: 336px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Lizardman"].anim-attack2 .sprite-img {
+  animation-name: lizardmanAttack2;
+  animation-timing-function: steps(9);
+  animation-duration: var(--anim-duration-attack2);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards;
+  background-size: 432px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Lizardman"].anim-hurt .sprite-img {
+  animation-name: lizardmanHurt;
+  animation-timing-function: steps(5); /* 5 visible frames (skip transparent first frame) */
+  animation-duration: var(--anim-duration-hurt);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards !important;
+  background-size: 288px 48px;
+  /* Note: Initial position is set by JavaScript before animation starts */
+}
+.enemy-sprite-container[data-enemy-type="Lizardman"].anim-death .sprite-img {
+  animation-name: lizardmanDeath;
+  animation-timing-function: steps(13);
+  animation-duration: var(--anim-duration-death);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards !important;
+  background-size: 624px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Lizardman"].anim-walk .sprite-img {
+  animation-name: lizardmanWalk;
+  animation-timing-function: steps(10);
+  animation-duration: var(--anim-duration-walk);
+  animation-iteration-count: infinite;
+  animation-fill-mode: none;
+  background-size: 480px 48px;
+}
+
+@keyframes lizardmanIdle {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -672px 0px; }
+}
+@keyframes lizardmanAttack {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -336px 0px; }
+}
+@keyframes lizardmanAttack2 {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -432px 0px; }
+}
+@keyframes lizardmanHurt {
+  0% { background-position: -48px 0px; } /* Start from frame 2 (skip transparent first frame) */
+  100% { background-position: -240px 0px; } /* End at frame 6: 5 visible frames × 48px = 240px */
+}
+@keyframes lizardmanDeath {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -624px 0px; }
+}
+@keyframes lizardmanWalk {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -480px 0px; }
+}
+
+/* LIZARDMAN - Old system (legacy support) */
+.lizardman-sprite[data-animation="idle"] .sprite-img {
+  background-size: 672px 48px;
+  animation: lizardmanIdle 4.2s steps(14) infinite;
+}
+.lizardman-sprite[data-animation="attack"] .sprite-img {
+  background-size: 336px 48px;
+  animation: lizardmanAttack 0.84s steps(7) 1 !important;
+}
+.lizardman-sprite[data-animation="attack2"] .sprite-img {
+  background-size: 432px 48px;
+  animation: lizardmanAttack2 1.08s steps(9) 1 !important;
+}
+.lizardman-sprite[data-animation="hurt"] .sprite-img {
+  background-size: 288px 48px;
+  animation: lizardmanHurt 0.6s steps(6) 1 forwards !important;
+  transition: none !important;
+}
+.lizardman-sprite[data-animation="death"] .sprite-img {
+  background-size: 624px 48px;
+  animation: lizardmanDeath 1.3s steps(13) 1 forwards !important;
+}
+
+/* MASKED ORC - New anim-* class system */
+.enemy-sprite-container[data-enemy-type="Masked Orc"].anim-idle .sprite-img {
+  animation-name: maskedOrcIdle;
+  animation-timing-function: steps(4);
+  animation-duration: var(--anim-duration-idle);
+  animation-iteration-count: infinite;
+  animation-fill-mode: none;
+  background-size: 192px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Masked Orc"].anim-attack .sprite-img {
+  animation-name: maskedOrcAttack;
+  animation-timing-function: steps(6);
+  animation-duration: var(--anim-duration-attack);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards;
+  background-size: 288px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Masked Orc"].anim-hurt .sprite-img {
+  animation-name: maskedOrcHurt;
+  animation-timing-function: steps(3);
+  animation-duration: var(--anim-duration-hurt);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards !important;
+  background-size: 144px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Masked Orc"].anim-death .sprite-img {
+  animation-name: maskedOrcDeath;
+  animation-timing-function: steps(10);
+  animation-duration: var(--anim-duration-death);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards !important;
+  background-size: 480px 48px;
+}
+
+@keyframes maskedOrcIdle {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -192px 0px; }
+}
+@keyframes maskedOrcAttack {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -288px 0px; }
+}
+@keyframes maskedOrcHurt {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -144px 0px; }
+}
+@keyframes maskedOrcDeath {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -480px 0px; }
+}
+
+/* MASKED ORC - Old system (legacy support) */
+.masked-orc-sprite[data-animation="idle"] .sprite-img {
+  background-size: 192px 48px;
+  animation: maskedOrcIdle 1.2s steps(4) infinite;
+}
+.masked-orc-sprite[data-animation="attack"] .sprite-img {
+  background-size: 288px 48px;
+  animation: maskedOrcAttack 0.72s steps(6) 1 !important;
+}
+.masked-orc-sprite[data-animation="hurt"] .sprite-img {
+  background-size: 144px 48px;
+  animation: maskedOrcHurt 0.3s steps(3) 1 forwards !important;
+  transition: none !important;
+}
+.masked-orc-sprite[data-animation="death"] .sprite-img {
+  background-size: 480px 48px;
+  animation: maskedOrcDeath 1.0s steps(10) 1 forwards !important;
+}
+
+/* WEREWOLF - New anim-* class system */
+.enemy-sprite-container[data-enemy-type="Werewolf"].anim-idle .sprite-img {
+  animation-name: werewolfIdle;
+  animation-timing-function: steps(6);
+  animation-duration: var(--anim-duration-idle);
+  animation-iteration-count: infinite;
+  animation-fill-mode: none;
+  background-size: 288px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Werewolf"].anim-attack .sprite-img {
+  animation-name: werewolfAttack;
+  animation-timing-function: steps(7);
+  animation-duration: var(--anim-duration-attack);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards;
+  background-size: 336px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Werewolf"].anim-attack2 .sprite-img {
+  animation-name: werewolfAttack2;
+  animation-timing-function: steps(6);
+  animation-duration: var(--anim-duration-attack2);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards;
+  background-size: 288px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Werewolf"].anim-hurt .sprite-img {
+  animation-name: werewolfHurt;
+  animation-timing-function: steps(6);
+  animation-duration: var(--anim-duration-hurt);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards !important;
+  background-size: 288px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Werewolf"].anim-death .sprite-img {
+  animation-name: werewolfDeath;
+  animation-timing-function: steps(10);
+  animation-duration: var(--anim-duration-death);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards !important;
+  background-size: 480px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Werewolf"].anim-idleHuman .sprite-img {
+  animation-name: werewolfIdleHuman;
+  animation-timing-function: steps(6);
+  animation-duration: var(--anim-duration-idleHuman);
+  animation-iteration-count: infinite;
+  animation-fill-mode: none;
+  background-size: 288px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Werewolf"].anim-transformation .sprite-img {
+  animation-name: werewolfTransformation;
+  animation-timing-function: steps(8);
+  animation-duration: var(--anim-duration-transformation);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards;
+  background-size: 384px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Werewolf"].anim-run .sprite-img {
+  animation-name: werewolfRun;
+  animation-timing-function: steps(6);
+  animation-duration: var(--anim-duration-run);
+  animation-iteration-count: infinite;
+  animation-fill-mode: none;
+  background-size: 288px 48px;
+}
+
+@keyframes werewolfIdle {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -288px 0px; }
+}
+@keyframes werewolfAttack {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -336px 0px; }
+}
+@keyframes werewolfAttack2 {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -288px 0px; }
+}
+@keyframes werewolfHurt {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -288px 0px; }
+}
+@keyframes werewolfDeath {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -480px 0px; }
+}
+@keyframes werewolfIdleHuman {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -288px 0px; }
+}
+@keyframes werewolfTransformation {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -384px 0px; }
+}
+@keyframes werewolfRun {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -288px 0px; }
+}
+
+/* WEREWOLF - Old system (legacy support) */
+.werewolf-sprite[data-animation="idle"] .sprite-img {
+  background-size: 288px 48px;
+  animation: werewolfIdle 1.8s steps(6) infinite;
+}
+.werewolf-sprite[data-animation="attack"] .sprite-img {
+  background-size: 336px 48px;
+  animation: werewolfAttack 0.84s steps(7) 1 !important;
+}
+.werewolf-sprite[data-animation="attack2"] .sprite-img {
+  background-size: 288px 48px;
+  animation: werewolfAttack2 0.72s steps(6) 1 !important;
+}
+.werewolf-sprite[data-animation="hurt"] .sprite-img {
+  background-size: 288px 48px;
+  animation: werewolfHurt 0.6s steps(6) 1 forwards !important;
+  transition: none !important;
+}
+.werewolf-sprite[data-animation="death"] .sprite-img {
+  background-size: 480px 48px;
+  animation: werewolfDeath 1.0s steps(10) 1 forwards !important;
+}
+
+/* SKELETON MAGE - New anim-* class system */
+.enemy-sprite-container[data-enemy-type="Skeleton Mage"].anim-idle .sprite-img {
+  animation-name: skeletonMageIdle;
+  animation-timing-function: steps(6);
+  animation-duration: var(--anim-duration-idle);
+  animation-iteration-count: infinite;
+  animation-fill-mode: none;
+  background-size: 288px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Skeleton Mage"].anim-attack .sprite-img {
+  animation-name: skeletonMageAttack;
+  animation-timing-function: steps(9);
+  animation-duration: var(--anim-duration-attack);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards;
+  background-size: 432px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Skeleton Mage"].anim-hurt .sprite-img {
+  animation-name: skeletonMageHurt;
+  animation-timing-function: steps(4);
+  animation-duration: var(--anim-duration-hurt);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards !important;
+  background-size: 192px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Skeleton Mage"].anim-death .sprite-img {
+  animation-name: skeletonMageDeath;
+  animation-timing-function: steps(10);
+  animation-duration: var(--anim-duration-death);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards !important;
+  background-size: 480px 48px;
+}
+
+@keyframes skeletonMageIdle {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -288px 0px; }
+}
+@keyframes skeletonMageAttack {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -432px 0px; }
+}
+@keyframes skeletonMageHurt {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -192px 0px; }
+}
+@keyframes skeletonMageDeath {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -480px 0px; }
+}
+
+/* SKELETON MAGE - Old system (legacy support) */
+.skeleton-mage-sprite[data-animation="idle"] .sprite-img {
+  background-size: 288px 48px;
+  animation: skeletonMageIdle 1.8s steps(6) infinite;
+}
+.skeleton-mage-sprite[data-animation="attack"] .sprite-img {
+  background-size: 432px 48px;
+  animation: skeletonMageAttack 1.08s steps(9) 1 !important;
+}
+.skeleton-mage-sprite[data-animation="hurt"] .sprite-img {
+  background-size: 192px 48px;
+  animation: skeletonMageHurt 0.4s steps(4) 1 forwards !important;
+  transition: none !important;
+}
+.skeleton-mage-sprite[data-animation="death"] .sprite-img {
+  background-size: 480px 48px;
+  animation: skeletonMageDeath 1.0s steps(10) 1 forwards !important;
+}
+
+/* WITCH - New anim-* class system */
+.enemy-sprite-container[data-enemy-type="Witch"].anim-idle .sprite-img {
+  animation-name: witchIdle;
+  animation-timing-function: steps(6);
+  animation-duration: var(--anim-duration-idle);
+  animation-iteration-count: infinite;
+  animation-fill-mode: none;
+  background-size: 288px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Witch"].anim-attack .sprite-img {
+  animation-name: witchAttack;
+  animation-timing-function: steps(6);
+  animation-duration: var(--anim-duration-attack);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards;
+  background-size: 288px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Witch"].anim-hurt .sprite-img {
+  animation-name: witchHurt;
+  animation-timing-function: steps(3);
+  animation-duration: var(--anim-duration-hurt);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards !important;
+  background-size: 144px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Witch"].anim-death .sprite-img {
+  animation-name: witchDeath;
+  animation-timing-function: steps(7);
+  animation-duration: var(--anim-duration-death);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards !important;
+  background-size: 336px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Witch"].anim-move .sprite-img {
+  animation-name: witchMove;
+  animation-timing-function: steps(6);
+  animation-duration: var(--anim-duration-move);
+  animation-iteration-count: infinite;
+  animation-fill-mode: none;
+  background-size: 288px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Witch"].anim-projectile .sprite-img {
+  animation-name: witchProjectile;
+  animation-timing-function: steps(6);
+  animation-duration: var(--anim-duration-projectile);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards;
+  background-size: 288px 48px;
+}
+
+@keyframes witchIdle {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -288px 0px; }
+}
+@keyframes witchAttack {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -288px 0px; }
+}
+@keyframes witchHurt {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -144px 0px; }
+}
+@keyframes witchDeath {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -336px 0px; }
+}
+@keyframes witchMove {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -288px 0px; }
+}
+@keyframes witchProjectile {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -288px 0px; }
+}
+
+/* WITCH - Old system (legacy support) */
+.witch-sprite[data-animation="idle"] .sprite-img {
+  background-size: 288px 48px;
+  animation: witchIdle 1.8s steps(6) infinite;
+}
+.witch-sprite[data-animation="attack"] .sprite-img {
+  background-size: 288px 48px;
+  animation: witchAttack 0.72s steps(6) 1 !important;
+}
+.witch-sprite[data-animation="hurt"] .sprite-img {
+  background-size: 144px 48px;
+  animation: witchHurt 0.3s steps(3) 1 forwards !important;
+  transition: none !important;
+}
+.witch-sprite[data-animation="death"] .sprite-img {
+  background-size: 336px 48px;
+  animation: witchDeath 0.7s steps(7) 1 forwards !important;
+}
+
+/* MIMIC - New anim-* class system */
+.enemy-sprite-container[data-enemy-type="Mimic"].anim-appear .sprite-img {
+  animation-name: mimicAppear;
+  animation-timing-function: steps(16);
+  animation-duration: var(--anim-duration-appear);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards;
+  background-size: 768px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Mimic"].anim-idle .sprite-img {
+  animation-name: mimicIdle;
+  animation-timing-function: steps(8);
+  animation-duration: var(--anim-duration-idle);
+  animation-iteration-count: infinite;
+  animation-fill-mode: none;
+  background-size: 384px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Mimic"].anim-attack .sprite-img {
+  animation-name: mimicAttack;
+  animation-timing-function: steps(14);
+  animation-duration: var(--anim-duration-attack);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards;
+  background-size: 672px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Mimic"].anim-hurt .sprite-img {
+  animation-name: mimicHurt;
+  animation-timing-function: steps(6);
+  animation-duration: var(--anim-duration-hurt);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards !important;
+  background-size: 288px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Mimic"].anim-death .sprite-img {
+  animation-name: mimicDeath;
+  animation-timing-function: steps(10);
+  animation-duration: var(--anim-duration-death);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards !important;
+  background-size: 480px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Mimic"].anim-walk .sprite-img {
+  animation-name: mimicWalk;
+  animation-timing-function: steps(12);
+  animation-duration: var(--anim-duration-walk);
+  animation-iteration-count: infinite;
+  animation-fill-mode: none;
+  background-size: 576px 48px;
+}
+
+@keyframes mimicAppear {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -768px 0px; }
+}
+@keyframes mimicIdle {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -384px 0px; }
+}
+@keyframes mimicAttack {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -672px 0px; }
+}
+@keyframes mimicHurt {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -288px 0px; }
+}
+@keyframes mimicDeath {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -480px 0px; }
+}
+@keyframes mimicWalk {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -576px 0px; }
+}
+
+/* MIMIC - Old system (legacy support) */
+.mimic-sprite[data-animation="idle"] .sprite-img {
+  background-size: 384px 48px;
+  animation: mimicIdle 2.4s steps(8) infinite;
+}
+.mimic-sprite[data-animation="attack"] .sprite-img {
+  background-size: 672px 48px;
+  animation: mimicAttack 1.68s steps(14) 1 !important;
+}
+.mimic-sprite[data-animation="hurt"] .sprite-img {
+  background-size: 288px 48px;
+  animation: mimicHurt 0.6s steps(6) 1 forwards !important;
+  transition: none !important;
+}
+.mimic-sprite[data-animation="death"] .sprite-img {
+  background-size: 480px 48px;
+  animation: mimicDeath 1.0s steps(10) 1 forwards !important;
+}
+
+/* MINOTAUR - New anim-* class system */
+.enemy-sprite-container[data-enemy-type="Minotaur"].anim-idle .sprite-img {
+  animation-name: minotaurIdle;
+  animation-timing-function: steps(6);
+  animation-duration: var(--anim-duration-idle);
+  animation-iteration-count: infinite;
+  animation-fill-mode: none;
+  background-size: 288px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Minotaur"].anim-attack .sprite-img {
+  animation-name: minotaurAttack;
+  animation-timing-function: steps(6);
+  animation-duration: var(--anim-duration-attack);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards;
+  background-size: 288px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Minotaur"].anim-attack2 .sprite-img {
+  animation-name: minotaurAttack2;
+  animation-timing-function: steps(7);
+  animation-duration: var(--anim-duration-attack2);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards;
+  background-size: 336px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Minotaur"].anim-hurt .sprite-img {
+  animation-name: minotaurHurt;
+  animation-timing-function: steps(5);
+  animation-duration: var(--anim-duration-hurt);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards !important;
+  background-size: 240px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Minotaur"].anim-death .sprite-img {
+  animation-name: minotaurDeath;
+  animation-timing-function: steps(6);
+  animation-duration: var(--anim-duration-death);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards !important;
+  background-size: 288px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Minotaur"].anim-walk .sprite-img {
+  animation-name: minotaurWalk;
+  animation-timing-function: steps(8);
+  animation-duration: var(--anim-duration-walk);
+  animation-iteration-count: infinite;
+  animation-fill-mode: none;
+  background-size: 384px 48px;
+}
+
+@keyframes minotaurIdle {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -288px 0px; }
+}
+@keyframes minotaurAttack {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -288px 0px; }
+}
+@keyframes minotaurAttack2 {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -336px 0px; }
+}
+@keyframes minotaurHurt {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -240px 0px; }
+}
+@keyframes minotaurDeath {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -288px 0px; }
+}
+@keyframes minotaurWalk {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -384px 0px; }
+}
+
+/* MINOTAUR - Old system (legacy support) */
+.minotaur-sprite[data-animation="idle"] .sprite-img {
+  background-size: 288px 48px;
+  animation: minotaurIdle 1.8s steps(6) infinite;
+}
+.minotaur-sprite[data-animation="attack"] .sprite-img {
+  background-size: 288px 48px;
+  animation: minotaurAttack 0.72s steps(6) 1 !important;
+}
+.minotaur-sprite[data-animation="hurt"] .sprite-img {
+  background-size: 240px 48px;
+  animation: minotaurHurt 0.5s steps(5) 1 forwards !important;
+  transition: none !important;
+}
+.minotaur-sprite[data-animation="death"] .sprite-img {
+  background-size: 288px 48px;
+  animation: minotaurDeath 0.6s steps(6) 1 forwards !important;
+}
+
+/* HEADLESS HORSEMAN - New anim-* class system */
+.enemy-sprite-container[data-enemy-type="Headless Horseman"].anim-idle .sprite-img {
+  animation-name: headlessHorsemanIdle;
+  animation-timing-function: steps(4);
+  animation-duration: var(--anim-duration-idle);
+  animation-iteration-count: infinite;
+  animation-fill-mode: none;
+  background-size: 192px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Headless Horseman"].anim-attack .sprite-img {
+  animation-name: headlessHorsemanAttack;
+  animation-timing-function: steps(8);
+  animation-duration: var(--anim-duration-attack);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards;
+  background-size: 384px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Headless Horseman"].anim-hurt .sprite-img {
+  animation-name: headlessHorsemanHurt;
+  animation-timing-function: steps(3);
+  animation-duration: var(--anim-duration-hurt);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards !important;
+  background-size: 144px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Headless Horseman"].anim-death .sprite-img {
+  animation-name: headlessHorsemanDeath;
+  animation-timing-function: steps(10);
+  animation-duration: var(--anim-duration-death);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards !important;
+  background-size: 480px 48px;
+}
+
+@keyframes headlessHorsemanIdle {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -192px 0px; }
+}
+@keyframes headlessHorsemanAttack {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -384px 0px; }
+}
+@keyframes headlessHorsemanHurt {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -144px 0px; }
+}
+@keyframes headlessHorsemanDeath {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -480px 0px; }
+}
+
+/* HEADLESS HORSEMAN - Old system (legacy support) */
+.headless-horseman-sprite[data-animation="idle"] .sprite-img {
+  background-size: 192px 48px;
+  animation: headlessHorsemanIdle 1.6s steps(4) infinite;
+}
+@keyframes headlessHorsemanIdle {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -192px 0px; }
+}
+
+.headless-horseman-sprite[data-animation="attack"] .sprite-img {
+  background-size: 384px 48px;
+  animation: headlessHorsemanAttack 0.96s steps(8) 1 forwards !important;
+}
+@keyframes headlessHorsemanAttack {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -384px 0px; }
+}
+
+.headless-horseman-sprite[data-animation="hurt"] .sprite-img {
+  background-size: 144px 48px;
+  animation: headlessHorsemanHurt 0.3s steps(3) 1 forwards !important;
+  transition: none !important;
+}
+@keyframes headlessHorsemanHurt {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -144px 0px; }
+}
+
+.headless-horseman-sprite[data-animation="death"] .sprite-img {
+  background-size: 480px 48px;
+  animation: headlessHorsemanDeath 1.0s steps(10) 1 forwards !important;
+}
+@keyframes headlessHorsemanDeath {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -480px 0px; }
+}
+
+/* GRYPHON - New anim-* class system */
+.enemy-sprite-container[data-enemy-type="Gryphon"].anim-idle .sprite-img {
+  animation-name: gryphonIdle;
+  animation-timing-function: steps(4);
+  animation-duration: var(--anim-duration-idle);
+  animation-iteration-count: infinite;
+  animation-fill-mode: none;
+  background-size: 192px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Gryphon"].anim-attack .sprite-img {
+  animation-name: gryphonAttack;
+  animation-timing-function: steps(7);
+  animation-duration: var(--anim-duration-attack);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards;
+  background-size: 336px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Gryphon"].anim-attack2 .sprite-img {
+  animation-name: gryphonAttack2;
+  animation-timing-function: steps(5);
+  animation-duration: var(--anim-duration-attack2);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards;
+  background-size: 240px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Gryphon"].anim-hurt .sprite-img {
+  animation-name: gryphonHurt;
+  animation-timing-function: steps(4);
+  animation-duration: var(--anim-duration-hurt);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards !important;
+  background-size: 192px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Gryphon"].anim-death .sprite-img {
+  animation-name: gryphonDeath;
+  animation-timing-function: steps(7);
+  animation-duration: var(--anim-duration-death);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards !important;
+  background-size: 336px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Gryphon"].anim-move .sprite-img {
+  animation-name: gryphonMove;
+  animation-timing-function: steps(4);
+  animation-duration: var(--anim-duration-move);
+  animation-iteration-count: infinite;
+  animation-fill-mode: none;
+  background-size: 192px 48px;
+}
+
+@keyframes gryphonIdle {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -192px 0px; }
+}
+@keyframes gryphonAttack {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -336px 0px; }
+}
+@keyframes gryphonAttack2 {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -240px 0px; }
+}
+@keyframes gryphonHurt {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -192px 0px; }
+}
+@keyframes gryphonDeath {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -336px 0px; }
+}
+@keyframes gryphonMove {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -192px 0px; }
+}
+
+/* GRYPHON - Old system (legacy support) */
+.gryphon-sprite[data-animation="idle"] .sprite-img {
+  background-size: 192px 48px;
+  animation: gryphonIdle 1.2s steps(4) infinite;
+}
+@keyframes gryphonIdle {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -192px 0px; }
+}
+
+.gryphon-sprite[data-animation="attack"] .sprite-img {
+  background-size: 336px 48px;
+  animation: gryphonAttack 0.84s steps(7) 1 !important;
+}
+@keyframes gryphonAttack {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -336px 0px; }
+}
+
+.gryphon-sprite[data-animation="attack2"] .sprite-img {
+  background-size: 240px 48px;
+  animation: gryphonAttack2 0.6s steps(5) 1 !important;
+}
+@keyframes gryphonAttack2 {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -240px 0px; }
+}
+
+.gryphon-sprite[data-animation="hurt"] .sprite-img {
+  background-size: 192px 48px;
+  animation: gryphonHurt 0.4s steps(4) 1 forwards !important;
+  transition: none !important;
+}
+@keyframes gryphonHurt {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -192px 0px; }
+}
+
+.gryphon-sprite[data-animation="death"] .sprite-img {
+  background-size: 336px 48px;
+  animation: gryphonDeath 0.7s steps(7) 1 forwards !important;
+}
+@keyframes gryphonDeath {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -336px 0px; }
+}
+
+/* GRYPHON - New anim-* class system */
+.enemy-sprite-container[data-enemy-type="Gryphon"].anim-idle .sprite-img {
+  animation-name: gryphonIdle;
+  animation-timing-function: steps(4);
+  animation-duration: var(--anim-duration-idle);
+  animation-iteration-count: infinite;
+  animation-fill-mode: none;
+  background-size: 192px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Gryphon"].anim-attack .sprite-img {
+  animation-name: gryphonAttack;
+  animation-timing-function: steps(7);
+  animation-duration: var(--anim-duration-attack);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards;
+  background-size: 336px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Gryphon"].anim-attack2 .sprite-img {
+  animation-name: gryphonAttack2;
+  animation-timing-function: steps(5);
+  animation-duration: var(--anim-duration-attack2);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards;
+  background-size: 240px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Gryphon"].anim-hurt .sprite-img {
+  animation-name: gryphonHurt;
+  animation-timing-function: steps(4);
+  animation-duration: var(--anim-duration-hurt);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards !important;
+  background-size: 192px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Gryphon"].anim-death .sprite-img {
+  animation-name: gryphonDeath;
+  animation-timing-function: steps(7);
+  animation-duration: var(--anim-duration-death);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards !important;
+  background-size: 336px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Gryphon"].anim-move .sprite-img {
+  animation-name: gryphonMove;
+  animation-timing-function: steps(4);
+  animation-duration: var(--anim-duration-move);
+  animation-iteration-count: infinite;
+  animation-fill-mode: none;
+  background-size: 192px 48px;
+}
+
+@keyframes gryphonIdle {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -192px 0px; }
+}
+@keyframes gryphonAttack {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -336px 0px; }
+}
+@keyframes gryphonAttack2 {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -240px 0px; }
+}
+@keyframes gryphonHurt {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -192px 0px; }
+}
+@keyframes gryphonDeath {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -336px 0px; }
+}
+@keyframes gryphonMove {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -192px 0px; }
+}
+
+/* GRYPHON - Old system (legacy support) */
+.gryphon-sprite[data-animation="idle"] .sprite-img {
+  background-size: 192px 48px;
+  animation: gryphonIdle 1.2s steps(4) infinite;
+}
+.gryphon-sprite[data-animation="attack"] .sprite-img {
+  background-size: 336px 48px;
+  animation: gryphonAttack 0.84s steps(7) 1 !important;
+}
+.gryphon-sprite[data-animation="attack2"] .sprite-img {
+  background-size: 240px 48px;
+  animation: gryphonAttack2 0.6s steps(5) 1 !important;
+}
+.gryphon-sprite[data-animation="hurt"] .sprite-img {
+  background-size: 192px 48px;
+  animation: gryphonHurt 0.4s steps(4) 1 forwards !important;
+  transition: none !important;
+}
+.gryphon-sprite[data-animation="death"] .sprite-img {
+  background-size: 336px 48px;
+  animation: gryphonDeath 0.7s steps(7) 1 forwards !important;
+}
+.gryphon-sprite[data-animation="move"] .sprite-img {
+  background-size: 192px 48px;
+  animation: gryphonMove 0.48s steps(4) infinite;
+}
+@keyframes gryphonMove {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -192px 0px; }
+}
+
+/* ADULT DRAGON - New anim-* class system */
+.enemy-sprite-container[data-enemy-type="Adult Dragon"].anim-idle .sprite-img {
+  animation-name: dragonIdle;
+  animation-timing-function: steps(9);
+  animation-duration: var(--anim-duration-idle);
+  animation-iteration-count: infinite;
+  animation-fill-mode: none;
+  background-size: 432px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Adult Dragon"].anim-attack .sprite-img {
+  animation-name: dragonAttack;
+  animation-timing-function: steps(13);
+  animation-duration: var(--anim-duration-attack);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards;
+  background-size: 624px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Adult Dragon"].anim-attack2 .sprite-img {
+  animation-name: dragonAttack2;
+  animation-timing-function: steps(17);
+  animation-duration: var(--anim-duration-attack2);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards;
+  background-size: 816px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Adult Dragon"].anim-hurt .sprite-img {
+  animation-name: dragonHurt;
+  animation-timing-function: steps(4);
+  animation-duration: var(--anim-duration-hurt);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards !important;
+  background-size: 192px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Adult Dragon"].anim-death .sprite-img {
+  animation-name: dragonDeath;
+  animation-timing-function: steps(7);
+  animation-duration: var(--anim-duration-death);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards !important;
+  background-size: 336px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Adult Dragon"].anim-run .sprite-img {
+  animation-name: dragonRun;
+  animation-timing-function: steps(8);
+  animation-duration: var(--anim-duration-run);
+  animation-iteration-count: infinite;
+  animation-fill-mode: none;
+  background-size: 384px 48px;
+}
+
+@keyframes dragonIdle {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -432px 0px; }
+}
+@keyframes dragonAttack {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -624px 0px; }
+}
+@keyframes dragonAttack2 {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -816px 0px; }
+}
+@keyframes dragonHurt {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -192px 0px; }
+}
+@keyframes dragonDeath {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -336px 0px; }
+}
+@keyframes dragonRun {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -384px 0px; }
+}
+
+/* ADULT DRAGON - Old system (legacy support) */
+.dragon-sprite[data-animation="idle"] .sprite-img {
+  background-size: 432px 48px;
+  animation: dragonIdle 2.7s steps(9) infinite;
+}
+@keyframes dragonIdle {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -432px 0px; }
+}
+
+.dragon-sprite[data-animation="attack"] .sprite-img {
+  background-size: 624px 48px;
+  animation: dragonAttack 1.56s steps(13) 1 forwards !important;
+}
+@keyframes dragonAttack {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -624px 0px; }
+}
+
+.dragon-sprite[data-animation="attack2"] .sprite-img {
+  background-size: 816px 48px;
+  animation: dragonAttack2 2.04s steps(17) 1 forwards !important;
+}
+@keyframes dragonAttack2 {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -816px 0px; }
+}
+
+.dragon-sprite[data-animation="hurt"] .sprite-img {
+  background-size: 192px 48px;
+  animation: dragonHurt 0.4s steps(4) 1 forwards !important;
+  transition: none !important;
+}
+@keyframes dragonHurt {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -192px 0px; }
+}
+
+.dragon-sprite[data-animation="death"] .sprite-img {
+  background-size: 336px 48px;
+  animation: dragonDeath 0.7s steps(7) 1 forwards !important;
+}
+@keyframes dragonDeath {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -336px 0px; }
+}
+
+/* DEMON LORD - New anim-* class system */
+.enemy-sprite-container[data-enemy-type="Demon Lord"].anim-idle .sprite-img {
+  animation-name: demonLordIdle;
+  animation-timing-function: steps(4);
+  animation-duration: var(--anim-duration-idle);
+  animation-iteration-count: infinite;
+  animation-fill-mode: none;
+  background-size: 192px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Demon Lord"].anim-attack .sprite-img {
+  animation-name: demonLordAttack;
+  animation-timing-function: steps(6);
+  animation-duration: var(--anim-duration-attack);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards;
+  background-size: 288px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Demon Lord"].anim-hurt .sprite-img {
+  animation-name: demonLordHurt;
+  animation-timing-function: steps(3);
+  animation-duration: var(--anim-duration-hurt);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards !important;
+  background-size: 144px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Demon Lord"].anim-death .sprite-img {
+  animation-name: demonLordDeath;
+  animation-timing-function: steps(10);
+  animation-duration: var(--anim-duration-death);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards !important;
+  background-size: 480px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Demon Lord"].anim-flying .sprite-img {
+  animation-name: demonLordFlying;
+  animation-timing-function: steps(4);
+  animation-duration: var(--anim-duration-flying);
+  animation-iteration-count: infinite;
+  animation-fill-mode: none;
+  background-size: 192px 48px;
+}
+.enemy-sprite-container[data-enemy-type="Demon Lord"].anim-transition .sprite-img {
+  animation-name: demonLordTransition;
+  animation-timing-function: steps(3);
+  animation-duration: var(--anim-duration-transition);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards;
+  background-size: 144px 48px;
+}
+
+@keyframes demonLordIdle {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -192px 0px; }
+}
+@keyframes demonLordAttack {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -288px 0px; }
+}
+@keyframes demonLordHurt {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -144px 0px; }
+}
+@keyframes demonLordDeath {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -480px 0px; }
+}
+@keyframes demonLordFlying {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -192px 0px; }
+}
+@keyframes demonLordTransition {
+  0% { background-position: 0px 0px; }
+  100% { background-position: -144px 0px; }
+}
+
+/* DEMON LORD - Old system (legacy support) */
+.demon-lord-sprite[data-animation="idle"] .sprite-img {
+  background-size: 192px 48px;
+  animation: demonLordIdle 1.2s steps(4) infinite;
+}
+.demon-lord-sprite[data-animation="attack"] .sprite-img {
+  background-size: 288px 48px;
+  animation: demonLordAttack 0.72s steps(6) 1 !important;
+}
+.demon-lord-sprite[data-animation="hurt"] .sprite-img {
+  background-size: 144px 48px;
+  animation: demonLordHurt 0.3s steps(3) 1 forwards !important;
+  transition: none !important;
+}
+.demon-lord-sprite[data-animation="death"] .sprite-img {
+  background-size: 480px 48px;
+  animation: demonLordDeath 1.0s steps(10) 1 forwards !important;
+}
+
+/* ============================================
+   SCROLLING COMBAT TEXT (SCT) STYLES
+   ============================================ */
+
+/* Combat text container - positioned relative to sprite */
+.combat-text-container {
+  position: absolute;
+  pointer-events: none;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  z-index: 1000;
+}
+
+/* Base combat text styling */
+.combat-text {
+  position: absolute;
+  opacity: 1;
+  animation: floatUp 1.2s ease-out forwards;
+  font-size: 10px;
+  font-weight: bold;
+  user-select: none;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+  white-space: nowrap;
+  z-index: 1001;
+}
+
+/* Damage text - red */
+.combat-text.damage {
+  color: #ef4444; /* Red for damage */
+}
+
+/* Healing text - green */
+.combat-text.healing {
+  color: #10b981; /* Green for healing */
+}
+
+/* HoT (Heal over Time) text - light green */
+.combat-text.hot {
+  font-size: 8px;
+  color: #10b981; /* Green for HoT healing */
+}
+
+/* DoT (Damage over Time) text - purple */
+.combat-text.dot {
+  color: #9333ea; /* Purple for damage over time */
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8),
+               0 0 4px rgba(147, 51, 234, 0.6); /* Purple glow effect */
+  font-weight: bold;
+}
+
+/* Critical hit text - gold */
+.combat-text.crit {
+  font-size: 12px;
+  color: #ffd700; /* Gold for critical hits */
+  font-weight: 900;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.9), 0 0 4px rgba(255, 215, 0, 0.6);
+}
+
+/* Float up animation for combat text */
+@keyframes floatUp {
+  0% {
+    transform: translateY(0px);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-50px);
+    opacity: 0;
+  }
+}
+
+/* Enrage active state - simple visual indicator */
+.hero-sprite.enrage-active {
+  filter: drop-shadow(0 0 4px rgba(220, 38, 38, 0.8)) drop-shadow(0 0 8px rgba(220, 38, 38, 0.6));
+}
+
+/* ============================================
+   BUFF/DEBUFF DISPLAY STYLES
+   ============================================ */
+
+/* Buffs container - positioned above sprite */
+.battle-buffs {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin-bottom: 4px;
+  pointer-events: none;
+  z-index: 50;
+  flex-wrap: wrap;
+  max-width: 200px;
+}
+
+/* Individual buff item */
+.battle-buff {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(34, 197, 94, 0.2);
+  border: 1px solid rgba(34, 197, 94, 0.5);
+  border-radius: 4px;
+  padding: 2px 4px;
+  min-width: 28px;
+  min-height: 28px;
+  font-size: 14px;
+}
+
+/* PROJECTILE ANIMATIONS */
+.enemy-projectile {
+  position: absolute;
+  width: 48px;
+  height: 48px;
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  image-rendering: pixelated;
+  z-index: 150;
+  pointer-events: none;
+}
+
+/* Buff icon */
+.battle-buff-icon {
+  font-size: 16px;
+  line-height: 1;
+  margin-bottom: 2px;
+}
+
+/* Buff timer */
+.battle-buff-time {
+  font-size: 10px;
+  color: #7CFF7C;
+  font-weight: bold;
+  line-height: 1;
+  text-shadow: 0 0 2px rgba(0, 0, 0, 0.8);
+}
+
+/* Debuffs container - positioned below sprite */
+.battle-debuffs {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 4px;
+  pointer-events: none;
+  z-index: 50;
+  flex-wrap: wrap;
+  max-width: 200px;
+}
+
+/* Individual debuff item */
+.battle-debuff {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(239, 68, 68, 0.2);
+  border: 1px solid rgba(239, 68, 68, 0.5);
+  border-radius: 4px;
+  padding: 2px 4px;
+  min-width: 28px;
+  min-height: 28px;
+  font-size: 14px;
+}
+
+/* Debuff icon */
+.battle-debuff-icon {
+  font-size: 16px;
+  line-height: 1;
+  margin-bottom: 2px;
+}
+
+/* Debuff timer */
+.battle-debuff-time {
+  font-size: 10px;
+  color: #FF6B6B;
+  font-weight: bold;
+  line-height: 1;
+  text-shadow: 0 0 2px rgba(0, 0, 0, 0.8);
 }

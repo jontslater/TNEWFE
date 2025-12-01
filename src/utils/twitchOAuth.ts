@@ -15,7 +15,7 @@ export function loginWithTwitch() {
     return;
   }
 
-  const scopes = ['user:read:email'];
+  const scopes = ['user:read:email', 'chat:read', 'chat:edit'];
   const state = generateRandomState();
   
   // Store state in sessionStorage for verification

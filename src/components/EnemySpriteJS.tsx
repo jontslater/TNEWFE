@@ -1,0 +1,456 @@
+import {
+  forwardRef,
+  Ref,
+  CSSProperties,
+  useImperativeHandle,
+  useEffect,
+  useRef,
+} from "react";
+import { useEnemyAnimator } from "../hooks/useEnemyAnimator";
+
+export interface EnemySpriteJSHandle {
+  playAnimation: (animation: string) => void;
+  setSpriteImage: (url: string) => void;
+  getCurrentAnimation: () => string;
+}
+
+interface EnemySpriteJSProps {
+  enemyId: string;
+  enemyType: string;
+  enemyName: string;
+  className?: string;
+  facing?: "left" | "right";
+  style?: CSSProperties;
+  scale?: number;
+  isTransformed?: boolean; // For Werewolf: true if transformed to werewolf form
+}
+
+const VIEWPORT = 48; // Fixed logical 48×48 (feet anchor viewport)
+
+const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
+  function EnemySpriteJS(props, ref: Ref<EnemySpriteJSHandle | null>) {
+    const {
+      enemyId,
+      enemyType,
+      enemyName,
+      className,
+      facing = "left",
+      style,
+      scale = 2.5,
+      isTransformed = false,
+    } = props;
+
+    // For Werewolf, use human form (idleHuman) if not transformed, werewolf form (idle) if transformed
+    // For Elder Dragon, use idleBattle instead of idle
+    const getDefaultAnimation = () => {
+      if ((enemyName === 'Werewolf' || enemyType === 'Werewolf')) {
+        return isTransformed ? "idle" : "idleHuman";
+      }
+      if ((enemyName === 'Elder Dragon' || enemyType === 'Elder Dragon')) {
+        return "idleBattle";
+      }
+      return "idle";
+    };
+
+    const defaultAnim = getDefaultAnimation();
+    const { currentAnimation, playAnimation, onComplete } = useEnemyAnimator({
+      enemyName: enemyName || enemyType,
+      defaultAnimationName: defaultAnim,
+    });
+    
+    // Update animation when transformation state changes (for Werewolf)
+    // Only update if we're in an idle state and the transformation state doesn't match
+    useEffect(() => {
+      if ((enemyName === 'Werewolf' || enemyType === 'Werewolf')) {
+        const targetAnim = isTransformed ? 'idle' : 'idleHuman';
+        const currentAnimName = currentAnimation?.name;
+        
+        // Only update if:
+        // 1. We're currently in an idle animation (not attacking/hurt/transforming)
+        // 2. The current animation doesn't match the target (transformed state)
+        // 3. We're not currently playing a non-looping animation
+        if ((currentAnimName === 'idle' || currentAnimName === 'idleHuman') && 
+            currentAnimName !== targetAnim) {
+          playAnimation(targetAnim);
+        }
+      }
+    }, [isTransformed, enemyName, enemyType, currentAnimation?.name, playAnimation]);
+
+    // For Elder Dragon, ensure we use idleBattle when in idle state
+    useEffect(() => {
+      if ((enemyName === 'Elder Dragon' || enemyType === 'Elder Dragon')) {
+        const currentAnimName = currentAnimation?.name;
+        
+        // If we're in idle state, switch to idleBattle
+        if (currentAnimName === 'idle') {
+          playAnimation('idleBattle');
+        }
+      }
+    }, [enemyName, enemyType, currentAnimation?.name, playAnimation]);
+
+    const spriteRef = useRef<HTMLDivElement>(null);
+    const rafRef = useRef<number | null>(null);
+
+    // External API
+    useImperativeHandle(
+      ref,
+      () => ({
+        playAnimation,
+        setSpriteImage: () => {},
+        getCurrentAnimation: () => currentAnimation?.name || "idle",
+      }),
+      [currentAnimation, playAnimation]
+    );
+
+    // Animation loop
+    useEffect(() => {
+      if (!currentAnimation || !spriteRef.current) return;
+
+      // cancel old rAF
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+
+      const {
+        frames,
+        duration,
+        sheet,
+        frameWidth,
+        frameHeight,
+        loop,
+        name: animName,
+      } = currentAnimation;
+
+      const el = spriteRef.current;
+
+      // Check if this is using individual frame files (like Dragon - Fully Animated)
+      // Individual frames have paths like "/Sprites/enemies/Dragon - Fully Animated/Idle/001.png"
+      const isIndividualFrames = sheet.includes('/001.png') || sheet.includes('/01.png');
+      
+      // Helper to get frame path for individual frames
+      const getFramePath = (frameIndex: number): string => {
+        if (!isIndividualFrames) return sheet;
+        
+        // Extract directory path and determine frame number format
+        const dirMatch = sheet.match(/^(.+\/)(\d+)\.png$/);
+        if (!dirMatch) return sheet;
+        
+        const [, dirPath, firstFrameNum] = dirMatch;
+        // Determine padding based on first frame number length
+        // "001" = 3 digits, "01" = 2 digits
+        const padding = firstFrameNum.length;
+        const frameNum = (frameIndex + 1).toString().padStart(padding, '0');
+        return `${dirPath}${frameNum}.png`;
+      };
+      
+      // Real sprite sheet size (only used for sprite sheets, not individual frames)
+      const sheetWidth = isIndividualFrames ? frameWidth : frameWidth * frames;
+
+      //
+      // 🧠 SCALE DOWN LARGER ANIMATIONS TO FIT VIEWPORT
+      //
+      // If animation is larger than 48×48, scale it down to fit
+      // Attack (148×96) needs to be scaled down to fit in 48×48 viewport
+      // Use separate scaleX and scaleY to fill viewport without squishing
+      //
+      const scaleX = frameWidth > VIEWPORT ? VIEWPORT / frameWidth : 1;
+      const scaleY = frameHeight > VIEWPORT ? VIEWPORT / frameHeight : 1;
+      // Use separate scales to fill viewport (may cause slight distortion but prevents squishing)
+      // For most animations, scaleX and scaleY will be the same (square viewport)
+
+      // Calculate scaled dimensions for positioning
+      const scaledFrameWidth = frameWidth * scaleX;
+      const scaledFrameHeight = frameHeight * scaleY;
+
+      //
+      // 🧠 FEET-ANCHOR OFFSET (after scaling)
+      //
+      // We want the FEET to align at the bottom of the 48px viewport.
+      //
+      // After scaling, calculate offsets to center and align feet
+      // For wider animations, center horizontally; for taller, align feet at bottom
+      //
+      const offsetY = VIEWPORT - scaledFrameHeight; // align feet at bottom (negative for larger anims)
+      const offsetX = (VIEWPORT - scaledFrameWidth) / 2; // center horizontally
+
+      //
+      // RESET STYLES
+      //
+      // Use actual (unscaled) dimensions for the element
+      // The transform scale will handle the visual scaling
+      if (isIndividualFrames) {
+        // For individual frames, element size is just one frame
+        el.style.width = `${frameWidth}px`;
+        el.style.height = `${frameHeight}px`;
+      } else {
+        // For sprite sheets, element size is full sheet width
+        el.style.width = `${sheetWidth}px`;
+        el.style.height = `${frameHeight}px`;
+      }
+      el.style.left = `${offsetX}px`;
+      el.style.top = `${offsetY}px`;
+      
+      // Clip the sprite element to the viewport to prevent frame flicker
+      el.style.clipPath = `inset(0)`;
+      el.style.overflow = "hidden";
+      el.style.transition = "none";
+      el.style.animation = "none";
+      el.style.setProperty("transition", "none", "important");
+      el.style.setProperty("animation", "none", "important");
+      el.style.position = "absolute";
+      el.style.willChange = "transform"; // Optimize for transform changes
+      
+      // Animation timing
+      let start: number | null = null;
+      let lastIndex = -1;
+      let lastFrameTime = 0;
+
+      const frameTime = duration / frames;
+      
+      // Special case: Werewolf transformation starts from frame 1 (skip frame 0 which is already transformed)
+      const isTransformation = animName === 'transformation' && enemyName === 'Werewolf';
+      const startFrame = isTransformation ? 1 : 0;
+      const effectiveFrames = isTransformation ? frames - 1 : frames; // Use frames 1-7 instead of 0-7
+      
+      // Set initial frame immediately for ALL animations
+      // This ensures animations start visible right away and prevents flicker
+      const initialScaleX = frameWidth > VIEWPORT ? VIEWPORT / frameWidth : 1;
+      const initialScaleY = frameHeight > VIEWPORT ? VIEWPORT / frameHeight : 1;
+      
+      // Define animate function first so it can be called from Promise callbacks
+      const animate = (ts: number) => {
+        if (!spriteRef.current) return;
+
+        if (currentAnimation.name !== animName) return;
+
+        if (!start) {
+          start = ts;
+          lastFrameTime = ts;
+        }
+
+        const elapsed = ts - start;
+        const delta = ts - lastFrameTime;
+
+        // Only update frame if enough time has passed (prevents sliding/interpolation)
+        if (delta >= frameTime) {
+          let index = Math.floor(elapsed / frameTime);
+
+          if (loop) {
+            // For looping animations, wrap the index
+            index = index % frames;
+          } else {
+            // For non-looping, clamp to last frame
+            // For transformation, adjust to use frames 1-7 (skip frame 0)
+            if (isTransformation) {
+              index = Math.min(index, effectiveFrames - 1) + startFrame; // Add startFrame offset
+            } else {
+              index = Math.min(index, frames - 1);
+            }
+          }
+          
+          lastFrameTime = ts - (delta % frameTime); // Preserve timing accuracy
+
+          if (index !== lastIndex) {
+            // Calculate scale for this animation (recalculate to ensure consistency)
+            const animScaleX = frameWidth > VIEWPORT ? VIEWPORT / frameWidth : 1;
+            const animScaleY = frameHeight > VIEWPORT ? VIEWPORT / frameHeight : 1;
+            
+            if (isIndividualFrames) {
+              // For individual frames, use canvas to draw the frame
+              const canvas = (el as any).__canvas as HTMLCanvasElement;
+              const ctx = (el as any).__ctx as CanvasRenderingContext2D;
+              const loadedFrames = (el as any).__loadedFrames as HTMLImageElement[];
+              
+              if (canvas && ctx && loadedFrames && loadedFrames[index]) {
+                // Check if image is valid and loaded before drawing
+                const img = loadedFrames[index];
+                if (img.complete && img.naturalWidth > 0 && img.naturalHeight > 0) {
+                  ctx.clearRect(0, 0, frameWidth, frameHeight);
+                  ctx.drawImage(img, 0, 0, frameWidth, frameHeight);
+                  el.style.setProperty("transform", `scaleX(${animScaleX}) scaleY(${animScaleY})`, "important");
+                }
+              }
+            } else {
+              // For sprite sheets, translate to the correct frame
+              // CRITICAL: Translate by actual frameWidth (unscaled)
+              // Transform order: scaleX() scaleY() translateX() applies translateX first (unscaled), then scales
+              const x = -(index * frameWidth);
+              
+              // CRITICAL: Force discrete transform update with no interpolation
+              // Remove any existing transform first to prevent interpolation
+              el.style.removeProperty("transform");
+              el.style.removeProperty("-webkit-transform");
+              el.style.removeProperty("-moz-transform");
+              el.style.removeProperty("-ms-transform");
+              el.style.removeProperty("-o-transform");
+              // Force reflow
+              void el.offsetWidth;
+              // Now set the new transform with separate scaleX and scaleY
+              el.style.transition = "none";
+              el.style.setProperty("transition", "none", "important");
+              el.style.setProperty("transform", `scaleX(${animScaleX}) scaleY(${animScaleY}) translateX(${x}px)`, "important");
+            }
+            el.style.transformOrigin = "top left";
+            // Force reflow again to commit transform immediately
+            void el.offsetWidth;
+            lastIndex = index;
+          }
+        }
+
+        // Continue animation
+        // For looping animations, always continue
+        // For non-looping, continue until we reach the last frame
+        if (loop) {
+          // Looping animations (idle, walk, run, etc.) always continue
+          rafRef.current = requestAnimationFrame(animate);
+        } else {
+          // Non-looping animations stop at the last frame
+          if (lastIndex < frames - 1) {
+            rafRef.current = requestAnimationFrame(animate);
+          } else {
+            rafRef.current = null;
+            onComplete();
+          }
+        }
+      };
+      
+      // For individual frames, use canvas with preloading
+      if (isIndividualFrames) {
+        // Preload all frame images
+        const imagePromises: Promise<HTMLImageElement>[] = [];
+        const loadedImages: HTMLImageElement[] = [];
+        
+        for (let i = 0; i < frames; i++) {
+          const framePath = getFramePath(i);
+          const img = new Image();
+          const promise = new Promise<HTMLImageElement>((resolve, reject) => {
+            img.onload = () => resolve(img);
+            img.onerror = () => {
+              console.warn(`[EnemySpriteJS] Failed to load frame ${i}: ${framePath}`);
+              resolve(img); // Continue even if one frame fails
+            };
+            img.src = framePath;
+          });
+          imagePromises.push(promise);
+          loadedImages.push(img);
+        }
+        
+        // Wait for all images to load before starting animation
+        Promise.all(imagePromises).then((images) => {
+          // Create canvas element if it doesn't exist
+          let canvas = (el as any).__canvas as HTMLCanvasElement;
+          let ctx = (el as any).__ctx as CanvasRenderingContext2D;
+          
+          if (!canvas) {
+            canvas = document.createElement('canvas');
+            canvas.width = frameWidth;
+            canvas.height = frameHeight;
+            canvas.style.width = '100%';
+            canvas.style.height = '100%';
+            canvas.style.position = 'absolute';
+            canvas.style.top = '0';
+            canvas.style.left = '0';
+            canvas.style.imageRendering = 'pixelated';
+            el.appendChild(canvas);
+            ctx = canvas.getContext('2d')!;
+            (el as any).__canvas = canvas;
+            (el as any).__ctx = ctx;
+          }
+          
+          // Store loaded images for quick access during animation
+          (el as any).__loadedFrames = images;
+          
+          // Draw initial frame
+          const initialImg = images[startFrame];
+          if (initialImg && initialImg.complete && initialImg.naturalWidth > 0 && initialImg.naturalHeight > 0) {
+            ctx.clearRect(0, 0, frameWidth, frameHeight);
+            ctx.drawImage(initialImg, 0, 0, frameWidth, frameHeight);
+          }
+          
+          el.style.setProperty("transform", `scaleX(${initialScaleX}) scaleY(${initialScaleY})`, "important");
+          el.style.transformOrigin = "top left";
+          lastIndex = startFrame;
+          
+          // Force reflows to ensure browser has processed the canvas
+          void el.offsetWidth;
+          void el.offsetHeight;
+          
+          // Start animation after preload
+          rafRef.current = requestAnimationFrame(animate);
+        });
+        
+        // Return early - animation will start after preload completes
+        return;
+      } else {
+        // For sprite sheets, use the full sheet and translate to the correct frame
+        el.style.backgroundImage = `url(${encodeURI(sheet)})`;
+        el.style.backgroundRepeat = "no-repeat";
+        el.style.backgroundPosition = "0 0";
+        el.style.backgroundSize = `${sheetWidth}px ${frameHeight}px`;
+        const initialX = -(startFrame * frameWidth);
+        el.style.setProperty("transform", `scaleX(${initialScaleX}) scaleY(${initialScaleY}) translateX(${initialX}px)`, "important");
+        el.style.transformOrigin = "top left";
+        lastIndex = startFrame;
+        
+        // Force reflows to ensure browser has processed the background image and transform
+        void el.offsetWidth;
+        void el.offsetHeight;
+        
+        // Start animation for sprite sheets
+        rafRef.current = requestAnimationFrame(animate);
+      }
+
+      return () => {
+        if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      };
+    }, [currentAnimation, onComplete]);
+
+    //
+    // VIEWPORT — FIXED 48×48 for ALL animations (feet anchor)
+    //
+    return (
+      <div
+        id={`battle-enemy-${enemyId}`}
+        className={`enemy-sprite-container ${className || ""}`}
+        data-enemy-type={enemyType}
+        data-enemy-id={enemyId}
+        style={{
+          ...style,
+          width: `${VIEWPORT}px`,
+          height: `${VIEWPORT}px`,
+          overflow: "hidden",
+          position: "relative",
+          transform:
+            facing === "left"
+              ? `scale(${scale}) scaleX(-1)`
+              : `scale(${scale})`,
+          transformOrigin: "bottom center", // FEET anchor
+          imageRendering: "pixelated",
+        }}
+      >
+        <div
+          ref={spriteRef}
+          id={`enemy-sprite-${enemyId}`}
+          className="enemy-sprite"
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            width: `${VIEWPORT}px`, // Clip to viewport width
+            height: `${VIEWPORT}px`, // Clip to viewport height
+            transition: "none",
+            animation: "none",
+            backgroundRepeat: "no-repeat",
+            imageRendering: "pixelated",
+            overflow: "hidden", // Prevent frames from showing outside the viewport
+          }}
+        />
+      </div>
+    );
+  }
+);
+
+EnemySpriteJS.displayName = "EnemySpriteJS";
+
+export default EnemySpriteJS;

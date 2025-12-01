@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { handleOAuthCallback } from '../utils/twitchOAuth';
 import { handleTikTokCallback } from '../services/tiktokOAuth';
-import { authAPI } from '../api/client';
+import { authAPI, heroAPI } from '../api/client';
 
 /**
  * OAuth callback page - handles the redirect from Twitch or TikTok after authentication
@@ -61,8 +61,24 @@ export default function AuthCallback() {
         // Store token and update auth state
         login(response.token, response.user);
 
-        // Redirect to home
-        navigate('/');
+        // Check if user has heroes, redirect to create-hero if not
+        try {
+          const twitchId = response.user?.twitchId || response.user?.id;
+          if (twitchId) {
+            const heroes = await heroAPI.getHeroesByTwitchId(twitchId);
+            if (heroes.length === 0) {
+              // No heroes, redirect to create-hero
+              navigate('/create-hero');
+              return;
+            }
+          }
+        } catch (err) {
+          console.error('Error checking heroes:', err);
+          // Continue to home even if check fails
+        }
+
+        // Redirect to portal (user has heroes)
+        navigate('/portal');
       } catch (err) {
         console.error('Authentication failed:', err);
         setError('Authentication failed. Please try again.');

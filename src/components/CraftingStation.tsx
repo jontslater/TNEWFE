@@ -197,74 +197,87 @@ export default function CraftingStation({ hero, onChooseProfession, onCraft, onU
       <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
         <h3 className="text-xl font-bold text-white mb-4">Materials</h3>
         
-        {/* Herbalism Materials */}
-        {profession.materials.herbs && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-gray-700 rounded-lg p-4 text-center">
-              <div className="text-3xl mb-2">🌿</div>
-              <div className="text-sm text-gray-400">Common Herbs</div>
-              <div className="text-2xl font-bold text-green-400">{profession.materials.herbs.common}</div>
-            </div>
-            <div className="bg-gray-700 rounded-lg p-4 text-center">
-              <div className="text-3xl mb-2">🍀</div>
-              <div className="text-sm text-gray-400">Uncommon Herbs</div>
-              <div className="text-2xl font-bold text-blue-400">{profession.materials.herbs.uncommon}</div>
-            </div>
-            <div className="bg-gray-700 rounded-lg p-4 text-center">
-              <div className="text-3xl mb-2">🌸</div>
-              <div className="text-sm text-gray-400">Rare Herbs</div>
-              <div className="text-2xl font-bold text-purple-400">{profession.materials.herbs.rare}</div>
-            </div>
-            <div className="bg-gray-700 rounded-lg p-4 text-center">
-              <div className="text-3xl mb-2">🌺</div>
-              <div className="text-sm text-gray-400">Epic Herbs</div>
-              <div className="text-2xl font-bold text-yellow-400">{profession.materials.herbs.epic}</div>
-            </div>
-          </div>
-        )}
-
-        {/* Mining Materials */}
-        {profession.materials.ore && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-gray-700 rounded-lg p-4 text-center">
-              <div className="text-3xl mb-2">⚙️</div>
-              <div className="text-sm text-gray-400">Iron Ore</div>
-              <div className="text-2xl font-bold text-gray-400">{profession.materials.ore.iron}</div>
-            </div>
-            <div className="bg-gray-700 rounded-lg p-4 text-center">
-              <div className="text-3xl mb-2">🔩</div>
-              <div className="text-sm text-gray-400">Steel</div>
-              <div className="text-2xl font-bold text-blue-400">{profession.materials.ore.steel}</div>
-            </div>
-            <div className="bg-gray-700 rounded-lg p-4 text-center">
-              <div className="text-3xl mb-2">✨</div>
-              <div className="text-sm text-gray-400">Mithril</div>
-              <div className="text-2xl font-bold text-purple-400">{profession.materials.ore.mithril}</div>
-            </div>
-            <div className="bg-gray-700 rounded-lg p-4 text-center">
-              <div className="text-3xl mb-2">💎</div>
-              <div className="text-sm text-gray-400">Adamantite</div>
-              <div className="text-2xl font-bold text-yellow-400">{profession.materials.ore.adamantite}</div>
-            </div>
-          </div>
-        )}
-
-        {/* Enchanting Materials */}
-        {profession.materials.essence !== undefined && (
-          <div className="flex justify-center">
-            <div className="bg-gray-700 rounded-lg p-6 text-center w-64">
-              <div className="text-5xl mb-2">✨</div>
-              <div className="text-sm text-gray-400">Arcane Essence</div>
-              <div className="text-3xl font-bold text-purple-400">{profession.materials.essence}</div>
-              <div className="text-xs text-gray-500 mt-2">
-                Gathered from defeated enemies
+        <div className="space-y-6">
+          {/* Herbalism Materials */}
+          {profession.materials.herbs && (
+            <div>
+              <h4 className="text-sm font-semibold text-gray-400 mb-3">Herbalism</h4>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="bg-gray-700 rounded-lg p-4 text-center">
+                  <div className="text-3xl mb-2">🌿</div>
+                  <div className="text-sm text-gray-400">Common Herbs</div>
+                  <div className="text-2xl font-bold text-green-400">{profession.materials.herbs.common}</div>
+                </div>
+                <div className="bg-gray-700 rounded-lg p-4 text-center">
+                  <div className="text-3xl mb-2">🍀</div>
+                  <div className="text-sm text-gray-400">Uncommon Herbs</div>
+                  <div className="text-2xl font-bold text-blue-400">{profession.materials.herbs.uncommon}</div>
+                </div>
+                <div className="bg-gray-700 rounded-lg p-4 text-center">
+                  <div className="text-3xl mb-2">🌸</div>
+                  <div className="text-sm text-gray-400">Rare Herbs</div>
+                  <div className="text-2xl font-bold text-purple-400">{profession.materials.herbs.rare}</div>
+                </div>
+                <div className="bg-gray-700 rounded-lg p-4 text-center">
+                  <div className="text-3xl mb-2">🌺</div>
+                  <div className="text-sm text-gray-400">Epic Herbs</div>
+                  <div className="text-2xl font-bold text-yellow-400">{profession.materials.herbs.epic}</div>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
+
+          {/* Mining Materials */}
+          {profession.materials.ore && (
+            <div>
+              <h4 className="text-sm font-semibold text-gray-400 mb-3">Mining</h4>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="bg-gray-700 rounded-lg p-4 text-center">
+                  <div className="text-3xl mb-2">⚙️</div>
+                  <div className="text-sm text-gray-400">Iron Ore</div>
+                  <div className="text-2xl font-bold text-gray-400">{profession.materials.ore.iron}</div>
+                </div>
+                <div className="bg-gray-700 rounded-lg p-4 text-center">
+                  <div className="text-3xl mb-2">🔩</div>
+                  <div className="text-sm text-gray-400">Steel</div>
+                  <div className="text-2xl font-bold text-blue-400">{profession.materials.ore.steel}</div>
+                </div>
+                <div className="bg-gray-700 rounded-lg p-4 text-center">
+                  <div className="text-3xl mb-2">✨</div>
+                  <div className="text-sm text-gray-400">Mithril</div>
+                  <div className="text-2xl font-bold text-purple-400">{profession.materials.ore.mithril}</div>
+                </div>
+                <div className="bg-gray-700 rounded-lg p-4 text-center">
+                  <div className="text-3xl mb-2">💎</div>
+                  <div className="text-sm text-gray-400">Adamantite</div>
+                  <div className="text-2xl font-bold text-yellow-400">{profession.materials.ore.adamantite}</div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Enchanting Materials */}
+          {profession.materials.essence !== undefined && (
+            <div>
+              <h4 className="text-sm font-semibold text-gray-400 mb-3">Enchanting</h4>
+              <div className="flex justify-center">
+                <div className="bg-gray-700 rounded-lg p-6 text-center w-64">
+                  <div className="text-5xl mb-2">✨</div>
+                  <div className="text-sm text-gray-400">Arcane Essence</div>
+                  <div className="text-3xl font-bold text-purple-400">{profession.materials.essence}</div>
+                  <div className="text-xs text-gray-500 mt-2">
+                    Gathered from defeated enemies
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Recipe Browser */}
+      {profession && profession.type && (
+      <>
       <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
         <h3 className="text-xl font-bold text-white mb-4">
           {profession.type === 'herbalism' ? 'Elixir Recipes' : profession.type === 'mining' ? 'Upgrade Recipes' : 'Enchantment Recipes'}
@@ -560,6 +573,8 @@ export default function CraftingStation({ hero, onChooseProfession, onCraft, onU
           Keep gathering to unlock advanced crafts! View crafted items in the <strong className="text-white">Inventory</strong> tab.
         </div>
       </div>
+      </>
+      )}
     </div>
   );
 }
