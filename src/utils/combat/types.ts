@@ -211,7 +211,7 @@ export interface CombatCallbacks {
   triggerAttackAnimation?: (username: string, isHero: boolean) => void;
   triggerDamageAnimation?: (id: string, isHero: boolean) => void;
   triggerHealAnimation: (username: string) => void;
-  triggerCombatText?: (id: string, amount: number, type: 'damage' | 'crit' | 'heal' | 'heal-hot' | 'dot', isHero: boolean) => void;
+  triggerCombatText?: (id: string, amount: number, type: 'damage' | 'crit' | 'heal' | 'heal-hot' | 'dot' | 'miss', isHero: boolean) => void;
   updateEnemyHealthBar: () => void;
   updateHeroUI: () => void;
 }

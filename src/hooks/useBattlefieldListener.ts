@@ -129,7 +129,10 @@ export function useBattlefieldListener(battlefieldId: string | null) {
               console.log(`[Battlefield Listener] ⏭️ Skipping state update - heroes unchanged`);
               return prevState;
             }
-            console.log(`[Battlefield Listener] 🔄 State changed - updating with new heroes`);
+            // State changed - updating with new heroes (silent in production)
+            if (import.meta.env.MODE === 'development') {
+              console.log(`[Battlefield Listener] 🔄 State changed - updating with new heroes`);
+            }
             // Also load battlefield document for enemies and combat state
             // Check if battlefield document exists
             const battlefieldDocRef = doc(db, 'battlefields', decodedBattlefieldId);
@@ -141,7 +144,10 @@ export function useBattlefieldListener(battlefieldId: string | null) {
                 const enemies = battlefieldData.enemies || battlefieldData.currentEnemies || [];
                 const inCombat = battlefieldData.inCombat || false;
                 
-                console.log(`[Battlefield Listener] ✅ Loaded battlefield doc with ${enemies.length} enemies, inCombat: ${inCombat}`);
+                // Loaded battlefield doc (silent in production)
+                if (import.meta.env.MODE === 'development') {
+                  console.log(`[Battlefield Listener] ✅ Loaded battlefield doc with ${enemies.length} enemies, inCombat: ${inCombat}`);
+                }
                 
                 setBattlefieldState(prevState => ({
                   ...prevState!,
@@ -151,8 +157,8 @@ export function useBattlefieldListener(battlefieldId: string | null) {
                   combatLog: battlefieldData.combatLog || []
                 }));
               } else {
-                // No battlefield doc, enemies will be empty
-                console.log(`[Battlefield Listener] ⚠️ No battlefield doc found for ${decodedBattlefieldId}, enemies will be empty`);
+                // No battlefield doc, enemies will be empty (expected during initial load - silent)
+                // This is normal behavior, no need to log
               }
             }).catch((err) => {
               console.warn(`[Battlefield Listener] ⚠️ Could not load battlefield doc:`, err);
@@ -207,7 +213,10 @@ export function useBattlefieldListener(battlefieldId: string | null) {
           const enemies = battlefieldData.enemies || battlefieldData.currentEnemies || [];
           const inCombat = battlefieldData.inCombat || false;
           
-          console.log(`[Battlefield Listener] 🔄 Battlefield doc update: ${enemies.length} enemies, inCombat: ${inCombat}`);
+          // Battlefield doc update (silent in production)
+          if (import.meta.env.MODE === 'development') {
+            console.log(`[Battlefield Listener] 🔄 Battlefield doc update: ${enemies.length} enemies, inCombat: ${inCombat}`);
+          }
           
           setBattlefieldState(prevState => {
             if (!prevState) {
@@ -233,7 +242,8 @@ export function useBattlefieldListener(battlefieldId: string | null) {
             };
           });
         } else {
-          console.log(`[Battlefield Listener] ⚠️ Battlefield doc does not exist yet for ${decodedBattlefieldId}`);
+          // Battlefield doc does not exist yet (expected during initial load - silent)
+          // This is normal behavior, no need to log
         }
       },
       (err) => {

@@ -291,6 +291,53 @@ export function generateLoot(
     }
   }
   
+  // Add proc effects for rare+ items
+  if (rarity !== 'common' && rarity !== 'uncommon') {
+    const numProcs = rarity === 'legendary' ? 3 : rarity === 'epic' ? 2 : 1;
+    const procs: any[] = [];
+    
+    // Define available procs by category
+    const PROC_POOL: Record<string, any[]> = {
+      tank: [
+        { name: 'Thorns', effect: 'reflectDamage', chance: 0.20, value: 0.20, description: 'Reflect 20% damage' },
+        { name: 'Fortified', effect: 'defenseBoost', chance: 0.15, value: 0.10, description: '+10% defense for 5s' },
+        { name: 'Enduring', effect: 'healOnHit', chance: 0.10, value: 5, description: 'Heal 5 HP when hit' },
+        { name: 'Bulwark', effect: 'damageReduction', chance: 0.12, value: 0.15, description: '-15% damage taken' }
+      ],
+      healer: [
+        { name: 'Blessed', effect: 'healingBoost', chance: 0.15, value: 0.30, description: '+30% healing' },
+        { name: 'Rejuvenating', effect: 'hpRegenBoost', chance: 0.20, value: 3, description: '+3 HP regen' },
+        { name: 'Radiant', effect: 'groupHealBoost', chance: 0.08, value: 10, description: '+10 HP to group heal' }
+      ],
+      meleeDps: [
+        { name: 'Vicious', effect: 'damageBoost', chance: 0.15, value: 0.12, description: '+12% damage' },
+        { name: 'Brutal', effect: 'executeDamage', chance: 0.12, value: 0.25, description: '+25% vs <30% HP' },
+        { name: 'Vampiric', effect: 'lifesteal', chance: 0.10, value: 0.10, description: '10% lifesteal' },
+        { name: 'Swift', effect: 'extraAttack', chance: 0.10, value: 1, description: 'Extra attack' },
+        { name: 'Deadly', effect: 'critChance', chance: 0.20, value: 0.15, description: '15% crit chance' }
+      ],
+      casterDps: [
+        { name: 'Vicious', effect: 'damageBoost', chance: 0.15, value: 0.12, description: '+12% spell damage' },
+        { name: 'Arcane', effect: 'spellPower', chance: 0.12, value: 0.15, description: '+15% spell power' },
+        { name: 'Vampiric', effect: 'lifesteal', chance: 0.08, value: 0.08, description: '8% spell lifesteal' },
+        { name: 'Deadly', effect: 'critChance', chance: 0.20, value: 0.15, description: '15% crit chance' }
+      ]
+    };
+    
+    const procPool = PROC_POOL[category] || [];
+    const availableProcs = [...procPool]; // Copy to avoid mutations
+    
+    for (let i = 0; i < numProcs && availableProcs.length > 0; i++) {
+      const procIndex = Math.floor(Math.random() * availableProcs.length);
+      procs.push(availableProcs[procIndex]);
+      availableProcs.splice(procIndex, 1); // Remove to prevent duplicates
+    }
+    
+    if (procs.length > 0) {
+      item.procEffects = procs;
+    }
+  }
+  
   return item;
 }
 

@@ -189,6 +189,11 @@ const testLogger = new TestLogger();
  * @param args - Arguments to pass to console.log
  */
 export function testLog(category: LogCategory, mechanic: string, ...args: any[]): void {
+  // CRITICAL: No-op in production - test logging only works in development
+  if (import.meta.env.MODE === 'production') {
+    return; // Silent in production
+  }
+  
   if (testLogger.shouldLog(category, mechanic)) {
     console.log(`[${category}:${mechanic}]`, ...args);
   }

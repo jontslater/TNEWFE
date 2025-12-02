@@ -4,7 +4,7 @@
  * Adapted from IdleDnD/game.js:8060
  */
 
-export type CombatTextType = 'damage' | 'crit' | 'heal' | 'heal-hot' | 'dot' | 'loot' | 'levelup' | 'questcomplete' | 'xp';
+export type CombatTextType = 'damage' | 'crit' | 'heal' | 'heal-hot' | 'dot' | 'loot' | 'levelup' | 'questcomplete' | 'xp' | 'miss';
 
 export interface CombatTextConfig {
   healing: number;
@@ -82,6 +82,10 @@ export function createCombatText(
     case 'xp':
       textClass = 'combat-text xp'; // Light blue for XP gain
       textContent = `+${formattedAmount} XP`;
+      break;
+    case 'miss':
+      textClass = 'combat-text miss'; // Gray/yellow for misses
+      textContent = 'MISS';
       break;
     case 'damage':
     default:
@@ -202,6 +206,13 @@ export function createCombatText(
     textElement.style.textShadow = '2px 2px 4px rgba(0, 0, 0, 0.9), 0 0 12px rgba(16, 185, 129, 0.8), 0 0 20px rgba(16, 185, 129, 0.6)';
     textElement.style.animation = 'floatUp 2.5s ease-out forwards'; // Longer animation
     textElement.style.letterSpacing = '1px'; // Add some letter spacing
+  } else if (textClass.includes('miss')) {
+    // MISS - gray/yellow
+    textElement.style.fontSize = '10px';
+    textElement.style.fontWeight = '900';
+    textElement.style.setProperty('color', '#fbbf24', 'important'); // Yellow/gold for MISS
+    textElement.style.textShadow = '1px 1px 2px rgba(0, 0, 0, 0.9)';
+    textElement.style.animation = 'floatUp 1s ease-out forwards';
   } else {
     // Regular damage - red
     textElement.style.fontSize = '10px';
@@ -277,7 +288,8 @@ export function showScrollingCombatText(
   isHero: boolean = true
 ): void {
   // Skip if amount is too small (reduces clutter) - only for numeric amounts
-  if (typeof amount === 'number' && amount < 1) return;
+  // But allow MISS type even with 0 amount
+  if (typeof amount === 'number' && amount < 1 && type !== 'miss') return;
   
   // Find the sprite element using exact ID matching
   // Heroes: battle-hero-{id} or [data-hero-id="{id}"]

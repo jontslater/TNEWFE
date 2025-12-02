@@ -27,6 +27,11 @@ import { testLog } from '../testLogging';
  * Reads from localStorage: 'enemyDebugSettings'
  */
 function getDebugDisableHeroDamage(): boolean {
+  // CRITICAL: Ignore debug flags in production
+  if (import.meta.env.MODE === 'production') {
+    return false; // Always enable damage in production
+  }
+  
   try {
     const saved = localStorage.getItem('enemyDebugSettings');
     if (saved) {
@@ -45,15 +50,21 @@ import { createProjectile } from '../projectiles';
 // This Set is cleared at the start of each combat round to allow enemies to attack again
 const activeEnemyAttacks = new Set<string>();
 
+// CRITICAL: Track projectiles being created to prevent duplicates during setTimeout delay
+// This prevents race conditions where multiple projectiles are created before the first one is added to activeEnemyAttacks
+const pendingProjectiles = new Set<string>();
+
 /**
  * Clear active enemy attacks tracking - called at the start of each combat round
  * This ensures enemies can attack once per round
  */
 export function clearActiveEnemyAttacks() {
-  const count = activeEnemyAttacks.size;
+  const attackCount = activeEnemyAttacks.size;
+  const projectileCount = pendingProjectiles.size;
   activeEnemyAttacks.clear();
-  if (count > 0) {
-    testLog('Enemy', 'Attack Tracking', `Cleared ${count} entries from activeEnemyAttacks (some attacks may have been in progress)`);
+  pendingProjectiles.clear(); // Also clear pending projectiles
+  if (attackCount > 0 || projectileCount > 0) {
+    testLog('Enemy', 'Attack Tracking', `Cleared ${attackCount} attacks and ${projectileCount} pending projectiles from tracking`);
   }
 }
 
@@ -265,12 +276,22 @@ export function processEnemyAttack(
     return Promise.resolve(); // No valid target
   }
 
+  // CRITICAL: Verify target is still alive before processing attack
+  // This prevents attacks on dead heroes (e.g., hero died between target selection and attack execution)
+  if (!target.hero || target.hero.hp <= 0 || target.hero.isDead) {
+    cleanup();
+    return Promise.resolve(); // Target is dead, skip attack
+  }
+
   let category = ROLE_CONFIG[target.hero.role]?.category || 'dps';
 
   // Check for INTERCEPT
   if (category !== 'tank') {
     let interceptingTank: {username: string; hero: Hero} | null = null;
     heroesArray.forEach(hero => {
+      // CRITICAL: Filter dead heroes from intercept check
+      if (!hero || hero.hp <= 0 || hero.isDead) return;
+      
       const heroCategory = ROLE_CONFIG[hero.role]?.category || 'dps';
       if (heroCategory === 'tank' && 
           hero.hp > 0 && 
@@ -282,10 +303,19 @@ export function processEnemyAttack(
     });
 
     if (interceptingTank) {
-      callbacks.log('combat', `🛡️ ${interceptingTank.username} INTERCEPTS the attack on ${target.username}!`);
-      target = interceptingTank;
-      category = 'tank';
+      // CRITICAL: Verify intercepting tank is still alive
+      if (interceptingTank.hero && interceptingTank.hero.hp > 0 && !interceptingTank.hero.isDead) {
+        callbacks.log('combat', `🛡️ ${interceptingTank.username} INTERCEPTS the attack on ${target.username}!`);
+        target = interceptingTank;
+        category = 'tank';
+      }
     }
+  }
+  
+  // CRITICAL: Final check - verify target is still alive after intercept check
+  if (!target.hero || target.hero.hp <= 0 || target.hero.isDead) {
+    cleanup();
+    return Promise.resolve(); // Target died, skip attack
   }
 
   // Calculate effective defense
@@ -326,12 +356,30 @@ export function processEnemyAttack(
   // Divine Shield = full immunity
   if (divineShieldActive) {
     callbacks.log('combat', `✨ ${target.username} is IMMUNE! (Divine Shield)`);
+    
+    // CRITICAL: Show MISS SCT for immunity
+    if (callbacks.triggerCombatText) {
+      const heroId = heroElementId(target);
+      callbacks.triggerCombatText(heroId, 0, 'miss', true);
+    }
+    
+    // CRITICAL: Cleanup tracking before returning
+    cleanup();
     return Promise.resolve();
   }
 
   // Evasion = dodge
   if (evasionActive) {
     callbacks.log('combat', `⚡ ${target.username} DODGES ${enemy.name}'s attack!`);
+    
+    // CRITICAL: Show MISS SCT for dodge
+    if (callbacks.triggerCombatText) {
+      const heroId = heroElementId(target);
+      callbacks.triggerCombatText(heroId, 0, 'miss', true);
+    }
+    
+    // CRITICAL: Cleanup tracking before returning
+    cleanup();
     return Promise.resolve();
   }
 
@@ -347,6 +395,31 @@ export function processEnemyAttack(
   const hasProjectile = enemyConfig?.animations?.projectile || enemyConfig?.animations?.projectileDiagonal;
   
   if (hasProjectile) {
+    // CRITICAL: Check if projectile is already pending for this enemy
+    // This prevents duplicate projectiles during setTimeout delay window
+    if (pendingProjectiles.has(enemyId)) {
+      testLog('Enemy', 'Attack', `${enemy.name} (${enemyId}) already has a projectile pending, skipping duplicate`);
+      cleanup();
+      return Promise.resolve();
+    }
+    
+    // CRITICAL: Verify target and enemy are still alive BEFORE scheduling projectile
+    // This prevents ghost projectiles from being created
+    if (!target || !target.hero || target.hero.hp <= 0 || target.hero.isDead) {
+      testLog('Enemy', 'Attack', `${enemy.name} projectile skipped - target is dead`);
+      cleanup();
+      return Promise.resolve();
+    }
+    
+    if (!enemy || enemy.isDead || enemy.hp <= 0) {
+      testLog('Enemy', 'Attack', `${enemy.name} projectile skipped - enemy is dead`);
+      cleanup();
+      return Promise.resolve();
+    }
+    
+    // Mark projectile as pending IMMEDIATELY to prevent duplicates
+    pendingProjectiles.add(enemyId);
+    
     // CRITICAL: Enemy should animate "attack", not "projectile"
     // The projectile is a separate visual element that moves from enemy to target
     callbacks.triggerAnimation(enemyElementId(enemy), 'attack', false);
@@ -369,6 +442,33 @@ export function processEnemyAttack(
     // Find attacker and target DOM elements
     return new Promise<void>((resolve) => {
       setTimeout(() => {
+        // CRITICAL: Double-check enemy is still in activeEnemyAttacks before creating projectile
+        // If it was cleared (e.g., new round started), don't create the projectile
+        if (!activeEnemyAttacks.has(enemyId)) {
+          testLog('Enemy', 'Attack', `${enemy.name} projectile cancelled - enemy no longer in activeEnemyAttacks (likely new round started)`);
+          pendingProjectiles.delete(enemyId);
+          cleanup();
+          resolve();
+          return;
+        }
+        
+        // CRITICAL: Verify target and enemy are still alive before creating projectile
+        if (!target || !target.hero || target.hero.hp <= 0 || target.hero.isDead) {
+          testLog('Enemy', 'Attack', `${enemy.name} projectile cancelled - target died during delay`);
+          pendingProjectiles.delete(enemyId);
+          cleanup();
+          resolve();
+          return;
+        }
+        
+        if (!enemy || enemy.isDead || enemy.hp <= 0) {
+          testLog('Enemy', 'Attack', `${enemy.name} projectile cancelled - enemy died during delay`);
+          pendingProjectiles.delete(enemyId);
+          cleanup();
+          resolve();
+          return;
+        }
+        
         const attackerElement = document.getElementById(`battle-enemy-${enemy.id}`);
         const targetElement = document.getElementById(`battle-hero-${target.hero.id || target.username}`);
         
@@ -382,6 +482,34 @@ export function processEnemyAttack(
             enemy.name, // Pass enemy name to get animation data
             projectileType, // projectileType for enemies
             () => {
+              // CRITICAL: Verify this projectile is still valid (enemy is still in activeEnemyAttacks)
+              // If a new round started while this projectile was in flight, cancel it
+              if (!activeEnemyAttacks.has(enemyId)) {
+                testLog('Enemy', 'Attack', `${enemy.name} projectile hit cancelled - enemy no longer in activeEnemyAttacks (new round started)`);
+                pendingProjectiles.delete(enemyId);
+                return; // Don't call cleanup() - it was already cleared
+              }
+              
+              // CRITICAL: Verify target is still alive when projectile hits
+              // Target may have died during projectile flight
+              if (!target || !target.hero || target.hero.hp <= 0 || target.hero.isDead) {
+                // Target died - show MISS SCT
+                if (callbacks.triggerCombatText) {
+                  const heroId = heroElementId(target);
+                  callbacks.triggerCombatText(heroId, 0, 'miss', true);
+                }
+                pendingProjectiles.delete(enemyId);
+                cleanup();
+                return; // Target is dead, skip damage
+              }
+              
+              // CRITICAL: Verify enemy is still alive
+              if (!enemy || enemy.isDead || enemy.hp <= 0) {
+                pendingProjectiles.delete(enemyId);
+                cleanup();
+                return; // Enemy is dead, skip damage
+              }
+              
               // When projectile reaches target, trigger hurt and apply damage
               callbacks.triggerAnimation(heroElementId(target), 'hurt', true);
               
@@ -411,6 +539,7 @@ export function processEnemyAttack(
               // CRITICAL: Clean up attack tracking when projectile hits and damage is applied
               // This prevents duplicate attacks from being processed while projectile is in flight
               // The enemy stays in activeEnemyAttacks during flight to prevent multiple projectiles
+              pendingProjectiles.delete(enemyId); // Remove from pending before cleanup
               cleanup();
             }
           ).then(() => {
@@ -444,7 +573,9 @@ export function processEnemyAttack(
             resolve();
           });
         } else {
-          // Fallback: apply damage immediately if elements not found
+          // Fallback: elements not found - cancel projectile and apply damage immediately
+          testLog('Enemy', 'Attack', `${enemy.name} projectile fallback - DOM elements not found`);
+          pendingProjectiles.delete(enemyId);
           callbacks.triggerAnimation(heroElementId(target), 'hurt', true);
           applyEnemyDamageToHero(
             target!,
@@ -595,6 +726,17 @@ function applyEnemyDamageToHero(
   getEnemySpriteType: (name: string) => string,
   getAnimationDuration: (spriteType: string, animation: string) => number
 ): void {
+  // CRITICAL: Verify target is still alive before applying damage
+  // This prevents attacks on dead heroes (e.g., hero died between target selection and damage application)
+  if (!target || !target.hero || target.hero.hp <= 0 || target.hero.isDead) {
+    return; // Target is dead, skip damage application
+  }
+  
+  // CRITICAL: Verify enemy is still alive
+  if (!enemy || enemy.isDead || enemy.hp <= 0) {
+    return; // Enemy is dead, skip damage application
+  }
+  
   const { ironSkinActive, lastStandActive, shieldWallActive, isCrit, isBloodlust, now } = options;
   const category = ROLE_CONFIG[target.hero.role]?.category || 'dps';
 

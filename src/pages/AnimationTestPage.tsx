@@ -2047,8 +2047,14 @@ export default function AnimationTestPage() {
       });
       
       console.log(`[Sync] Synced hero ${hero.name} (${hero.id}) to backend`);
-    } catch (error) {
-      console.error(`[Sync] Failed to sync hero ${hero.id}:`, error);
+    } catch (error: any) {
+      // Log 404 errors (hero doesn't exist in database) - helps identify stale battlefield data
+      if (error?.response?.status === 404) {
+        console.warn(`⚠️ [Sync] Hero ${hero.id} (${hero.name}) not found in database - may be deleted. Skipping sync.`);
+      } else {
+        // Log other errors for debugging
+        console.error(`❌ [Sync] Failed to sync hero ${hero.id}:`, error?.message || error);
+      }
     }
   }, []);
   

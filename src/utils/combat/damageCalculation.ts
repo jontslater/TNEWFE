@@ -131,9 +131,9 @@ export function applyEnemyDamage(enemy: Enemy, damage: number): { died: boolean;
   // Ensure HP is an integer (prevent floating point precision issues)
   enemy.hp = Math.max(0, Math.floor(enemy.hp));
 
-  // Check for immediate death - match Electron app: use hp <= 0 check
-  // CRITICAL: Match Electron app line 14891: enemy.hp <= 0 && !enemy.isDead
-  const died = enemy.hp <= 0 && !enemy.isDead;
+  // CRITICAL: Only mark as dead if HP is EXACTLY 0, never if HP > 0
+  // This prevents premature death detection when HP is still above zero
+  const died = enemy.hp === 0 && !enemy.isDead;
   if (died) {
     // Double-check HP is actually 0 before marking as dead
     if (enemy.hp === 0) {
@@ -141,6 +141,19 @@ export function applyEnemyDamage(enemy: Enemy, damage: number): { died: boolean;
       // Clear debuffs on death
       enemy.activeDebuffs = {};
     }
+  }
+  
+  // CRITICAL: Ensure isDead matches HP state (auto-correct inconsistencies)
+  // If isDead is true but HP > 0, correct the state (enemy should not be dead)
+  if (enemy.isDead && enemy.hp > 0) {
+    enemy.isDead = false; // Auto-correct: HP > 0 means not dead
+  }
+  
+  // CRITICAL: Only mark as dead if HP is EXACTLY 0 (never if HP > 0)
+  // This prevents marking enemies as dead when they still have HP
+  if (!enemy.isDead && enemy.hp === 0) {
+    enemy.isDead = true;
+    enemy.activeDebuffs = {};
   }
 
   return { died, actualDamage };

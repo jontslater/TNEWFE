@@ -1,5 +1,18 @@
 # Comprehensive Combat Fixes & Production Setup Plan
 
+## React-Specific Issues (Electron → Browser Migration)
+
+**Critical Context**: The Electron app used pure DOM manipulation, while the browser source uses React + DOM manipulation. This creates timing and synchronization issues:
+
+1. **React State vs DOM Manipulation**: React updates state asynchronously, which can conflict with manual DOM changes
+2. **Animation Timing**: React state may not flush to DOM immediately, causing animation triggers to fail
+3. **Combat Loop Race Conditions**: React batching can cause rounds to overlap or processing flags to not reset correctly
+4. **Ref Management**: Sprite refs can be lost, causing animation calls to fail silently
+5. **Combat Text Throttling**: Too-aggressive throttling can hide feedback
+6. **State Sync Delays**: localStorage settings may not propagate fast enough
+
+**All fixes must account for React's async nature and use proper synchronization techniques.**
+
 ## Phase 1: Critical Combat System Fixes
 
 ### 1.1 Dead Entity Filtering & Targeting
@@ -31,18 +44,25 @@
 - Death animation trigger may use incorrect hero ID format
 - Death animation may be blocked by other animation states
 - `deathAnimationPlaying` flag may not be set correctly
+- **React-specific**: Animation state may not flush to DOM immediately
+- **React-specific**: Sprite refs may be lost or not yet mounted
+- **React-specific**: React batching may delay animation state updates
 
 **Files to Fix**:
 - `src/utils/combat/enemyAttacks.ts` - Hero death triggers
 - `src/utils/combat/buffsDebuffs.ts` - DoT/Stagger death triggers
 - `src/utils/fullCombatEngine.ts` - Death detection and animation
+- `src/pages/BrowserSourcePage.tsx` - Animation state management and ref handling
 
 **Fixes**:
 1. Verify `heroElementId()` returns correct format: `battle-hero-{id}`
 2. Ensure death animation triggers immediately when `hp <= 0 && !isDead`
 3. Set `deathAnimationPlaying = true` before triggering animation
-4. Prevent other animations from overriding death animation
-5. Add logging to verify animation triggers (remove after fix)
+4. **React Fix**: Use `flushSync()` or `setTimeout(0)` to force React to flush state before DOM manipulation
+5. **React Fix**: Verify sprite ref exists before triggering animation: `if (!heroSpriteRefs.current.get(heroId)?.current) return;`
+6. **React Fix**: Use direct DOM manipulation as fallback if ref is missing: `document.getElementById(`battle-hero-${heroId}`)?.classList.add('animate-death')`
+7. Prevent other animations from overriding death animation
+8. Add defensive checks for ref existence before animation calls
 
 ### 1.3 Enemy Death at HP > 0
 **Issue**: Enemies die when their HP is above 0
@@ -125,6 +145,8 @@
 - Animation may be triggered multiple times for same attack
 - Animation state may not be properly tracked
 - Multiple attack processing paths
+- **React-specific**: React state updates may not flush before next animation trigger
+- **React-specific**: Animation state may be batched, causing multiple triggers to see same state
 
 **Files to Fix**:
 - `src/utils/combat/enemyAttacks.ts` - Animation triggers
@@ -132,8 +154,11 @@
 
 **Fixes**:
 1. Ensure animation is only triggered once per attack
-2. Track animation state to prevent duplicate triggers
-3. Add guard: `if (enemy.attackAnimationPlaying) return;`
+2. Track animation state in `useRef` to avoid React batching: `const attackAnimationRef = useRef<Set<string>>(new Set())`
+3. Add guard: `if (attackAnimationRef.current.has(enemyId)) return;`
+4. **React Fix**: Use `flushSync()` or direct DOM manipulation for animation triggers
+5. **React Fix**: Clear animation state after animation completes (use animation end event)
+6. Verify sprite ref exists before triggering: `if (!enemySpriteRefs.current.get(enemyId)?.current) return;`
 
 ### 1.8 Combat Stopping
 **Issue**: Combat doesn't properly stop when all heroes or all enemies are defeated
@@ -218,6 +243,75 @@
 3. Keep error boundaries but only log to console in development
 4. Wrap all debug feature access in environment checks
 
+## Phase 1.9: React-Specific Fixes
+
+### 1.9.1 Animation State Synchronization
+**Issue**: React state updates may not flush to DOM before animation triggers
+
+**Files to Fix**:
+- `src/pages/BrowserSourcePage.tsx` - Animation state management
+- `src/utils/fullCombatEngine.ts` - Animation trigger callbacks
+
+**Fixes**:
+1. Use `flushSync()` from `react-dom` for critical animation state updates
+2. Use direct DOM manipulation as fallback: `element.classList.add('animate-attack')`
+3. Verify refs exist before triggering animations
+4. Add animation end event listeners to clear animation state
+5. Use `setTimeout(0)` to force React to flush state before DOM manipulation if needed
+
+### 1.9.2 Sprite Ref Management
+**Issue**: Sprite refs can be lost, causing animation calls to fail silently
+
+**Files to Fix**:
+- `src/pages/BrowserSourcePage.tsx` - Ref creation and management
+
+**Fixes**:
+1. Add defensive checks: `if (!heroSpriteRefs.current.get(heroId)?.current) { /* fallback */ }`
+2. Use direct DOM query as fallback: `document.getElementById(`battle-hero-${heroId}`)`
+3. Clean up refs when entities are removed
+4. Verify refs are created before combat starts
+5. Add logging (dev only) when refs are missing
+
+### 1.9.3 Combat Text Throttling
+**Issue**: Too-aggressive throttling can hide feedback for some attacks
+
+**Files to Fix**:
+- `src/pages/BrowserSourcePage.tsx` - Combat text throttling logic
+
+**Fixes**:
+1. Review `combatTextThrottleRef` throttling logic
+2. Reduce throttle time if too aggressive (currently per-entity basis)
+3. Ensure unique keys for each combat event (don't reuse same key)
+4. Add fallback: if throttled, queue the text for later display
+5. Test with rapid attacks to ensure all damage numbers show
+
+### 1.9.4 localStorage State Sync
+**Issue**: Debug settings in localStorage may not propagate fast enough
+
+**Files to Fix**:
+- `src/pages/BrowserSourcePage.tsx` - Debug settings interval
+- All files that read from localStorage
+
+**Fixes**:
+1. Check localStorage at start of each combat round, not just on interval
+2. Use `useEffect` to watch for localStorage changes
+3. Invalidate cached settings when localStorage changes
+4. For production: Ignore localStorage debug flags entirely
+
+### 1.9.5 React Batching & Race Conditions
+**Issue**: React batching can cause state updates to be delayed, leading to race conditions
+
+**Files to Fix**:
+- `src/utils/fullCombatEngine.ts` - Combat state management
+- `src/pages/BrowserSourcePage.tsx` - State sync logic
+
+**Fixes**:
+1. Use `useRef` for flags that need immediate updates: `isCombatProcessingRef`
+2. Use `flushSync()` for critical state updates that must happen before next action
+3. Add guards using refs, not state: `if (isCombatProcessingRef.current) return;`
+4. Use `setTimeout(0)` to break out of React batching when needed
+5. Ensure all combat flags are in refs, not state, for immediate checks
+
 ## Phase 3: State Management & Cleanup
 
 ### 3.1 Combat State Consistency
@@ -295,32 +389,39 @@
 ## Implementation Order
 
 1. **Phase 1.1** - Dead Entity Filtering (Critical - blocks other fixes)
-2. **Phase 1.2** - Hero Death Animation
-3. **Phase 1.3** - Enemy Death at HP > 0
-4. **Phase 1.4** - Combat Round Continuation
-5. **Phase 1.5** - Next Wave Spawning (verify existing fix)
-6. **Phase 1.6** - Enemy Projectile Duplication
-7. **Phase 1.7** - Enemy Duplicate Attack Animations
-8. **Phase 1.8** - Combat Stopping
-9. **Phase 2** - Production Mode Setup
-10. **Phase 3** - State Management & Cleanup
-11. **Phase 4** - Testing & Verification
+2. **Phase 1.9.5** - React Batching & Race Conditions (Critical - affects all combat logic)
+3. **Phase 1.9.2** - Sprite Ref Management (Critical - affects all animations)
+4. **Phase 1.2** - Hero Death Animation (with React fixes)
+5. **Phase 1.3** - Enemy Death at HP > 0
+6. **Phase 1.4** - Combat Round Continuation (with React fixes)
+7. **Phase 1.5** - Next Wave Spawning (verify existing fix)
+8. **Phase 1.6** - Enemy Projectile Duplication
+9. **Phase 1.7** - Enemy Duplicate Attack Animations (with React fixes)
+10. **Phase 1.8** - Combat Stopping
+11. **Phase 1.9.1** - Animation State Synchronization
+12. **Phase 1.9.3** - Combat Text Throttling
+13. **Phase 1.9.4** - localStorage State Sync
+14. **Phase 2** - Production Mode Setup
+15. **Phase 3** - State Management & Cleanup
+16. **Phase 4** - Testing & Verification
 
 ## Success Criteria
 
 - ✅ Dead entities are never targeted or act
-- ✅ Death animations play correctly for heroes and enemies
+- ✅ Death animations play correctly for heroes and enemies (React state syncs properly)
 - ✅ Enemies only die when HP <= 0
-- ✅ Combat rounds continue automatically when enemies die mid-combat
+- ✅ Combat rounds continue automatically when enemies die mid-combat (no React batching delays)
 - ✅ Next wave spawns automatically after victory
 - ✅ Only one projectile per enemy per turn
-- ✅ Attack animations play once per attack
+- ✅ Attack animations play once per attack (no duplicate triggers from React batching)
 - ✅ Combat stops properly when all heroes or all enemies are defeated
+- ✅ Sprite refs are always available when needed (no silent failures)
+- ✅ Combat text shows for all attacks (throttling not too aggressive)
+- ✅ No race conditions from React batching or async state updates
 - ✅ No test/debug UI in production (TestPanel hidden)
 - ✅ No console logs in production (only critical errors in dev mode)
 - ✅ Battlefield listener warnings removed/silenced
 - ✅ No memory leaks
-- ✅ No race conditions
 
 ## Production Mode Decisions
 

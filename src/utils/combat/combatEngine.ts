@@ -37,18 +37,14 @@ export function resolveCombat(
 ): void {
   testLog('Combat', 'Resolve Round', 'Starting combat round resolution');
   
-  // CRITICAL: Check if there are active attacks from previous rounds
-  // If so, this means resolveCombat was called before previous round completed
+  // CRITICAL: Always clear active enemy attacks at the start of each combat round
+  // This ensures enemies can attack once per round and prevents stale entries from previous rounds
+  // Even if there are attacks still in progress, we must clear to allow new attacks
+  // Any in-flight projectiles will be cancelled by the check in enemyAttacks.ts
   const beforeClear = getActiveEnemyAttacksCount();
   if (beforeClear > 0) {
-    testLog('Combat', 'Resolve Round', `WARNING: ${beforeClear} attacks still in progress from previous round! This indicates resolveCombat was called too early.`);
-    // Don't clear - let previous attacks complete first
-    // This prevents duplicate attacks
-    return;
+    testLog('Combat', 'Resolve Round', `WARNING: ${beforeClear} attacks still in progress from previous round. Clearing to start new round.`);
   }
-  
-  // CRITICAL: Clear active enemy attacks at the start of each combat round
-  // This ensures enemies can attack once per round and prevents stale entries from previous rounds
   clearActiveEnemyAttacks();
   
   const heroes = Array.isArray(state.heroes) ? state.heroes : Array.from(state.heroes.values());
@@ -438,6 +434,12 @@ export function resolveCombat(
     }
 
     setTimeout(() => {
+      // CRITICAL: Double-check hero is still alive before executing action
+      // Hero may have died between scheduling and execution
+      if (!hero || hero.hp <= 0 || hero.isDead) {
+        return; // Hero is dead, skip action
+      }
+      
       // Match Electron app: Trigger BOTH attack AND damage animations BEFORE applying damage (line 14690-14692)
       const entityId = hero.id || hero.username || username;
       
@@ -516,9 +518,24 @@ export function resolveCombat(
           }
         }
         
+        // CRITICAL: Filter out dead enemies and verify target is alive
+        // Use fresh filter to get current alive enemies list
+        const currentAliveEnemies = enemies.filter(e => !e.isDead && e.hp > 0);
+        
         if (!targetEnemy || targetEnemy.isDead || targetEnemy.hp <= 0) {
           // Target died or was replaced, skip
+          // Also check if any alive enemies exist - if not, combat may have ended
+          if (currentAliveEnemies.length === 0) {
+            return; // No alive enemies, combat ended
+          }
           return;
+        }
+        
+        // CRITICAL: Verify targetEnemy is in the alive enemies list
+        // This ensures we're not attacking a dead enemy that wasn't filtered properly
+        const isTargetAlive = currentAliveEnemies.some(e => e.id === targetEnemy!.id);
+        if (!isTargetAlive) {
+          return; // Target is not in alive enemies list, skip
         }
 
         // Match Electron app: Trigger BOTH animations BEFORE applying damage (line 14690-14692)

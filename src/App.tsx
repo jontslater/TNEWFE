@@ -13,6 +13,7 @@ import SkillsPage from './pages/SkillsPage';
 import AuctionHousePage from './pages/AuctionHousePage';
 import BrowserSourcePage from './pages/BrowserSourcePage';
 import BrowserSourceConfigPage from './pages/BrowserSourceConfigPage';
+import CleanBattlefieldSource from './pages/CleanBattlefieldSource';
 import EnemyDebugPage from './pages/EnemyDebugPage';
 import EnemyAnimationTestPage from './pages/EnemyAnimationTestPage';
 import AnimationTestPage from './pages/AnimationTestPage';
@@ -24,7 +25,9 @@ import EnchantingPage from './pages/EnchantingPage';
 import GuildRaidSignupPage from './pages/GuildRaidSignupPage';
 import InstanceViewerPage from './pages/InstanceViewerPage';
 import RaidBrowserSourcePage from './pages/RaidBrowserSourcePage';
-import UnifiedBrowserSourcePage from './pages/UnifiedBrowserSourcePage';
+import UnifiedBrowserSource from './pages/UnifiedBrowserSource';
+// Old UnifiedBrowserSourcePage kept for reference but route now uses new component
+// import UnifiedBrowserSourcePage from './pages/UnifiedBrowserSourcePage';
 import LoginRewardModal from './components/LoginRewardModal';
 
 function App() {
@@ -45,7 +48,9 @@ function App() {
         <Route path="/skills" element={<SkillsPage />} />
         <Route path="/auction" element={<AuctionHousePage />} />
         <Route path="/browser-source" element={<BrowserSourcePage />} />
-        <Route path="/browser-source-unified" element={<UnifiedBrowserSourcePage />} />
+        <Route path="/browser-source-unified" element={<UnifiedBrowserSource />} />
+        <Route path="/clean-battlefield" element={<CleanBattlefieldSource />} />
+        <Route path="/unified" element={<UnifiedBrowserSource />} />
         <Route path="/browser-source/debug-view" element={<BrowserSourcePage />} />
         <Route path="/browser-source/config" element={<BrowserSourceConfigPage />} />
         <Route path="/browser-source/debug" element={<EnemyDebugPage />} />

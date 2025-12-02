@@ -200,6 +200,8 @@ export class FullCombatEngine {
   private adventureInterval: NodeJS.Timeout | null = null;
   private debuffTickInterval: NodeJS.Timeout | null = null; // Interval for DoT/HoT ticks (every 2 seconds)
   private resurrectionCheckInterval: NodeJS.Timeout | null = null; // Interval to check for resurrection during combat
+  // CRITICAL: Track all active intervals for comprehensive cleanup
+  private activeIntervals = new Set<NodeJS.Timeout>();
   private animationCallbacks: AnimationCallback[] = [];
   private logCallbacks: LogCallback[] = [];
   private combatTextCallbacks: CombatTextCallback[] = [];
@@ -255,6 +257,17 @@ export class FullCombatEngine {
     }
     if (this.state.isAdventuring === undefined) {
       this.state.isAdventuring = false;
+    }
+    // CRITICAL: Ensure combat is never paused for continuous gameplay
+    // Always set pause flags to false at initialization - combat should run automatically
+    this.state.isPaused = false;
+    this.state.editModePausedCombat = false;
+    // Initialize combat flags to allow automatic continuation
+    if (this.state.resolvingCombat === undefined) {
+      this.state.resolvingCombat = false;
+    }
+    if (this.state.isCombatStarting === undefined) {
+      this.state.isCombatStarting = false;
     }
 
     // Initialize adventure engine
@@ -596,6 +609,13 @@ export class FullCombatEngine {
   stopCombat() {
     testLog('Combat', 'Stop Combat', 'stopCombat() called - clearing intervals and flags');
     
+    // CRITICAL: Clear all tracked intervals for comprehensive cleanup
+    this.activeIntervals.forEach(interval => {
+      clearInterval(interval);
+      clearTimeout(interval);
+    });
+    this.activeIntervals.clear();
+    
     if (this.combatInterval) {
       clearTimeout(this.combatInterval);
       this.combatInterval = null;
@@ -662,6 +682,63 @@ export class FullCombatEngine {
   }
   
   /**
+   * Validate and auto-correct combat state inconsistencies
+   * This ensures HP and isDead flags are always consistent
+   */
+  private validateCombatState(): void {
+    const heroes = this.getHeroesArray();
+    const enemies = this.state.currentEnemies || [];
+    
+    // Validate heroes
+    heroes.forEach(hero => {
+      if (!hero) return;
+      
+      // Ensure HP is an integer
+      hero.hp = Math.floor(hero.hp || 0);
+      
+      // Auto-correct inconsistencies
+      if (hero.isDead && hero.hp > 0) {
+        // Hero is marked dead but has HP - correct the state
+        hero.isDead = false;
+        hero.deathTime = undefined;
+        hero.deathAnimationPlaying = false;
+      }
+      
+      if (!hero.isDead && hero.hp <= 0) {
+        // Hero has no HP but isn't marked dead - mark as dead
+        hero.hp = 0;
+        hero.isDead = true;
+        hero.deathTime = hero.deathTime || Date.now();
+        // Don't trigger death animation here - it should have been triggered when HP dropped
+      }
+    });
+    
+    // Validate enemies
+    enemies.forEach(enemy => {
+      if (!enemy) return;
+      
+      // Ensure HP is an integer
+      enemy.hp = Math.floor(enemy.hp || 0);
+      
+      // CRITICAL: Auto-correct inconsistencies - only mark as dead if HP is EXACTLY 0
+      // If enemy is marked dead but has HP > 0, correct the state (enemy should not be dead)
+      if (enemy.isDead && enemy.hp > 0) {
+        // Enemy is marked dead but has HP - correct the state
+        enemy.isDead = false;
+      }
+      
+      // CRITICAL: Only mark as dead if HP is EXACTLY 0, never if HP > 0
+      // This prevents marking enemies as dead when they still have HP
+      if (!enemy.isDead && enemy.hp === 0) {
+        // Enemy has no HP but isn't marked dead - mark as dead
+        enemy.isDead = true;
+        enemy.activeDebuffs = {};
+        // Do NOT trigger death animation here - animation should only trigger when damage is applied
+      }
+    });
+  }
+  
+  /**
    * Start DoT/HoT tick interval - ticks every 2 seconds during combat
    * Matches Electron app: processDebuffs called every second (line 8508)
    * Reference: E:\IdleDnD\game.js lines 8504-8509
@@ -725,6 +802,11 @@ export class FullCombatEngine {
       // Check for resurrection (will resume combat if heroes respawn)
       this.checkHeroResurrection();
     }, 5000); // Check every 5 seconds
+    
+    // Track interval for cleanup
+    if (this.resurrectionCheckInterval) {
+      this.activeIntervals.add(this.resurrectionCheckInterval);
+    }
   }
   
   /**
@@ -768,21 +850,37 @@ export class FullCombatEngine {
       // Ensure HP is an integer (prevent floating point precision issues)
       enemy.hp = Math.max(0, Math.floor(enemy.hp));
       const actualDamage = hpBefore - enemy.hp;
-      // Check for death - use exact 0 check to prevent premature death
-      // CRITICAL: Only mark as dead if HP is exactly 0, never if HP > 0
+      
+      // CRITICAL: Only mark as dead if HP is EXACTLY 0, never if HP > 0
+      // This prevents premature death detection when HP is still above zero
       const died = enemy.hp === 0 && !enemy.isDead;
       
       if (died) {
-        // Double-check HP is actually 0 before marking as dead
+        // Double-check HP is actually 0 before marking as dead and triggering animation
         if (enemy.hp === 0) {
           enemy.isDead = true;
           // Clear debuffs on death
           enemy.activeDebuffs = {};
+          // Only trigger death animation if HP is confirmed to be 0
           this.triggerAnimation(this.enemyElementId(enemy), 'death', false);
-        } else {
-          // HP is > 0, don't mark as dead (safety check)
         }
-      } else if (actualDamage > 0) {
+      }
+      
+      // CRITICAL: Ensure isDead matches HP state (auto-correct inconsistencies)
+      // If isDead is true but HP > 0, correct the state (enemy should not be dead)
+      if (enemy.isDead && enemy.hp > 0) {
+        enemy.isDead = false; // Auto-correct: HP > 0 means not dead
+      }
+      
+      // CRITICAL: Only mark as dead if HP is EXACTLY 0 (never if HP > 0)
+      // This prevents marking enemies as dead when they still have HP
+      if (!enemy.isDead && enemy.hp === 0) {
+        enemy.isDead = true;
+        enemy.activeDebuffs = {};
+        // Do NOT trigger animation here - animation should only trigger in the initial death check above
+      }
+      
+      if (actualDamage > 0 && !died) {
         this.triggerAnimation(this.enemyElementId(enemy), 'hurt', false);
       }
       
@@ -834,6 +932,11 @@ export class FullCombatEngine {
     this.adventureInterval = setInterval(() => {
       this.adventureTick();
     }, 5000);
+    
+    // Track interval for cleanup
+    if (this.adventureInterval) {
+      this.activeIntervals.add(this.adventureInterval);
+    }
   }
   
   /**
@@ -2958,6 +3061,10 @@ export class FullCombatEngine {
       }
     };
 
+    // CRITICAL: Validate state before checking victory conditions
+    // This ensures HP and isDead flags are consistent before filtering
+    this.validateCombatState();
+    
     // Check for victory/defeat conditions
     // Match Electron app filtering: heroes use hp > 0 && !isDead, enemies use hp <= 0 || isDead
     const aliveHeroes = this.getHeroesArray().filter((h: any) => h && h.hp > 0 && !h.isDead); // Match Electron app line 13241, 14987

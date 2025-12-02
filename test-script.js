@@ -454,3 +454,4 @@ if (typeof window !== 'undefined') {
   console.log('Run: runAllTests() to test everything');
   console.log('Or run individual tests: testCombatSystem(), testDeathDetection(), etc.');
 }
+

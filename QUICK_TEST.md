@@ -62,3 +62,4 @@ testHealingSystem()        // Test healing
 testEnemySpawning()        // Test enemies
 testStateConsistency()     // Test state
 ```
+

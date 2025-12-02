@@ -205,3 +205,4 @@ When reporting an issue, include:
 4. **Console errors**: Any errors in the console
 5. **Steps to reproduce**: Exact steps to trigger the issue
 6. **Screenshots**: If applicable
+

@@ -27,8 +27,7 @@ import { questAPI } from '../api/client';
 import { BUFF_TYPES } from '../utils/buffSystem';
 import { getEquipmentHpRegen } from '../utils/equipmentBonuses';
 import LevelUpEffect from '../components/LevelUpEffect';
-import TestPanel from '../components/TestPanel';
-import { setTestHelperContext } from '../utils/testHelpers';
+// UI controls removed - combat starts automatically
 import { Hero, Enemy } from '../utils/combat/types';
 
 export default function BrowserSourcePage() {
@@ -196,6 +195,10 @@ export default function BrowserSourcePage() {
   // Track last hurt animation time to prevent rapid retriggers
   const lastHurtTimes = useRef<Record<string, number>>({});
   
+  // CRITICAL: Track attack animations to prevent duplicates (React fix)
+  // Use ref to avoid React batching issues
+  const attackAnimationRef = useRef<Set<string>>(new Set());
+  
   // Track previous HP values to detect damage/healing
   const prevHeroHp = useRef<Record<string, number>>({});
   const prevEnemyHp = useRef<Record<string, number>>({});
@@ -213,10 +216,20 @@ export default function BrowserSourcePage() {
   
   // Helper function to set hero animation with timeout
   const setHeroAnimation = (heroId: string, animation: 'idle' | 'attack' | 'hurt' | 'death', heroRole?: string) => {
-    // Use ref-based animation system (same as enemies)
+    // CRITICAL: React fix - Use ref-based animation system with defensive checks
     const ref = getOrCreateHeroRef(heroId);
-    if (ref.current) {
+    
+    // Defensive check: verify ref exists and has current
+    if (ref && ref.current) {
       ref.current.playAnimation(animation);
+    } else {
+      // Fallback: Use direct DOM manipulation if ref is missing
+      // This prevents silent failures when refs aren't ready
+      const heroElement = document.getElementById(`battle-hero-${heroId}`);
+      if (heroElement) {
+        // Set data-animation attribute directly as fallback
+        heroElement.setAttribute('data-animation', animation);
+      }
     }
     
     // Set animation state for tracking
@@ -230,6 +243,13 @@ export default function BrowserSourcePage() {
   
   // Ref-based setEnemyAnimation - uses refs instead of DOM cloning
   const setEnemyAnimation = async (enemyId: string, animation: 'idle' | 'attack' | 'hurt' | 'death' | string, enemyName?: string) => {
+    // CRITICAL: React fix - Use ref-based tracking to prevent duplicate attack animations
+    // Check if this enemy is already playing an attack animation
+    const isAttackAnim = ['attack', 'attack2', 'attack3', 'strongAttack', 'projectile', 'projectileDiagonal'].includes(animation);
+    if (isAttackAnim && attackAnimationRef.current.has(enemyId)) {
+      return; // Already attacking, skip duplicate
+    }
+    
     // Prevent duplicate animation triggers
     const currentAnimation = enemyAnimations[enemyId];
     
@@ -349,8 +369,27 @@ export default function BrowserSourcePage() {
       if (fallback) ref = fallback;
     }
     
-    if (!ref.current) {
-      return;
+    // CRITICAL: React fix - Add defensive checks and DOM fallback
+    if (!ref || !ref.current) {
+      // Fallback: Use direct DOM manipulation if ref is missing
+      // This prevents silent failures when refs aren't ready
+      const enemyElement = document.getElementById(`battle-enemy-${enemyId}`);
+      if (enemyElement) {
+        // Set data-animation attribute directly as fallback
+        enemyElement.setAttribute('data-animation', finalAnimation);
+      }
+      return; // Exit early if ref not available
+    }
+    
+    // CRITICAL: React fix - Track attack animations to prevent duplicates
+    const isAttackAnimType = ['attack', 'attack2', 'attack3', 'strongAttack', 'projectile', 'projectileDiagonal'].includes(finalAnimation);
+    if (isAttackAnimType) {
+      attackAnimationRef.current.add(enemyId);
+      
+      // Clear from tracking after animation duration (estimate 1000ms)
+      setTimeout(() => {
+        attackAnimationRef.current.delete(enemyId);
+      }, 1000);
     }
     
     // Play animation using ref
@@ -361,6 +400,10 @@ export default function BrowserSourcePage() {
       ref.current.playAnimation(finalAnimation);
     } catch (err) {
       // Animation failed
+      // Clear from tracking if animation failed
+      if (isAttackAnimType) {
+        attackAnimationRef.current.delete(enemyId);
+      }
     }
   };
   
@@ -1030,9 +1073,11 @@ export default function BrowserSourcePage() {
   // Initialize combat simulator when combat starts
   useEffect(() => {
     // For test combat, we don't need battlefieldState
-    if (!useTestCombat && !battlefieldState) {
-      return;
-    }
+    // CRITICAL: Always initialize combat engine if heroes are available
+    // Don't wait for battlefieldState - combat should start immediately
+    // if (!useTestCombat && !battlefieldState) {
+    //   return;
+    // }
     
     // Start full combat engine if in combat OR if we have heroes (adventure loop will start)
     // Adventure loop will generate enemies and start combat automatically
@@ -1050,7 +1095,9 @@ export default function BrowserSourcePage() {
     const currentHeroIds = displayHeroes.map(h => h.id || h.name || h.characterName).sort().join(',');
     const heroesChanged = currentHeroIds !== previousHeroIdsRef.current && previousHeroIdsRef.current !== '';
     
-    const shouldStart = (isCombatActive || displayHeroes.length > 0) && 
+    // CRITICAL: Always start if heroes are available - combat should be automatic
+    // Combat starts immediately when heroes are present, no UI interaction needed
+    const shouldStart = displayHeroes.length > 0 && 
                        (needsNewEngine || allHeroesLeft || heroesChanged || isTestCombatRestart);
     
     if (shouldStart) {
@@ -1124,6 +1171,7 @@ export default function BrowserSourcePage() {
           abilities: {}
         })),
         isPaused: false,
+        editModePausedCombat: false, // CRITICAL: Ensure combat is not paused
         inCombat: displayEnemies.length > 0, // Only in combat if enemies exist
         viewerCount: battlefieldState?.viewerCount || 0,
         difficultyModifier: useTestCombat ? 1.0 : (battlefieldState?.difficultyModifier || 1.0),
@@ -1355,49 +1403,51 @@ export default function BrowserSourcePage() {
           }
         }
         
-        // Use entityId for throttling (original format), but targetId for display
-        const throttleKey = entityId;
-        const lastTime = combatTextThrottleRef.current.get(throttleKey) || 0;
+        // CRITICAL: Use unique key per event to prevent throttling issues
+        // Include type and timestamp to ensure unique keys for each combat event
+        // Format: entityId:type:timestamp (rounded to 10ms for same-frame events)
+        const timestampRounded = Math.floor(now / 10) * 10; // Round to 10ms
+        const throttleKey = `${entityId}:${type}:${timestampRounded}`;
+        
+        // Also check per-entity throttling to prevent spam from same entity
+        const entityThrottleKey = `${entityId}:${type}`;
+        const lastTime = combatTextThrottleRef.current.get(entityThrottleKey) || 0;
         const throttleDelay = type === 'heal-hot' ? 2000 : 100; // 2s for HoT, 100ms for others
         
         if (now - lastTime < throttleDelay) {
           return; // Skip if too soon
         }
         
-        combatTextThrottleRef.current.set(throttleKey, now);
+        // Update throttling timestamp
+        combatTextThrottleRef.current.set(entityThrottleKey, now);
+        
+        // Clean up old throttle entries (older than 5 seconds) to prevent memory buildup
+        const fiveSecondsAgo = now - 5000;
+        combatTextThrottleRef.current.forEach((timestamp, key) => {
+          if (timestamp < fiveSecondsAgo) {
+            combatTextThrottleRef.current.delete(key);
+          }
+        });
+        
         showScrollingCombatText(targetId, amount, type, isHero);
       });
       
-      // Always start adventure loop (matches Electron app - adventure loop runs continuously)
+      // CRITICAL: Always start adventure loop immediately - combat should start automatically
       // Adventure loop will skip if enemies exist, but will spawn new enemies after combat ends
       // Reference: E:\IdleDnD\game.js lines 8677-8679 - adventure loop always runs
       combatEngine.startAdventure();
       
-      // If we already have enemies, also start combat directly
-      // Adventure loop will skip while combat is active (due to early return in adventureTick)
+      // CRITICAL: Start combat immediately if enemies exist, otherwise adventure loop will generate them
+      // Combat should start automatically without any user interaction
       if (displayEnemies.length > 0) {
-      combatEngine.startCombat();
+        // Start combat immediately when enemies are present
+        combatEngine.startCombat();
       }
-      // If no enemies, adventure loop will generate them on next tick
+      // If no enemies, adventure loop will generate them on next tick (every 5 seconds)
       
       combatEngineRef.current = combatEngine;
 
-      // Set up test helper context
-      setTestHelperContext({
-        combatEngine: combatEngine,
-        getHeroes: () => {
-          const state = combatEngine.getState();
-          const heroes = state.heroes;
-          if (Array.isArray(heroes)) return heroes as Hero[];
-          if (heroes instanceof Map) return Array.from(heroes.values()) as Hero[];
-          return Object.values(heroes || {}) as Hero[];
-        },
-        getEnemies: () => {
-          const state = combatEngine.getState();
-          return (state.currentEnemies || []) as Enemy[];
-        },
-        getState: () => combatEngine.getState()
-      });
+      // Test helper context removed - combat starts automatically
       
       
       // Return cleanup function to unregister callbacks when effect re-runs or component unmounts
@@ -2912,23 +2962,7 @@ export default function BrowserSourcePage() {
         </div>
       )}
 
-      {/* Test Panel */}
-      <TestPanel
-        heroes={(() => {
-          if (!combatEngineRef.current) return [];
-          const state = combatEngineRef.current.getState();
-          const heroes = state.heroes;
-          if (Array.isArray(heroes)) return heroes as Hero[];
-          if (heroes instanceof Map) return Array.from(heroes.values()) as Hero[];
-          return Object.values(heroes || {}) as Hero[];
-        })()}
-        enemies={(() => {
-          if (!combatEngineRef.current) return [];
-          const state = combatEngineRef.current.getState();
-          return (state.currentEnemies || []) as Enemy[];
-        })()}
-        combatEngine={combatEngineRef.current || undefined}
-      />
+      {/* Test Panel removed - combat starts automatically */}
     </div>
   );
 }
