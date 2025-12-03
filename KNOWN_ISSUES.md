@@ -69,3 +69,4 @@ Unknown - likely related to:
 - Auto-cleans old format keys on mount
 - Auto-clears removedHeroIds for heroes in Firebase
 - Consistent state management
+

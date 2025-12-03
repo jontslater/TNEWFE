@@ -76,17 +76,8 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
       }
     }, [isTransformed, enemyName, enemyType, currentAnimation?.name, playAnimation]);
 
-    // For Elder Dragon, ensure we use idleBattle when in idle state
-    useEffect(() => {
-      if ((enemyName === 'Elder Dragon' || enemyType === 'Elder Dragon')) {
-        const currentAnimName = currentAnimation?.name;
-        
-        // If we're in idle state, switch to idleBattle
-        if (currentAnimName === 'idle') {
-          playAnimation('idleBattle');
-        }
-      }
-    }, [enemyName, enemyType, currentAnimation?.name, playAnimation]);
+    // REMOVED: Elder Dragon idle → idleBattle switching (caused glitch)
+    // Default is already set to 'idleBattle' above, no need to switch!
 
     const spriteRef = useRef<HTMLDivElement>(null);
     const rafRef = useRef<number | null>(null);

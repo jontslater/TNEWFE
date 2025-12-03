@@ -86,3 +86,4 @@ src/pages/
 3. Start building out idle mode features
 4. Add mode transitions when ready
 
+

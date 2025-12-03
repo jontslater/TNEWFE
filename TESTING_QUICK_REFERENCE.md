@@ -206,3 +206,4 @@ When reporting an issue, include:
 5. **Steps to reproduce**: Exact steps to trigger the issue
 6. **Screenshots**: If applicable
 
+

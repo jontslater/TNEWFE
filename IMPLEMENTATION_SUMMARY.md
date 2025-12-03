@@ -208,3 +208,4 @@ The `validateCombatState()` function:
 - ✅ Battlefield listener warnings removed/silenced
 - ✅ No memory leaks (interval tracking added)
 
+

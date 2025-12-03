@@ -32,8 +32,20 @@ export function getEnemyAnimationKey(enemyType: string): string {
     'Adult Dragon': 'adultDragon',
     'Demon Lord': 'demonLord',
     'Elder Dragon': 'elderDragon',
+    // Raid wave dragons
+    'Dragon_1': 'dragon1',
+    'Dragon_2': 'dragon2',
+    'Dragon_3': 'dragon3',
   };
-  return mapping[enemyType] || 'kobold'; // Default fallback
+  
+  const result = mapping[enemyType];
+  
+  if (!result) {
+    console.error(`[getEnemyAnimationKey] ❌ NO MAPPING for enemyType: "${enemyType}"`);
+    console.error(`[getEnemyAnimationKey] Available mappings:`, Object.keys(mapping));
+  }
+  
+  return result || enemyType; // Return original if no mapping (will cause error and show us what's wrong)
 }
 
 /**
@@ -201,6 +213,222 @@ export const ENEMY_ANIMATIONS: Record<string, Record<string, SpriteAnimationData
       frameHeight: 48,
       duration: 1080,
       spriteSheet: "/Sprites/enemies/EnemySprites/Baby Dragon 2D Pixel Art/Sprites/outline/projectile_diagonal.png",
+    },
+  },
+  dragon1: {
+    idle: {
+      frameCount: 7,
+      frameWidth: 256,  // Correct size from PSD
+      frameHeight: 256,
+      duration: 1260, // 7 frames * 180ms
+      spriteSheet: "/Sprites/enemies/Dragon_1/Idle.png",
+    },
+    attack: {
+      frameCount: 4,
+      frameWidth: 256,
+      frameHeight: 256,
+      duration: 720, // 4 frames * 180ms
+      spriteSheet: "/Sprites/enemies/Dragon_1/Attack_1.png",
+    },
+    attack2: {
+      frameCount: 10,
+      frameWidth: 256,
+      frameHeight: 256,
+      duration: 1800, // 10 frames * 180ms
+      spriteSheet: "/Sprites/enemies/Dragon_1/Attack_2.png",
+    },
+    special: {
+      frameCount: 12,  // Confirmed: 12 frames
+      frameWidth: 256,
+      frameHeight: 256,
+      duration: 2160, // 12 frames * 180ms
+      spriteSheet: "/Sprites/enemies/Dragon_1/Special.png",
+    },
+    hurt: {
+      frameCount: 4,
+      frameWidth: 256,
+      frameHeight: 256,
+      duration: 720, // 4 frames * 180ms
+      spriteSheet: "/Sprites/enemies/Dragon_1/Hurt.png",
+    },
+    death: {
+      frameCount: 3,
+      frameWidth: 256,
+      frameHeight: 256,
+      duration: 540, // 3 frames * 180ms
+      spriteSheet: "/Sprites/enemies/Dragon_1/Dead.png",
+    },
+    rise: {
+      frameCount: 7,
+      frameWidth: 256,
+      frameHeight: 256,
+      duration: 1260, // 7 frames * 180ms
+      spriteSheet: "/Sprites/enemies/Dragon_1/Rise.png",
+    },
+    flight: {
+      frameCount: 12,
+      frameWidth: 256,  // Exact: 3072px total / 12 frames = 256px per frame
+      frameHeight: 256, // Image is 256px tall
+      duration: 2160, // 12 frames * 180ms
+      spriteSheet: "/Sprites/enemies/Dragon_1/Flight.png",
+    },
+    landing: {
+      frameCount: 5,
+      frameWidth: 256,
+      frameHeight: 256,
+      duration: 900, // 5 frames * 180ms
+      spriteSheet: "/Sprites/enemies/Dragon_1/Landing.png",
+    },
+    walk: {
+      frameCount: 12,
+      frameWidth: 256,
+      frameHeight: 256,
+      duration: 2160, // 12 frames * 180ms
+      spriteSheet: "/Sprites/enemies/Dragon_1/Walk.png",
+    },
+  },
+  dragon2: {
+    idle: {
+      frameCount: 7,
+      frameWidth: 256,
+      frameHeight: 256,
+      duration: 1260,
+      spriteSheet: "/Sprites/enemies/Dragon_2/Idle.png",
+    },
+    attack: {
+      frameCount: 4,
+      frameWidth: 256,
+      frameHeight: 256,
+      duration: 720,
+      spriteSheet: "/Sprites/enemies/Dragon_2/Attack_1.png",
+    },
+    attack2: {
+      frameCount: 10,
+      frameWidth: 256,
+      frameHeight: 256,
+      duration: 1800,
+      spriteSheet: "/Sprites/enemies/Dragon_2/Attack_2.png",
+    },
+    special: {
+      frameCount: 13,
+      frameWidth: 256,
+      frameHeight: 256,
+      duration: 2340, // 13 frames * 180ms
+      spriteSheet: "/Sprites/enemies/Dragon_2/Special.png",
+    },
+    hurt: {
+      frameCount: 4,
+      frameWidth: 256,
+      frameHeight: 256,
+      duration: 720,
+      spriteSheet: "/Sprites/enemies/Dragon_2/Hurt.png",
+    },
+    death: {
+      frameCount: 3,
+      frameWidth: 256,
+      frameHeight: 256,
+      duration: 540,
+      spriteSheet: "/Sprites/enemies/Dragon_2/Dead.png",
+    },
+    rise: {
+      frameCount: 7,
+      frameWidth: 256,
+      frameHeight: 256,
+      duration: 1260,
+      spriteSheet: "/Sprites/enemies/Dragon_2/Rise.png",
+    },
+    flight: {
+      frameCount: 12,
+      frameWidth: 256,
+      frameHeight: 256,
+      duration: 2160,
+      spriteSheet: "/Sprites/enemies/Dragon_2/Flight.png",
+    },
+    landing: {
+      frameCount: 5,
+      frameWidth: 256,
+      frameHeight: 256,
+      duration: 900,
+      spriteSheet: "/Sprites/enemies/Dragon_2/Landing.png",
+    },
+    walk: {
+      frameCount: 12,
+      frameWidth: 256,
+      frameHeight: 256,
+      duration: 2160,
+      spriteSheet: "/Sprites/enemies/Dragon_2/Walk.png",
+    },
+  },
+  dragon3: {
+    idle: {
+      frameCount: 7,
+      frameWidth: 256,
+      frameHeight: 256,
+      duration: 1260,
+      spriteSheet: "/Sprites/enemies/Dragon_3/Idle.png",
+    },
+    attack: {
+      frameCount: 4,
+      frameWidth: 256,
+      frameHeight: 256,
+      duration: 720,
+      spriteSheet: "/Sprites/enemies/Dragon_3/Attack_1.png",
+    },
+    attack2: {
+      frameCount: 10,
+      frameWidth: 256,
+      frameHeight: 256,
+      duration: 1800,
+      spriteSheet: "/Sprites/enemies/Dragon_3/Attack_2.png",
+    },
+    special: {
+      frameCount: 13,
+      frameWidth: 256,
+      frameHeight: 256,
+      duration: 2340, // 13 frames * 180ms
+      spriteSheet: "/Sprites/enemies/Dragon_3/Special.png",
+    },
+    hurt: {
+      frameCount: 4,
+      frameWidth: 256,
+      frameHeight: 256,
+      duration: 720,
+      spriteSheet: "/Sprites/enemies/Dragon_3/Hurt.png",
+    },
+    death: {
+      frameCount: 3,
+      frameWidth: 256,
+      frameHeight: 256,
+      duration: 540,
+      spriteSheet: "/Sprites/enemies/Dragon_3/Dead.png",
+    },
+    rise: {
+      frameCount: 7,
+      frameWidth: 256,
+      frameHeight: 256,
+      duration: 1260,
+      spriteSheet: "/Sprites/enemies/Dragon_3/Rise.png",
+    },
+    flight: {
+      frameCount: 12,
+      frameWidth: 256,
+      frameHeight: 256,
+      duration: 2160,
+      spriteSheet: "/Sprites/enemies/Dragon_3/Flight.png",
+    },
+    landing: {
+      frameCount: 5,
+      frameWidth: 256,
+      frameHeight: 256,
+      duration: 900,
+      spriteSheet: "/Sprites/enemies/Dragon_3/Landing.png",
+    },
+    walk: {
+      frameCount: 12,
+      frameWidth: 256,
+      frameHeight: 256,
+      duration: 2160,
+      spriteSheet: "/Sprites/enemies/Dragon_3/Walk.png",
     },
   },
   imp: {
@@ -699,8 +927,8 @@ export const ENEMY_ANIMATIONS: Record<string, Record<string, SpriteAnimationData
   elderDragon: {
     idle: {
       frameCount: 161,
-      frameWidth: 725, // Actual sprite frame width
-      frameHeight: 445, // Actual sprite frame height
+      frameWidth: 725, // Confirmed from image metadata
+      frameHeight: 445,
       duration: 2680, // 161 frames / 60 fps
       spriteSheet: "/Sprites/enemies/Dragon - Fully Animated/Idle/001.png",
     },

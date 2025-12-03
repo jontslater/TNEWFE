@@ -352,10 +352,45 @@ export default function BrowserSourceConfigPage() {
           <p className="text-gray-400 text-sm">Configure your OBS browser source settings</p>
         </div>
 
-        {/* Browser Source URL */}
-        <div className="mb-6">
+        {/* Browser Source URLs */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          {/* Clean Battlefield URL */}
           <div className="bg-gray-800 rounded-lg p-4">
-            <h2 className="text-xl font-bold mb-3">Browser Source URL</h2>
+            <h2 className="text-xl font-bold mb-3">🎯 Clean Battlefield (Recommended)</h2>
+            <p className="text-gray-400 text-xs mb-3">New clean combat system built from scratch</p>
+            <div className="bg-gray-900 rounded p-2 mb-3 border border-gray-700 max-h-32 overflow-y-auto">
+              <code className="text-xs text-gray-300 break-all">
+                {user?.twitchId 
+                  ? `${window.location.origin}/clean-battlefield?battlefieldId=twitch:${user.twitchId}`
+                  : 'Please log in'}
+              </code>
+            </div>
+            <button
+              onClick={async () => {
+                if (!user?.twitchId) {
+                  alert('Please log in to generate your clean battlefield URL');
+                  return;
+                }
+                const url = `${window.location.origin}/clean-battlefield?battlefieldId=twitch:${user.twitchId}`;
+                try {
+                  await navigator.clipboard.writeText(url);
+                  alert('Clean Battlefield URL copied to clipboard!');
+                } catch (err) {
+                  console.error('Failed to copy URL:', err);
+                  alert('Failed to copy URL. Please copy it manually.');
+                }
+              }}
+              disabled={!user?.twitchId}
+              className="w-full px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:cursor-not-allowed rounded font-semibold text-sm"
+            >
+              Copy Clean Battlefield URL
+            </button>
+          </div>
+
+          {/* Legacy Browser Source URL */}
+          <div className="bg-gray-800 rounded-lg p-4">
+            <h2 className="text-xl font-bold mb-3">Legacy Browser Source</h2>
+            <p className="text-gray-400 text-xs mb-3">Original browser source (complex)</p>
             <div className="bg-gray-900 rounded p-2 mb-3 border border-gray-700 max-h-32 overflow-y-auto">
               <code className="text-xs text-gray-300 break-all">
                 {browserSourceUrl || 'Please log in'}
@@ -366,7 +401,7 @@ export default function BrowserSourceConfigPage() {
               disabled={!browserSourceUrl}
               className="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-700 disabled:cursor-not-allowed rounded font-semibold text-sm"
             >
-              Copy URL
+              Copy Legacy URL
             </button>
           </div>
         </div>

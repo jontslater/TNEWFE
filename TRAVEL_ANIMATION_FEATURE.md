@@ -177,3 +177,4 @@ setTimeout(() => setTravelingText(false), 5000);
 **Estimated Time:** 30-45 minutes  
 **Difficulty:** Easy  
 **Fun Factor:** HIGH! 🎮✨
+

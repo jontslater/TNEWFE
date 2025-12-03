@@ -66,7 +66,8 @@ export const ROLE_CONFIG: Record<string, any> = {
 export const DEBUFFS: Record<string, any> = {
   weaken: { name: 'Weakened', icon: '💔', duration: 10000, effect: 'attackReduction', value: 0.3, description: 'Attack reduced by 30%', color: '#9b59b6' },
   vulnerable: { name: 'Vulnerable', icon: '🛡️💥', duration: 8000, effect: 'defenseReduction', value: 0.4, description: 'Defense reduced by 40%', color: '#e74c3c' },
-  poison: { name: 'Poisoned', icon: '☠️', duration: 12000, effect: 'damageOverTime', value: 5, tickRate: 2000, description: '5 damage every 2 seconds', color: '#27ae60' },
+  poison: { name: 'Poisoned', icon: '☠️', duration: 8000, effect: 'damageOverTime', value: 5, tickRate: 1000, description: 'Poison damage over time', color: '#27ae60' },
+  burning: { name: 'Burning', icon: '🔥', duration: 6000, effect: 'damageOverTime', value: 10, tickRate: 1000, description: 'Fire damage over time', color: '#ff4500' },
   corruption: { name: 'Corruption', icon: '😈', duration: 15000, effect: 'damageOverTime', value: 0, tickRate: 2000, description: 'Corruption damage over time', color: '#8e44ad' },
   bleed: { name: 'Bleeding', icon: '🩸', duration: 10000, effect: 'damageOverTime', value: 3, tickRate: 2000, description: '3 damage every 2 seconds', color: '#c0392b' },
   stunned: { name: 'Stunned', icon: '💫', duration: 3000, effect: 'skipTurn', value: 1, description: 'Cannot act', color: '#f39c12' },

@@ -166,6 +166,37 @@ const ENEMY_TEMPLATES = [
     type: 'Headless Horseman'
   },
   // TIER 4 - End Game (Levels 31+)
+  // RAID DRAGONS - Wave enemies for Elder Dragon raid
+  {
+    name: 'Dragon Whelp',
+    baseHp: 8000,
+    baseAttack: 150,
+    baseDefense: 80,
+    xp: 800,
+    isBoss: false,
+    level: 40,
+    type: 'Dragon_1' // Maps to Dragon_1 sprite folder
+  },
+  {
+    name: 'Dragon Guardian',
+    baseHp: 10000,
+    baseAttack: 180,
+    baseDefense: 100,
+    xp: 1000,
+    isBoss: false,
+    level: 42,
+    type: 'Dragon_2' // Maps to Dragon_2 sprite folder
+  },
+  {
+    name: 'Dragon Sentinel',
+    baseHp: 12000,
+    baseAttack: 200,
+    baseDefense: 120,
+    xp: 1200,
+    isBoss: false,
+    level: 44,
+    type: 'Dragon_3' // Maps to Dragon_3 sprite folder
+  },
   {
     name: 'Adult Dragon',
     baseHp: 600,
@@ -338,6 +369,16 @@ export function generateEnemiesForCombat(
   
   // Pick appropriate enemies for party level
   let availableEnemies = ENEMY_TEMPLATES.filter(e => scaling.avgLevel >= e.level - 1);
+  
+  // EXCLUDE RAID-ONLY BOSSES from idle mode
+  const RAID_ONLY_BOSSES = [
+    'Elder Dragon', 
+    'Adult Dragon',
+    'Dragon Whelp',     // Raid wave enemy
+    'Dragon Guardian',  // Raid wave enemy
+    'Dragon Sentinel'   // Raid wave enemy
+  ];
+  availableEnemies = availableEnemies.filter(e => !RAID_ONLY_BOSSES.includes(e.name));
   
   // DEBUG MODE: If debug enemy is set, only allow that enemy
   const DEBUG_ENABLED_ENEMY = getDebugEnabledEnemy();

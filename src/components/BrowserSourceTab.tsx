@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { generateBrowserSourceUrl } from '../utils/browserSource';
 import { useAuth } from '../hooks/useAuth';
+import { db } from '../utils/firebase';
+import { doc, onSnapshot } from 'firebase/firestore';
 
 interface BrowserSourceTabProps {
   userId?: string | null | undefined;
@@ -10,6 +12,17 @@ interface BrowserSourceTabProps {
 export default function BrowserSourceTab({ userId: propUserId, token: propToken }: BrowserSourceTabProps) {
   const { user } = useAuth();
   const [copied, setCopied] = useState(false);
+  const [copiedCleanCode, setCopiedCleanCode] = useState(false);
+  const [activeQueue, setActiveQueue] = useState<any>(null);
+  const [showQueueModal, setShowQueueModal] = useState(false);
+  
+  // Auto-show modal when queue is created
+  useEffect(() => {
+    if (activeQueue) {
+      console.log('[Queue Modal] Active queue detected, showing modal:', activeQueue.code);
+      setShowQueueModal(true);
+    }
+  }, [activeQueue?.code]); // Watch for code change to detect new queues
   
   // Get userId and token from props or auth
   const userId = propUserId || user?.twitchId || user?.id;
@@ -23,6 +36,59 @@ export default function BrowserSourceTab({ userId: propUserId, token: propToken 
   const browserSourceUrl = battlefieldIdentifierString && token 
     ? generateBrowserSourceUrl(battlefieldIdentifierString, token)
     : null;
+
+  // Clean Battlefield URL (uses twitchId)
+  const cleanBattlefieldUrl = user?.twitchId 
+    ? `${window.location.origin}/clean-battlefield?battlefieldId=twitch:${user.twitchId}`
+    : null;
+
+  const [copiedClean, setCopiedClean] = useState(false);
+
+  // Listen for active queue
+  useEffect(() => {
+    if (!user?.twitchId) {
+      console.log('[Queue] No twitchId, skipping queue listener');
+      return;
+    }
+    
+    const battlefieldId = `twitch:${user.twitchId}`;
+    console.log('═══════════════════════════════════════════════');
+    console.log('[Queue] 🔍 QUEUE LISTENER SETUP');
+    console.log('[Queue] User:', user.twitchUsername);
+    console.log('[Queue] TwitchId:', user.twitchId);
+    console.log('[Queue] BattlefieldId:', battlefieldId);
+    console.log('[Queue] Collection: battlefieldQueues');
+    console.log('[Queue] Document ID:', battlefieldId);
+    console.log('═══════════════════════════════════════════════');
+    
+    const queueRef = doc(db, 'battlefieldQueues', battlefieldId);
+    
+    const unsubscribe = onSnapshot(queueRef, (snapshot) => {
+      console.log('[Queue] 📡 Snapshot received!');
+      console.log('[Queue] Document exists:', snapshot.exists());
+      
+      if (snapshot.exists()) {
+        const queueData = { id: snapshot.id, ...snapshot.data() };
+        console.log('[Queue] ✅ Active queue detected!');
+        console.log('[Queue] Code:', queueData.code);
+        console.log('[Queue] Name:', queueData.name);
+        console.log('[Queue] Full data:', queueData);
+        setActiveQueue(queueData);
+      } else {
+        console.log('[Queue] ⚠️ No active queue document found');
+        console.log('[Queue] Path checked:', `battlefieldQueues/${battlefieldId}`);
+        setActiveQueue(null);
+      }
+    }, (error) => {
+      console.error('[Queue] ❌ Error listening to queue:', error);
+      setActiveQueue(null);
+    });
+    
+    return () => {
+      console.log('[Queue] Cleaning up queue listener');
+      unsubscribe();
+    };
+  }, [user?.twitchId]);
 
   const handleCopy = async () => {
     if (!browserSourceUrl) {
@@ -49,15 +115,234 @@ export default function BrowserSourceTab({ userId: propUserId, token: propToken 
     }
   };
 
+  const handleCopyClean = async () => {
+    if (!cleanBattlefieldUrl) {
+      alert('Unable to generate Clean Battlefield URL. Please ensure you are logged in.');
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(cleanBattlefieldUrl);
+      setCopiedClean(true);
+      setTimeout(() => setCopiedClean(false), 2000);
+    } catch (err) {
+      // Fallback
+      const textArea = document.createElement('textarea');
+      textArea.value = cleanBattlefieldUrl;
+      textArea.style.position = 'fixed';
+      textArea.style.opacity = '0';
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+      setCopiedClean(true);
+      setTimeout(() => setCopiedClean(false), 2000);
+    }
+  };
+
   return (
-    <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-      <h2 className="text-2xl font-bold text-white mb-4">📺 OBS Browser Source</h2>
-      
-      <div className="space-y-4">
+    <>
+      {/* Queue Code Modal */}
+      {showQueueModal && activeQueue && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50" onClick={() => setShowQueueModal(false)}>
+          <div className="bg-gray-800 rounded-lg p-8 border-4 border-purple-500 max-w-2xl w-full mx-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            {/* Header */}
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-3xl font-bold text-purple-300">🏰 Queue Created!</h2>
+              <button
+                onClick={() => setShowQueueModal(false)}
+                className="text-gray-400 hover:text-white text-2xl"
+              >
+                ✕
+              </button>
+            </div>
+            
+            {/* Room Code - BIG */}
+            <div className="bg-purple-900/50 border-2 border-purple-400 rounded-lg p-8 mb-6 text-center">
+              <div className="text-sm text-purple-300 mb-2">📋 Room Code</div>
+              <div className="text-7xl font-bold text-purple-100 tracking-widest mb-4">
+                {activeQueue.code}
+              </div>
+              <button
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(activeQueue.code);
+                    setCopiedCleanCode(true);
+                    setTimeout(() => setCopiedCleanCode(false), 2000);
+                  } catch (err) {
+                    console.error('Failed to copy:', err);
+                  }
+                }}
+                className={`px-8 py-3 rounded-lg font-bold text-lg transition-colors ${
+                  copiedCleanCode
+                    ? 'bg-green-600 text-white'
+                    : 'bg-purple-600 hover:bg-purple-700 text-white'
+                }`}
+              >
+                {copiedCleanCode ? '✓ Copied!' : '📋 Copy Code'}
+              </button>
+            </div>
+            
+            {/* Queue Info */}
+            <div className="bg-gray-900 rounded-lg p-4 mb-6">
+              <h3 className="text-xl font-bold text-white mb-3">{activeQueue.name}</h3>
+              
+              <div className="grid grid-cols-2 gap-3 mb-4">
+                <div className="bg-gray-800 rounded p-3">
+                  <div className="text-xs text-gray-400">Level Range</div>
+                  <div className="text-lg font-semibold text-white">
+                    {activeQueue.requirements?.minLevel}-{activeQueue.requirements?.maxLevel}
+                  </div>
+                </div>
+                <div className="bg-gray-800 rounded p-3">
+                  <div className="text-xs text-gray-400">Min Gear Score</div>
+                  <div className="text-lg font-semibold text-white">
+                    {activeQueue.requirements?.minGearScore}+
+                  </div>
+                </div>
+              </div>
+              
+              {/* Role Requirements */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-300">🛡️ Tanks</span>
+                  <span className="font-semibold text-white">
+                    {activeQueue.requirements?.roles?.tank?.current || 0}/{activeQueue.requirements?.roles?.tank?.required || 0}
+                    {(activeQueue.requirements?.roles?.tank?.current || 0) >= (activeQueue.requirements?.roles?.tank?.required || 0) ? ' ✅' : ' ⚠️'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-300">💚 Healers</span>
+                  <span className="font-semibold text-white">
+                    {activeQueue.requirements?.roles?.healer?.current || 0}/{activeQueue.requirements?.roles?.healer?.required || 0}
+                    {(activeQueue.requirements?.roles?.healer?.current || 0) >= (activeQueue.requirements?.roles?.healer?.required || 0) ? ' ✅' : ' ⚠️'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-300">⚔️ DPS</span>
+                  <span className="font-semibold text-white">
+                    {activeQueue.requirements?.roles?.dps?.current || 0}/{activeQueue.requirements?.roles?.dps?.required || 0}
+                    {(activeQueue.requirements?.roles?.dps?.current || 0) >= (activeQueue.requirements?.roles?.dps?.required || 0) ? ' ✅' : ' ⚠️'}
+                  </span>
+                </div>
+              </div>
+            </div>
+            
+            {/* Instructions */}
+            <div className="bg-blue-900/30 border border-blue-600 rounded-lg p-4">
+              <h4 className="text-blue-300 font-semibold mb-2">📋 How to Share</h4>
+              <ul className="text-sm text-gray-300 space-y-1">
+                <li>• Copy the code above</li>
+                <li>• Share in Discord, stream, or chat</li>
+                <li>• Players type: <code className="bg-gray-800 px-2 py-1 rounded">!q{activeQueue.type} {activeQueue.code}</code></li>
+              </ul>
+            </div>
+            
+            {activeQueue.isReady && (
+              <div className="mt-4 bg-green-900/50 border-2 border-green-500 rounded-lg p-4 text-center">
+                <div className="text-green-300 font-bold text-lg animate-pulse">
+                  🎉 GROUP IS READY! Launching soon... ⚔️
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-2xl font-bold text-white">📺 OBS Browser Source</h2>
+          
+          <div className="flex gap-2">
+            {/* Debug: Test Queue Button */}
+            <button
+              onClick={() => {
+                console.log('[Queue Debug] Creating test queue...');
+                console.log('[Queue Debug] User twitchId:', user?.twitchId);
+                console.log('[Queue Debug] BattlefieldId:', `twitch:${user?.twitchId}`);
+                
+                setActiveQueue({
+                  code: 'TEST',
+                  name: 'Test Dungeon',
+                  type: 'dungeon',
+                  description: 'Test queue',
+                  requirements: {
+                    minLevel: 1,
+                    maxLevel: 20,
+                    minGearScore: 0,
+                    roles: {
+                      tank: { current: 0, required: 1 },
+                      healer: { current: 0, required: 1 },
+                      dps: { current: 0, required: 3 }
+                    }
+                  },
+                  participants: [],
+                  totalPlayers: 5
+                });
+              }}
+              className="px-3 py-1 bg-yellow-600 hover:bg-yellow-700 text-white text-sm font-semibold rounded"
+            >
+              🧪 Test Queue
+            </button>
+            
+            {/* Show Queue Button (if active queue exists) */}
+            {activeQueue && (
+              <button
+                onClick={() => setShowQueueModal(true)}
+                className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded flex items-center gap-2 animate-pulse"
+              >
+                🏰 View Queue Code
+              </button>
+            )}
+          </div>
+        </div>
+        
+        <div className="space-y-4">
+        {/* Clean Battlefield URL (Recommended) */}
+        <div className="bg-green-900/30 rounded-lg p-4 border border-green-700">
+          <div className="flex items-center gap-2 mb-3">
+            <h3 className="text-lg font-semibold text-green-300">🎯 Clean Battlefield</h3>
+            <span className="px-2 py-0.5 bg-green-600 text-white text-xs font-bold rounded">RECOMMENDED</span>
+          </div>
+          <p className="text-gray-300 mb-4 text-sm">
+            Step-by-step combat system built from scratch. Clean, simple, and easy to build on.
+          </p>
+          
+          <div className="space-y-3">
+            <div>
+              <label className="block text-sm font-semibold text-gray-400 mb-2">
+                Clean Battlefield URL
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={cleanBattlefieldUrl || 'Please log in to generate URL'}
+                  readOnly
+                  className="flex-1 px-4 py-2 bg-gray-700 text-gray-200 rounded border border-gray-600 focus:outline-none focus:border-green-500 font-mono text-xs"
+                />
+                <button
+                  onClick={handleCopyClean}
+                  disabled={!cleanBattlefieldUrl}
+                  className={`px-6 py-2 rounded font-semibold transition-colors ${
+                    copiedClean
+                      ? 'bg-green-600 text-white'
+                      : cleanBattlefieldUrl
+                      ? 'bg-green-600 hover:bg-green-700 text-white'
+                      : 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                  }`}
+                >
+                  {copiedClean ? '✓ Copied!' : '📋 Copy'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Unified Browser Source (Legacy) */}
         <div className="bg-gray-900 rounded-lg p-4 border border-gray-700">
-          <p className="text-gray-300 mb-4">
-            This unified browser source automatically switches between idle combat, raids, and dungeons.
-            When you join a raid or dungeon, the browser source will automatically display it.
+          <h3 className="text-lg font-semibold text-gray-300 mb-2">Unified Browser Source (Legacy)</h3>
+          <p className="text-gray-400 mb-4 text-sm">
+            Auto-switches between idle combat, raids, and dungeons. More complex but feature-complete.
           </p>
           
           <div className="space-y-3">
@@ -70,7 +355,7 @@ export default function BrowserSourceTab({ userId: propUserId, token: propToken 
                   type="text"
                   value={browserSourceUrl || 'Please log in to generate URL'}
                   readOnly
-                  className="flex-1 px-4 py-2 bg-gray-700 text-gray-200 rounded border border-gray-600 focus:outline-none focus:border-cyan-500"
+                  className="flex-1 px-4 py-2 bg-gray-700 text-gray-200 rounded border border-gray-600 focus:outline-none focus:border-cyan-500 font-mono text-xs"
                 />
                 <button
                   onClick={handleCopy}
@@ -110,7 +395,161 @@ export default function BrowserSourceTab({ userId: propUserId, token: propToken 
             <li><strong className="text-white">1920x1080 resolution:</strong> Optimized for streaming</li>
           </ul>
         </div>
+
+        {/* Active Queue Display - Inline (not modal, just status) */}
+        {activeQueue && !showQueueModal && (
+          <div className="bg-purple-900/30 rounded-lg p-4 border border-purple-700">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-lg font-semibold text-purple-300">🏰 Active Queue</h3>
+              <button
+                onClick={() => setShowQueueModal(true)}
+                className="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded"
+              >
+                View Code
+              </button>
+            </div>
+            
+            {/* Queue Info */}
+            <div className="bg-gray-800 rounded-lg p-4 mb-3">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <h4 className="text-xl font-bold text-white">{activeQueue.name || 'Queue'}</h4>
+                  <p className="text-gray-400 text-sm">{activeQueue.description || ''}</p>
+                </div>
+                <div className="text-right">
+                  <div className="text-xs text-gray-400 mb-1">Room Code</div>
+                  <div className="text-3xl font-bold text-purple-400 tracking-wider">
+                    {activeQueue.code || 'XXXX'}
+                  </div>
+                </div>
+              </div>
+              
+              {/* Copy Code Button */}
+              <button
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(activeQueue.code);
+                    setCopiedCleanCode(true);
+                    setTimeout(() => setCopiedCleanCode(false), 2000);
+                  } catch (err) {
+                    console.error('Failed to copy code:', err);
+                  }
+                }}
+                className={`w-full px-4 py-2 rounded font-semibold transition-colors mb-3 ${
+                  copiedCleanCode
+                    ? 'bg-green-600 text-white'
+                    : 'bg-purple-600 hover:bg-purple-700 text-white'
+                }`}
+              >
+                {copiedCleanCode ? '✓ Code Copied!' : '📋 Copy Room Code'}
+              </button>
+              
+              {/* Requirements */}
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                <div className="bg-gray-900 rounded p-2">
+                  <div className="text-xs text-gray-400">Level Range</div>
+                  <div className="text-sm font-semibold text-white">
+                    {activeQueue.requirements?.minLevel}-{activeQueue.requirements?.maxLevel}
+                  </div>
+                </div>
+                <div className="bg-gray-900 rounded p-2">
+                  <div className="text-xs text-gray-400">Min Gear Score</div>
+                  <div className="text-sm font-semibold text-white">
+                    {activeQueue.requirements?.minGearScore}+
+                  </div>
+                </div>
+              </div>
+              
+              {/* Role Progress */}
+              <div className="space-y-2 mb-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-300">🛡️ Tanks</span>
+                  <div className="flex items-center gap-2">
+                    <div className="text-sm font-semibold text-white">
+                      {activeQueue.requirements?.roles?.tank?.current || 0}/{activeQueue.requirements?.roles?.tank?.required || 0}
+                    </div>
+                    {(activeQueue.requirements?.roles?.tank?.current || 0) >= (activeQueue.requirements?.roles?.tank?.required || 0) ? (
+                      <span className="text-green-400 text-xs">✅</span>
+                    ) : (
+                      <span className="text-yellow-400 text-xs">⚠️</span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-300">💚 Healers</span>
+                  <div className="flex items-center gap-2">
+                    <div className="text-sm font-semibold text-white">
+                      {activeQueue.requirements?.roles?.healer?.current || 0}/{activeQueue.requirements?.roles?.healer?.required || 0}
+                    </div>
+                    {(activeQueue.requirements?.roles?.healer?.current || 0) >= (activeQueue.requirements?.roles?.healer?.required || 0) ? (
+                      <span className="text-green-400 text-xs">✅</span>
+                    ) : (
+                      <span className="text-yellow-400 text-xs">⚠️</span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-300">⚔️ DPS</span>
+                  <div className="flex items-center gap-2">
+                    <div className="text-sm font-semibold text-white">
+                      {activeQueue.requirements?.roles?.dps?.current || 0}/{activeQueue.requirements?.roles?.dps?.required || 0}
+                    </div>
+                    {(activeQueue.requirements?.roles?.dps?.current || 0) >= (activeQueue.requirements?.roles?.dps?.required || 0) ? (
+                      <span className="text-green-400 text-xs">✅</span>
+                    ) : (
+                      <span className="text-yellow-400 text-xs">⚠️</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+              
+              {/* Participants */}
+              {activeQueue.participants && activeQueue.participants.length > 0 && (
+                <div className="bg-gray-900 rounded p-3">
+                  <div className="text-xs text-gray-400 mb-2">Party Members ({activeQueue.participants.length}/{activeQueue.totalPlayers || 5})</div>
+                  <div className="space-y-1">
+                    {activeQueue.participants.map((p: any, index: number) => (
+                      <div key={index} className="flex items-center justify-between text-xs">
+                        <span className="text-gray-300">
+                          {p.role === 'tank' && '🛡️'}
+                          {p.role === 'healer' && '💚'}
+                          {p.role === 'dps' && '⚔️'}
+                          {' '}
+                          {p.username}
+                        </span>
+                        <span className="text-gray-500">
+                          {p.class} Lv{p.level} (GS {p.gearScore})
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              {/* Ready Status */}
+              {activeQueue.isReady && (
+                <div className="bg-green-900/50 border border-green-500 rounded p-3 mt-3 text-center">
+                  <div className="text-green-300 font-bold text-sm animate-pulse">
+                    🎉 GROUP IS READY! Launching soon... ⚔️
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            {/* Instructions */}
+            <div className="bg-gray-800 rounded p-3">
+              <div className="text-xs text-gray-400 mb-2">📋 How to Share</div>
+              <div className="text-sm text-gray-300 space-y-1">
+                <div>• Copy the room code above</div>
+                <div>• Share in Discord, chat, or wherever you want</div>
+                <div>• Players type: <code className="bg-gray-900 px-1 rounded">!q{activeQueue.type} {activeQueue.code}</code></div>
+                <div>• Queue auto-launches when all roles are filled!</div>
+              </div>
+            </div>
+          </div>
+        )}
+        </div>
       </div>
-    </div>
+    </>
   );
 }

@@ -57,3 +57,4 @@ Combat now runs continuously:
 - ✅ Adventure loop always running
 - ✅ No test mode blocking
 
+

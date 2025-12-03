@@ -292,3 +292,4 @@ Most explicit and clear.
 2. Test with !join command
 3. Verify heroes persist through F5 reload
 4. Heroes should now stay on battlefield! 🎉
+

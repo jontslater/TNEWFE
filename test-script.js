@@ -455,3 +455,4 @@ if (typeof window !== 'undefined') {
   console.log('Or run individual tests: testCombatSystem(), testDeathDetection(), etc.');
 }
 
+

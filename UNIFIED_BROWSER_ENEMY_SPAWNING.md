@@ -392,3 +392,4 @@ Then:
 6. **Adventure continues forever!**
 
 The complete idle adventure system is now running! 🎉
+

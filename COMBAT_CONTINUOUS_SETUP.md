@@ -77,3 +77,4 @@ To verify combat is running continuously:
 
 No test mode or pause flags should interfere with continuous combat flow.
 
+

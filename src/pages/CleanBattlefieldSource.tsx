@@ -9,15 +9,16 @@
  * - Nothing else!
  */
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc } from 'firebase/firestore';
 import { db } from '../utils/firebase';
 import { generateEnemiesForCombat } from '../utils/enemyGeneration';
 import HeroSpriteJS from '../components/HeroSpriteJS';
 import EnemySpriteJS from '../components/EnemySpriteJS';
-import { battlefieldAPI, heroAPI } from '../api/client';
+import { battlefieldAPI, heroAPI, questAPI } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
+import { useActiveInstanceListener } from '../hooks/useActiveInstanceListener';
 import { DEBUFFS, SHOP_ITEMS } from '../utils/fullCombatEngine';
 import { generateLoot, isItemBetter, calculateItemPower } from '../utils/lootGeneration';
 import { calculateSetBonuses } from '../utils/setBonuses';
@@ -134,9 +135,51 @@ interface CombatAction {
 }
 
 export default function CleanBattlefieldSource() {
+  // Inject CSS animation for SCT floating text
+  useEffect(() => {
+    const styleId = 'sct-float-animation';
+    if (!document.getElementById(styleId)) {
+      const style = document.createElement('style');
+      style.id = styleId;
+      style.textContent = `
+        @keyframes float-up {
+          from {
+            opacity: 1;
+            transform: translateY(0);
+          }
+          to {
+            opacity: 0;
+            transform: translateY(-80px);
+          }
+        }
+        
+        @keyframes fadeInOut {
+          0% { opacity: 0; transform: scale(0.8); }
+          20% { opacity: 1; transform: scale(1.1); }
+          80% { opacity: 1; transform: scale(1); }
+          100% { opacity: 0; transform: scale(0.9); }
+        }
+        
+        @keyframes pulse-red {
+          0%, 100% { 
+            filter: brightness(1);
+            box-shadow: inset 0 0 30px rgba(255,0,0,0.5);
+          }
+          50% { 
+            filter: brightness(1.3);
+            box-shadow: inset 0 0 40px rgba(255,0,0,0.8);
+          }
+        }
+      `;
+      document.head.appendChild(style);
+      console.log('[SCT] ✅ Injected float-up animation CSS');
+    }
+  }, []);
+  
   const [searchParams] = useSearchParams();
   const { user } = useAuth();
-  const [heroes, setHeroes] = useState<Hero[]>([]);
+  const [heroes, setHeroes] = useState<Hero[]>([]); // Combat heroes (idle: all on battlefield, raid: participants only)
+  const [loadedHeroes, setLoadedHeroes] = useState<Hero[]>([]); // ALL heroes loaded from Firebase (used to populate raid parties)
   const [enemies, setEnemies] = useState<Enemy[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -150,6 +193,367 @@ export default function CleanBattlefieldSource() {
   const [testHealer, setTestHealer] = useState<Hero | null>(null);
   const [isTraveling, setIsTraveling] = useState(false);
   const [viewerCount, setViewerCount] = useState(0);
+
+  // MODE SWITCHING: Detect if hero is in dungeon/raid instance
+  const [gameMode, setGameMode] = useState<'idle' | 'dungeon' | 'raid'>('idle');
+  const [currentInstanceId, setCurrentInstanceId] = useState<string | null>(null);
+  const [instanceData, setInstanceData] = useState<any>(null);
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const [fadeOpacity, setFadeOpacity] = useState(1);
+  const [showWaveAnnouncement, setShowWaveAnnouncement] = useState(false);
+  
+  // Listen for active instances (dungeons/raids)
+  const { activeInstance, loading: instanceLoading } = useActiveInstanceListener(user?.twitchId || null);
+  
+  // Mode detection: Switch between idle/dungeon/raid based on activeInstance (WITH FADE TRANSITION)
+  useEffect(() => {
+    if (!activeInstance) return;
+    
+    const switchToMode = async (newMode: 'idle' | 'dungeon' | 'raid', instanceId?: string) => {
+      if (newMode === gameMode) return; // Already in this mode
+      
+      console.log(`[Mode] 🎬 Starting transition from ${gameMode} to ${newMode}...`);
+      setIsTransitioning(true);
+      
+      // Fade out (500ms)
+      setFadeOpacity(0);
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Switch mode while faded out
+      console.log(`[Mode] 🎮 Switching to ${newMode.toUpperCase()} mode${instanceId ? `: ${instanceId}` : ''}`);
+      setGameMode(newMode);
+      
+      if (newMode === 'idle') {
+        // IMPORTANT: Clear raid/dungeon data when returning to idle
+        console.log('[Mode] 🧹 Clearing raid/dungeon enemies and data');
+        setCurrentInstanceId(null);
+        setInstanceData(null);
+        setEnemies([]); // Clear raid boss/enemies
+        enemiesRef.current = []; // Clear ref too
+        setInCombat(false); // Stop combat
+        
+        // CRITICAL: Don't clear heroes! They will reload from Firebase listener
+        // The Firebase listener will pick up heroes when their currentBattlefieldId is set back
+        console.log('[Mode] 🔄 Heroes will reload from Firebase when they rejoin battlefield');
+        // Adventure loop will auto-start and generate new enemies
+      } else if (instanceId) {
+        setCurrentInstanceId(instanceId);
+        // Load instance data
+        loadInstanceData(newMode as 'dungeon' | 'raid', instanceId);
+      }
+      
+      // Fade in (500ms)
+      await new Promise(resolve => setTimeout(resolve, 100));
+      setFadeOpacity(1);
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      setIsTransitioning(false);
+      console.log(`[Mode] ✅ Transition complete!`);
+    };
+    
+    if (activeInstance.type && activeInstance.instanceId) {
+      // Entering instance
+      switchToMode(activeInstance.type, activeInstance.instanceId);
+      
+      // Pause adventure loop when entering instance
+      if (adventureIntervalRef.current) {
+        console.log('[Adventure] ⏸️ Pausing adventure loop - entering instance');
+        clearInterval(adventureIntervalRef.current);
+        adventureIntervalRef.current = null;
+      }
+    } else if (gameMode !== 'idle') {
+      // Return to idle mode
+      switchToMode('idle');
+      
+      // Adventure loop will auto-restart via its own useEffect when heroes exist
+    }
+  }, [activeInstance?.type, activeInstance?.instanceId]);
+  
+  // Load instance data from Firebase
+  const loadInstanceData = async (type: 'dungeon' | 'raid', instanceId: string) => {
+    try {
+      const collection = type === 'dungeon' ? 'dungeonInstances' : 'raidInstances';
+      console.log(`[Mode] Loading ${type} instance from ${collection}/${instanceId}`);
+      
+      const instanceRef = doc(db, collection, instanceId);
+      
+      // Listen for real-time updates
+      onSnapshot(instanceRef, (snapshot) => {
+        if (snapshot.exists()) {
+          const data = { id: snapshot.id, ...snapshot.data() };
+          console.log(`[Mode] Instance data loaded:`, data);
+          setInstanceData(data);
+          
+          // Check if completed
+          if (data.status === 'completed' || data.status === 'failed') {
+            console.log(`[Mode] ✅ Instance ${data.status}! Will return to idle when heroes update...`);
+          }
+        } else {
+          console.warn(`[Mode] Instance ${instanceId} not found`);
+        }
+      });
+    } catch (error) {
+      console.error(`[Mode] Failed to load ${type} instance:`, error);
+    }
+  };
+
+  // ============================================================================
+  // RAID COMBAT SYSTEM - Uses SAME combat engine as idle adventure!
+  // ============================================================================
+  
+  // In raid mode, populate heroes and enemies from instance data
+  // Then the existing combat system handles everything!
+  
+  useEffect(() => {
+    if (gameMode !== 'raid' || !instanceData) return;
+    
+    console.log('[Raid Mode] ⚠️ RAID SETUP RUNNING - This should only run on wave change!');
+    console.log('[Raid Mode] Trigger:', {
+      gameMode,
+      currentWave: instanceData?.currentWave,
+      instanceId: instanceData?.id,
+      bossHp: instanceData?.boss?.hp
+    });
+    
+    // Fetch raid participants' hero data from Firebase
+    const fetchRaidHeroes = async () => {
+      const raidHeroes: Hero[] = [];
+      
+      for (const p of (instanceData.participants || [])) {
+        console.log(`[Raid Setup] Fetching hero:`, {
+          heroId: p.heroId,
+          userId: p.userId,
+          username: p.username
+        });
+        
+        // First, try loadedHeroes (already in memory)
+        let actualHero = loadedHeroes.find(h => 
+          h.id === p.heroId || 
+          (h as any).twitchUserId === p.userId ||
+          h.name === p.username
+        );
+        
+        // If not found, fetch directly from Firebase by hero ID
+        if (!actualHero && p.heroId) {
+          console.log(`[Raid Setup] Hero not in loadedHeroes, fetching from Firebase: ${p.heroId}`);
+          try {
+            const heroDoc = await import('firebase/firestore').then(({ doc, getDoc }) => 
+              getDoc(doc(db, 'heroes', p.heroId))
+            );
+            
+            if (heroDoc.exists()) {
+              const data = heroDoc.data();
+              actualHero = calculateHeroStats({
+                id: heroDoc.id,
+                name: data.name || data.username,
+                role: data.role || 'berserker',
+                level: data.level || 1,
+                hp: data.hp || 100,
+                maxHp: data.maxHp || 100,
+                xp: data.xp || 0,
+                maxXp: data.maxXp || 100,
+                attack: data.attack || 0,
+                defense: data.defense || 0,
+                currentBattlefieldId: data.currentBattlefieldId,
+                autoBuy: data.autoBuy || false,
+                gold: data.gold || 0,
+                profession: data.profession || null,
+                quests: data.quests || {},
+                twitchUserId: data.twitchUserId || data.twitchId,
+                equipment: data.equipment || {},
+                skills: data.skills || {},
+                enchantedItems: data.enchantedItems || []
+              } as Hero);
+              console.log(`[Raid Setup] ✅ Fetched hero from Firebase: ${actualHero.name}`);
+            }
+          } catch (err) {
+            console.error(`[Raid Setup] ❌ Failed to fetch hero ${p.heroId}:`, err);
+          }
+        }
+        
+        if (actualHero) {
+          console.log(`[Raid Setup] ✅ Found actual hero for ${p.username}: ${actualHero.name} (${actualHero.role})`);
+          console.log(`[Raid Setup] Hero stats:`, {
+            attack: actualHero.attack,
+            defense: actualHero.defense,
+            maxHp: actualHero.maxHp,
+            hpRegen: actualHero.hpRegen || 0,
+            equipment: Object.keys(actualHero.equipment || {}).length + ' items'
+          });
+          raidHeroes.push(actualHero);
+          continue;
+        }
+        
+        // Fallback if hero not found anywhere
+        console.log(`[Raid Setup] ⚠️ Using fallback data for ${p.username}, class: ${p.class || p.role}`);
+        const fallbackHero = {
+          id: p.heroId || p.userId || `fallback-${raidHeroes.length}`,
+          name: p.username || p.heroName || 'Hero',
+          role: p.class || p.role || 'berserker',
+          level: p.level || 1,
+          hp: p.hp || p.maxHp || 100,
+          maxHp: p.maxHp || 100,
+          attack: p.attack || (p.level || 1) * 5,
+          defense: p.defense || (p.level || 1) * 2,
+          isDead: false,
+          shield: 0,
+          xp: 0,
+          maxXp: 100,
+          gold: 0,
+          equipment: {},
+          inventory: [],
+          skills: {},
+          activeBuffs: {},
+          activeDebuffs: {},
+          potions: { health: 0, mana: 0 }
+        } as Hero;
+        raidHeroes.push(fallbackHero);
+      }
+      
+      console.log(`[Raid Setup] ✅ Total raid heroes created: ${raidHeroes.length}`);
+    
+    // Convert boss to Enemy format
+    // WAVE SYSTEM: Determine enemies based on current wave
+    const currentWave = instanceData.currentWave || 0;
+    const totalWaves = instanceData.waves || 5;
+    const raidEnemies: Enemy[] = [];
+    
+    console.log(`[Raid Waves] ====================================`);
+    console.log(`[Raid Waves] Current wave: ${currentWave} (Display: ${currentWave + 1}/${totalWaves})`);
+    console.log(`[Raid Waves] Wave enemies array:`, instanceData.waveEnemies);
+    console.log(`[Raid Waves] Boss data:`, instanceData.boss ? `${instanceData.boss.name} (${instanceData.boss.hp} HP)` : 'None');
+    console.log(`[Raid Waves] ====================================`);
+    
+    // WAVES 0-3: Trash mobs (waves 1-4 in display)
+    if (currentWave < totalWaves - 1) {
+      const waveEnemyString = instanceData.waveEnemies?.[currentWave] || '';
+      const waveEnemyNames = waveEnemyString ? waveEnemyString.split(',') : [];
+      
+      console.log(`[Raid Waves] Wave ${currentWave} index (display ${currentWave + 1}/${totalWaves})`);
+      console.log(`[Raid Waves] Wave data string:`, waveEnemyString);
+      console.log(`[Raid Waves] Parsed enemy names:`, waveEnemyNames);
+      
+      // Spawn wave enemies
+      waveEnemyNames.forEach((enemyName: string, index: number) => {
+        const trimmedName = enemyName.trim(); // Remove whitespace!
+        
+        const WAVE_STATS: Record<string, any> = {
+          'Baby Dragon': { hp: 5000, attack: 100, defense: 50, xp: 500, level: 38, type: 'Baby Dragon' },
+          'Dragon Whelp': { hp: 8000, attack: 150, defense: 80, xp: 800, level: 40, type: 'Dragon_1' },
+          'Dragon Guardian': { hp: 10000, attack: 180, defense: 100, xp: 1000, level: 42, type: 'Dragon_2' },
+          'Dragon Sentinel': { hp: 12000, attack: 200, defense: 120, xp: 1200, level: 44, type: 'Dragon_3' }
+        };
+        
+        const stats = WAVE_STATS[trimmedName] || { hp: 5000, attack: 100, defense: 50, xp: 500, level: 40, type: 'Baby Dragon' };
+        
+        console.log(`[Raid Waves] Creating enemy "${trimmedName}" with stats:`, stats);
+        
+        raidEnemies.push({
+          id: `wave-enemy-${currentWave}-${index}`,
+          name: trimmedName,
+          level: stats.level,
+          hp: stats.hp,
+          maxHp: stats.hp,
+          attack: stats.attack,
+          defense: stats.defense,
+          xp: stats.xp,
+          isBoss: false,
+          isDead: false,
+          shield: 0
+        });
+      });
+    }
+    // WAVE 5 (Final): BOSS
+    else if (instanceData.boss && instanceData.boss.hp > 0) {
+      console.log(`[Raid Waves] Wave ${currentWave + 1} (FINAL): BOSS - ${instanceData.boss.name}`);
+      
+      raidEnemies.push({
+        id: 'raid-boss',
+        name: instanceData.boss.name || 'Boss',
+        level: instanceData.boss.level || 50,
+        hp: instanceData.boss.hp,
+        maxHp: instanceData.boss.maxHp,
+        attack: instanceData.boss.attack || 100,
+        defense: instanceData.boss.defense || 50,
+        xp: instanceData.boss.xp || 1000,
+        isBoss: true,
+        isDead: false,
+        shield: 0
+      });
+    }
+    // BOSS DEFEATED - Grant loot
+    else if (instanceData.boss && instanceData.boss.hp <= 0) {
+      console.log('[Raid] 🎉 BOSS DEFEATED! Distributing loot...');
+      
+      // Grant XP and gold to all heroes
+      raidHeroes.forEach(hero => {
+        const xpReward = Math.floor((instanceData.boss.xp || 1000) / Math.max(raidHeroes.length, 1));
+        const goldReward = Math.floor(((instanceData.boss.level || 50) * 10) / Math.max(raidHeroes.length, 1));
+        
+        // Show loot SCT
+        setTimeout(() => {
+          const heroElement = document.querySelector(`[data-hero-id="${hero.id}"]`);
+          if (heroElement) {
+            const rect = heroElement.getBoundingClientRect();
+            addSCT(`+${xpReward} XP`, rect.left + rect.width / 2, rect.top - 30, 'xp');
+            setTimeout(() => {
+              addSCT(`+${goldReward}g`, rect.left + rect.width / 2, rect.top - 10, 'loot');
+            }, 300);
+          }
+        }, 1000);
+        
+        console.log(`[Raid Loot] ${hero.name} receives ${xpReward} XP, ${goldReward}g`);
+      });
+      
+      // TODO: Generate raid-specific loot (epic/legendary items)
+      // TODO: Sync rewards to backend
+      // TODO: Mark raid as complete in Firebase
+    }
+    
+    console.log(`[Raid Waves] ✅ Total enemies generated: ${raidEnemies.length}`, raidEnemies.map(e => e.name));
+    
+    if (raidEnemies.length === 0) {
+      console.error('[Raid Waves] ❌ NO ENEMIES GENERATED! This is a bug!');
+      console.error('[Raid Waves] Current wave:', currentWave);
+      console.error('[Raid Waves] Total waves:', totalWaves);
+      console.error('[Raid Waves] Wave data:', instanceData.waveEnemies?.[currentWave]);
+    }
+    
+    // Update heroes and enemies state (this triggers combat!)
+    console.log(`[Raid Mode] 🎮 Setting ${raidHeroes.length} heroes, ${raidEnemies.length} enemies`);
+    console.log('[Raid Mode] Heroes:', raidHeroes.map(h => `${h.name} (${h.role})`));
+    console.log('[Raid Mode] Enemies:', raidEnemies.map(e => `${e.name} (HP: ${e.hp})`));
+    
+    // Update refs first
+    heroesRef.current = raidHeroes;
+    enemiesRef.current = raidEnemies;
+    
+    // Then set state (this will trigger combat useEffect)
+    console.log('[Raid Mode] 📝 Setting heroes state:', raidHeroes.length);
+    console.log('[Raid Mode] 📝 Setting enemies state:', raidEnemies.length);
+    setHeroes(raidHeroes);
+    setEnemies(raidEnemies);
+    
+      // Delay combat start to let sprites render
+      if (raidEnemies.length > 0) {
+        console.log('[Raid Mode] ⏳ Waiting 1s for sprites to render...');
+        setTimeout(() => {
+          console.log('[Raid Mode] ⚔️ Starting combat NOW!');
+          setInCombat(true);
+        }, 1000);
+      } else {
+        console.error('[Raid Mode] ❌ No enemies to fight! Wave might be skipped.');
+      }
+    };
+    
+    fetchRaidHeroes().catch(err => {
+      console.error('[Raid Setup] ❌ Failed to fetch raid heroes:', err);
+    });
+  }, [gameMode, instanceData?.currentWave, instanceData?.id]); // Don't need loadedHeroes.length anymore!
+
+  // Quest tracking state (accumulate progress, batch sync to backend)
+  const questProgressRef = useRef<Map<string, Map<string, number>>>(new Map()); // heroId -> trackingKey -> count
+  const lastQuestSyncRef = useRef<number>(Date.now());
 
   // SCT (Scrolling Combat Text) state
   type SCTType = 'damage' | 'crit' | 'heal' | 'heal-hot' | 'dot' | 'loot' | 'levelup' | 'questcomplete' | 'xp' | 'miss' | 'gather' | 'profession-xp';
@@ -261,7 +665,7 @@ export default function CleanBattlefieldSource() {
     convertBattlefieldId();
   }, [urlBattlefieldId]);
 
-  // Load heroes from Firebase
+  // Load heroes from Firebase (ALWAYS load, but only set combat heroes in idle mode!)
   useEffect(() => {
     if (!battlefieldId) {
       return;
@@ -295,6 +699,8 @@ export default function CleanBattlefieldSource() {
           gold: data.gold || 0,
           profession: data.profession || null,
           quests: data.quests || {},
+          // CRITICAL: Include twitchUserId for quest sync
+          twitchUserId: data.twitchUserId || data.twitchId,
           // Store raw equipment for stat calculation (ALL slots)
           equipment: {
             weapon: data.equipment?.weapon || null,
@@ -334,8 +740,27 @@ export default function CleanBattlefieldSource() {
       // Calculate stats from equipment for each hero
       const heroesWithStats = loadedHeroes.map(calculateHeroStats);
       
-      setHeroes(heroesWithStats);
-      heroesRef.current = heroesWithStats; // Keep ref in sync
+      // DEDUPLICATE by hero ID (prevent duplicate renders!)
+      const uniqueHeroes = heroesWithStats.filter((hero, index, self) => 
+        index === self.findIndex(h => h.id === hero.id)
+      );
+      
+      if (uniqueHeroes.length !== heroesWithStats.length) {
+        console.warn(`[CleanBattlefield] ⚠️ Removed ${heroesWithStats.length - uniqueHeroes.length} duplicate heroes!`);
+      }
+      
+      // ALWAYS store loaded heroes (used by raid setup to find actual hero data)
+      setLoadedHeroes(uniqueHeroes);
+      
+      // Only set combat heroes in IDLE mode (raid mode populates heroes from participants)
+      // CRITICAL: Don't update heroes during raid combat! (would reset raid party)
+      if (gameMode === 'idle') {
+        setHeroes(uniqueHeroes);
+        heroesRef.current = uniqueHeroes; // Keep ref in sync
+      } else if (gameMode === 'raid' || gameMode === 'dungeon') {
+        console.log('[CleanBattlefield] ⏭️ Skipping hero state update - raid/dungeon in progress');
+      }
+      
       setLoading(false);
       setError(null);
     }, (err) => {
@@ -345,7 +770,7 @@ export default function CleanBattlefieldSource() {
     });
 
     return () => unsubscribe();
-  }, [battlefieldId]);
+  }, [battlefieldId, gameMode]);
 
   // Load sprite facing preferences from backend
   useEffect(() => {
@@ -456,6 +881,26 @@ export default function CleanBattlefieldSource() {
   // Merge test healer with real heroes for combat/display
   const allHeroes = testHealer ? [...heroes, testHealer] : heroes;
 
+  // ============================================================================
+  // QUEST TRACKING SYSTEM
+  // ============================================================================
+  
+  // Track quest progress (accumulates locally, syncs to backend in batches)
+  const trackQuest = (heroId: string, trackingKey: string, increment: number = 1) => {
+    if (!questProgressRef.current.has(heroId)) {
+      questProgressRef.current.set(heroId, new Map());
+    }
+    
+    const heroProgress = questProgressRef.current.get(heroId)!;
+    const current = heroProgress.get(trackingKey) || 0;
+    heroProgress.set(trackingKey, current + increment);
+    
+    // Debug log (can disable later)
+    if (increment > 0) {
+      console.log(`[Quest] ${heroId} - ${trackingKey}: +${increment} (total: ${current + increment})`);
+    }
+  };
+
   // Add SCT message with random offset to prevent overlap
   const addSCT = (text: string, x: number, y: number, type: SCTType) => {
     const id = `${Date.now()}-${Math.random()}`;
@@ -494,6 +939,12 @@ export default function CleanBattlefieldSource() {
 
   // Step 3: Local adventure loop (auto-spawns enemies)
   useEffect(() => {
+    // CRITICAL: Don't run adventure loop if in dungeon/raid mode
+    if (gameMode !== 'idle') {
+      console.log('[Adventure] Skipping - in', gameMode, 'mode');
+      return;
+    }
+    
     // Safety check (use allHeroes to include test healer)
     if (!allHeroes || allHeroes.length === 0) {
       return;
@@ -761,6 +1212,9 @@ export default function CleanBattlefieldSource() {
               
               console.log(`[Gathering] ${hero.name} gathers ${amount} ${material} (+${profXP} profession XP)`);
               
+              // QUEST TRACKING: Track materials gathered
+              trackQuest(hero.id, 'gather', amount);
+              
               // Show gathering SCT (back inside setState - Strict Mode is OFF!)
               const heroElement = document.querySelector(`[data-hero-id="${hero.id}"]`);
               if (heroElement) {
@@ -874,12 +1328,20 @@ export default function CleanBattlefieldSource() {
         adventureIntervalRef.current = null;
       }
     };
-  }, []); // No dependencies - only runs once, never restarts
+  }, [allHeroes.length, gameMode]); // Re-run when heroes are loaded OR mode changes
 
   // Step 4 (UPDATED): Initiative-based combat system
   useEffect(() => {
+    console.log('[Combat useEffect] Triggered!', {
+      allHeroes: allHeroes?.length || 0,
+      enemies: enemies?.length || 0,
+      gameMode,
+      inCombat
+    });
+    
     // Safety check + only run combat if we have heroes AND enemies (use allHeroes)
     if (!allHeroes || !enemies || allHeroes.length === 0 || enemies.length === 0) {
+      console.log('[Combat] ⚠️ Cannot start - missing heroes or enemies');
       combatInProgress.current = false;
       if (combatRoundTimeoutRef.current) {
         clearTimeout(combatRoundTimeoutRef.current);
@@ -894,7 +1356,9 @@ export default function CleanBattlefieldSource() {
       return;
     }
 
-    console.log('[Combat] Starting combat -', allHeroes.length, 'heroes vs', enemies.length, 'enemies');
+    console.log('[Combat] ✅ Starting combat -', allHeroes.length, 'heroes vs', enemies.length, 'enemies');
+    console.log('[Combat] 👥 Heroes:', allHeroes.map(h => `${h.name} (${h.role}, HP: ${h.hp}/${h.maxHp})`));
+    console.log('[Combat] 👹 Enemies:', enemies.map(e => `${e.name} (HP: ${e.hp}/${e.maxHp})`));
     combatInProgress.current = true;
 
     // Start combat round (SIMPLIFIED - like enemy attacks)
@@ -1288,11 +1752,12 @@ export default function CleanBattlefieldSource() {
 
         // HEALER LOGIC: Check if hero is healer and if healing is needed
         if (isHealerRole(hero.role)) {
-          // Find ally with lowest HP % (below 70%)
+          // Find ally with lowest HP % (below 85% for raids, 70% for idle)
+          const healThreshold = (gameMode === 'raid' || gameMode === 'dungeon') ? 0.85 : 0.70;
           const injuredAllies = currentHeroes.filter(h => 
             !h.isDead && 
             h.hp > 0 && 
-            (h.hp / h.maxHp) < 0.7
+            (h.hp / h.maxHp) < healThreshold
           );
           
           if (injuredAllies.length > 0) {
@@ -1418,14 +1883,17 @@ export default function CleanBattlefieldSource() {
         }
       });
 
-      // Enemy actions
+      // Enemy actions (RAID/DUNGEON: 30% chance for double attack!)
       currentEnemies.forEach(enemy => {
         if (enemy.hp <= 0) {
           console.log(`[Combat] Skipping ${enemy.name} - dead`);
           return;
         }
 
-        const baseDex = 5;
+        // More random initiative for chaos in raids/dungeons
+        const baseDex = gameMode === 'raid' || gameMode === 'dungeon' 
+          ? Math.floor(Math.random() * 11) // 0-10 random
+          : 5; // Fixed 5 in idle
         const initiative = Math.floor(Math.random() * 20) + 1 + baseDex;
 
         // Target hero based on THREAT (tanks most likely, healers least likely)
@@ -1440,15 +1908,24 @@ export default function CleanBattlefieldSource() {
           console.log(`[Combat] ${enemy.name} targeting tank ${target.name} (20x threat)`);
         }
 
-        actions.push({
-          type: 'enemy',
-          actorId: enemy.id,
-          actorName: enemy.name,
-          targetId: target.id,
-          targetName: target.name,
-          initiative,
-          isHero: false
-        });
+        // RAID/DUNGEON DIFFICULTY: 30% chance for DOUBLE ATTACK!
+        const numAttacks = (gameMode === 'raid' || gameMode === 'dungeon') && Math.random() < 0.30 ? 2 : 1;
+        
+        if (numAttacks === 2) {
+          console.log(`[Combat] 💥 ${enemy.name} gets DOUBLE ATTACK!`);
+        }
+
+        for (let i = 0; i < numAttacks; i++) {
+          actions.push({
+            type: 'enemy',
+            actorId: enemy.id,
+            actorName: enemy.name,
+            targetId: target.id,
+            targetName: target.name,
+            initiative: initiative - i, // Slightly lower for 2nd attack
+            isHero: false
+          });
+        }
       });
 
       // Sort by initiative
@@ -1566,6 +2043,9 @@ export default function CleanBattlefieldSource() {
       
       console.log(`[Heal] ${healer.name} heals ${target.name} for ${healAmount}`);
       
+      // QUEST TRACKING: Track healing done
+      trackQuest(healer.id, 'healAmount', healAmount);
+      
       // Play heal animation (attack animation for healers)
       const healerRef = getHeroSpriteRef(healer.id);
       if (healerRef.current) {
@@ -1590,14 +2070,35 @@ export default function CleanBattlefieldSource() {
         return updated;
       });
       
-      // Show heal SCT with flowing pluses
+      // Show heal SCT with particles and flash (SAME as idle mode!)
       const targetElement = document.querySelector(`[data-hero-id="${target.id}"]`);
       if (targetElement) {
         const rect = targetElement.getBoundingClientRect();
         const actualHeal = Math.min(healAmount, target.maxHp - target.hp);
         const overheal = healAmount - actualHeal;
         
+        // Main heal number
         addSCT(`+${healAmount}`, rect.left + rect.width / 2, rect.top + 20, 'heal');
+        
+        // Multiple "+" particles for visual flair (like idle!)
+        for (let i = 0; i < 5; i++) {
+          setTimeout(() => {
+            const offsetX = (Math.random() - 0.5) * 60;
+            const offsetY = (Math.random() - 0.5) * 30;
+            addSCT('+', rect.left + rect.width / 2 + offsetX, rect.top + 10 + offsetY, 'heal');
+          }, i * 80);
+        }
+        
+        // Green flash on hero (like idle!)
+        const heroSpriteWrapper = targetElement.querySelector('div[style*="inline-block"]');
+        if (heroSpriteWrapper) {
+          const spriteDiv = heroSpriteWrapper as HTMLDivElement;
+          const originalFilter = spriteDiv.style.filter;
+          spriteDiv.style.filter = 'brightness(1.8) saturate(1.5) drop-shadow(0 0 30px rgba(16, 185, 129, 1))';
+          setTimeout(() => {
+            spriteDiv.style.filter = originalFilter;
+          }, 500);
+        }
         
         if (overheal > 0) {
           setTimeout(() => {
@@ -1615,6 +2116,26 @@ export default function CleanBattlefieldSource() {
       if (!hero) {
         console.warn('[Combat] Hero not found for attack:', action.actorId);
         return;
+      }
+      
+      // Check if target is already dead (killed earlier in this round)
+      const currentEnemies = enemiesRef.current;
+      let targetCheck = currentEnemies.find(e => e.id === action.targetId);
+      
+      // If original target is dead, retarget to another alive enemy!
+      if (!targetCheck || targetCheck.hp <= 0 || targetCheck.isDead) {
+        const aliveEnemies = currentEnemies.filter(e => e.hp > 0 && !e.isDead);
+        
+        if (aliveEnemies.length > 0) {
+          // Retarget to first alive enemy
+          const newTarget = aliveEnemies[0];
+          console.log(`[Combat] 🎯 RETARGET! ${hero.name} switches from ${action.targetName} (dead) → ${newTarget.name}`);
+          action.targetId = newTarget.id;
+          action.targetName = newTarget.name;
+        } else {
+          console.log(`[Combat] ⏭️ Skipping ${hero.name}'s attack - all enemies dead!`);
+          return; // All enemies dead, skip
+        }
       }
 
       // Calculate damage ONCE outside of setState (PROPER FORMULA with stat scaling)
@@ -1800,6 +2321,9 @@ export default function CleanBattlefieldSource() {
         damage = Math.floor(damage * 2);
         console.log(`[Combat] ⚡ CRITICAL HIT! ${hero.name} crits for ${damage}!`);
       }
+      
+      // QUEST TRACKING: Track damage dealt
+      trackQuest(hero.id, 'dealDamage', damage);
 
       // ANIMATIONS - Play ONCE outside setState
       const heroRef = getHeroSpriteRef(action.actorId);
@@ -1845,6 +2369,50 @@ export default function CleanBattlefieldSource() {
         // CRITICAL: Mark as dead immediately if HP reaches 0
         const died = newHp === 0 && !target.isDead;
         updatedEnemies[targetIndex] = { ...target, hp: newHp, shield: newShield, isDead: died || target.isDead };
+        
+        // Update state immediately so other actions can see this enemy is dead!
+        enemiesRef.current = updatedEnemies;
+        
+        // Play death animation if enemy just died
+        if (died) {
+          const enemyRef = getEnemySpriteRef(target.id);
+          if (enemyRef.current) {
+            console.log(`[Animation] ${target.name} → death`);
+            // Defer animation to avoid "setState during render" warning
+            setTimeout(() => {
+              if (enemyRef.current) {
+                enemyRef.current.playAnimation('death');
+              }
+            }, 0);
+          }
+        }
+        
+        // QUEST TRACKING: Track enemy kills
+        if (died) {
+          trackQuest(hero.id, 'kill', 1);
+          
+          // Track boss kills separately
+          if (target.isBoss) {
+            trackQuest(hero.id, 'defeatBosses', 1);
+          }
+          
+          // INSTANT VICTORY CHECK: If this was the last enemy, end round NOW!
+          const remainingEnemies = updatedEnemies.filter(e => e.hp > 0 && !e.isDead);
+          if (remainingEnemies.length === 0) {
+            console.log('[Combat] ⚡ INSTANT VICTORY! Last enemy defeated - ending round NOW!');
+            
+            // Clear any pending combat actions (stop beating dead enemies!)
+            if (combatRoundTimeoutRef.current) {
+              clearTimeout(combatRoundTimeoutRef.current);
+              combatRoundTimeoutRef.current = null;
+            }
+            
+            // Trigger victory check immediately (after brief delay for death animation)
+            setTimeout(() => {
+              checkCombatVictory();
+            }, 1000); // 1s for death animation to play
+          }
+        }
         
         // ========================================
         // HERO DEBUFF APPLICATION ON ENEMIES
@@ -2028,10 +2596,13 @@ export default function CleanBattlefieldSource() {
         }
       }
       
-      // SCT for damage
+      // SCT for damage - Target canvas for bosses (not huge container!)
       const enemyElement = document.querySelector(`[data-enemy-id="${target.id}"]`);
       if (enemyElement) {
-        const rect = enemyElement.getBoundingClientRect();
+        // For bosses, find the canvas element (actual sprite) instead of container
+        const canvas = enemyElement.querySelector('canvas');
+        const rect = canvas ? canvas.getBoundingClientRect() : enemyElement.getBoundingClientRect();
+        
         addSCT(`${damage}`, rect.left + rect.width / 2, rect.top + 20, isCrit ? 'crit' : 'damage');
         
         // SCT for debuff application (if debuff was applied)
@@ -2042,15 +2613,20 @@ export default function CleanBattlefieldSource() {
         }
       }
 
-      // Enemy hurt animation
+      // Enemy hurt animation (skip if in aerial sequence!)
       setTimeout(() => {
         const enemyRef = getEnemySpriteRef(target.id);
+        const enemyElement = document.querySelector(`[data-enemy-id="${target.id}"]`) as HTMLElement;
+        
+        // Don't interrupt aerial sequence!
+        if (enemyElement?.getAttribute('data-aerial-sequence') === 'true') {
+          console.log(`[Animation] ${target.name} → hurt SKIPPED (aerial sequence in progress)`);
+          return;
+        }
+        
         if (enemyRef.current && target.hp > 0) {
           console.log(`[Animation] ${target.name} → hurt`);
           enemyRef.current.playAnimation('hurt');
-          
-          // Return to idle after hurt
-          // Don't return to idle
         }
       }, 200);
 
@@ -2071,9 +2647,19 @@ export default function CleanBattlefieldSource() {
 
     // Execute enemy attack
     const executeEnemyAttack = (action: CombatAction) => {
-      // Get enemy
+      // Get enemy and verify it's still alive
       const enemy = enemiesRef.current.find(e => e.id === action.actorId);
-      if (!enemy) return;
+      if (!enemy || enemy.hp <= 0 || enemy.isDead) {
+        console.log(`[Combat] ⏭️ Skipping enemy attack - ${action.actorName} is dead!`);
+        return; // Dead enemies don't attack
+      }
+      
+      // Check if target hero is still alive (allCurrentHeroes declared below, use temp variable)
+      const targetHeroCheck = heroesRef.current.find(h => h.id === action.targetId);
+      if (!targetHeroCheck || targetHeroCheck.hp <= 0 || targetHeroCheck.isDead) {
+        console.log(`[Combat] ⏭️ Skipping enemy attack - target ${action.targetName} is dead!`);
+        return; // Don't attack dead heroes
+      }
 
       // Calculate damage ONCE
       const enemyBaseAttack = enemy.attack || enemy.level * 8;
@@ -2116,11 +2702,127 @@ export default function CleanBattlefieldSource() {
           }, 1500); // Transform takes ~1.5s
         }
       } else {
-        // Normal attack animation
+        // Normal attack animation (with variants for dragons!)
         const enemyRef = getEnemySpriteRef(action.actorId);
         if (enemyRef.current) {
-          console.log(`[Animation] ${action.actorName} → attack`);
-          enemyRef.current.playAnimation('attack');
+          // DRAGON ATTACK VARIANTS (only Dragon_1/2/3, NOT Elder Dragon!)
+          const isDragonWave = action.actorName?.includes('Dragon') && !action.actorName?.includes('Elder');
+          
+          if (isDragonWave) {
+            const attackRoll = Math.random();
+            
+            if (attackRoll < 0.10) {
+              // SPECIAL: Aerial attack with MOVEMENT! Dragon flies to hero!
+              console.log(`[Animation] ${action.actorName} → AERIAL ATTACK WITH MOVEMENT! 🔥`);
+              
+              const dragonElement = document.querySelector(`[data-enemy-id="${action.actorId}"]`) as HTMLElement;
+              const heroElement = document.querySelector(`[data-hero-id="${action.targetId}"]`) as HTMLElement;
+              
+              if (dragonElement && heroElement) {
+                // Store original position
+                const originalLeft = dragonElement.style.left;
+                const originalTop = dragonElement.style.top;
+                const originalTransform = dragonElement.style.transform || '';
+                
+                // Mark dragon as in aerial sequence (prevent position corruption)
+                dragonElement.setAttribute('data-aerial-sequence', 'true');
+                
+                console.log(`[Aerial] Original position: ${originalLeft}, ${originalTop}`);
+                
+                // Get hero SPRITE position (canvas within the container)
+                const heroCanvas = heroElement.querySelector('canvas');
+                const targetRect = heroCanvas ? heroCanvas.getBoundingClientRect() : heroElement.getBoundingClientRect();
+                
+                console.log(`[Aerial] Targeting hero sprite at (${targetRect.left}, ${targetRect.top})`);
+                
+                // 1. RISE (take off at current position)
+                enemyRef.current.playAnimation('rise');
+                
+                // 2. FLIGHT + Move toward hero sprite (FAST transition)
+                setTimeout(() => {
+                  if (enemyRef.current && dragonElement) {
+                    console.log(`[Aerial] Flying toward hero sprite...`);
+                    enemyRef.current.playAnimation('flight');
+                    dragonElement.style.transition = 'left 1.2s ease-in-out, top 1.2s ease-in-out';
+                    dragonElement.style.left = `${targetRect.left - 100}px`; // Near hero sprite
+                    dragonElement.style.top = `${targetRect.top - 100}px`;   // Above hero sprite
+                  }
+                }, 700);
+                
+                // 3. SPECIAL (fire breath) - quick
+                setTimeout(() => {
+                  if (enemyRef.current) {
+                    console.log(`[Aerial] FIRE BREATH!`);
+                    enemyRef.current.playAnimation('special');
+                  }
+                }, 1800); // Faster: flight → special
+                
+                // 4. FLIGHT back - quick return
+                setTimeout(() => {
+                  if (enemyRef.current && dragonElement) {
+                    console.log(`[Aerial] Flying back...`);
+                    enemyRef.current.playAnimation('flight');
+                    dragonElement.style.transform = 'scaleX(-1)';
+                    dragonElement.style.left = originalLeft;
+                    dragonElement.style.top = originalTop;
+                  }
+                }, 3200); // Faster: special → flight back
+                
+                // 5. LANDING - quick landing
+                setTimeout(() => {
+                  if (enemyRef.current && dragonElement) {
+                    console.log(`[Aerial] Landing...`);
+                    dragonElement.style.transform = 'scaleX(1)';
+                    enemyRef.current.playAnimation('landing');
+                  }
+                }, 4400); // Faster: flight → landing
+                
+                // 6. IDLE - back to combat quickly
+                setTimeout(() => {
+                  if (enemyRef.current && dragonElement) {
+                    console.log(`[Aerial] Sequence complete - back to idle`);
+                    enemyRef.current.playAnimation('idle');
+                    
+                    // Clear aerial flag
+                    dragonElement.removeAttribute('data-aerial-sequence');
+                  }
+                }, 5200);
+                
+                // SAFETY: Restore position if dragon is stuck (only if not at original position)
+                setTimeout(() => {
+                  if (dragonElement) {
+                    const currentLeft = dragonElement.style.left;
+                    const currentTop = dragonElement.style.top;
+                    
+                    // Only restore if position changed (dragon is stuck)
+                    if (currentLeft !== originalLeft || currentTop !== originalTop) {
+                      console.log(`[Aerial] SAFETY: Dragon stuck at (${currentLeft}, ${currentTop}), restoring to (${originalLeft}, ${originalTop})`);
+                      dragonElement.style.transition = 'left 0.5s ease-out, top 0.5s ease-out';
+                      dragonElement.style.left = originalLeft;
+                      dragonElement.style.top = originalTop;
+                      dragonElement.style.transform = 'scaleX(1)';
+                    }
+                    dragonElement.removeAttribute('data-aerial-sequence');
+                  }
+                }, 6000); // Check 800ms after sequence should complete
+              } else {
+                // Fallback if elements not found - just play animations in place
+                enemyRef.current.playAnimation('special');
+              }
+              
+            } else if (attackRoll < 0.30) {
+              // ATTACK 2: Heavy attack (in place)
+              console.log(`[Animation] ${action.actorName} → attack2 (HEAVY!) 💪`);
+              enemyRef.current.playAnimation('attack2');
+            } else {
+              // ATTACK 1: Normal attack (in place)
+              console.log(`[Animation] ${action.actorName} → attack`);
+              enemyRef.current.playAnimation('attack');
+            }
+          } else {
+            console.log(`[Animation] ${action.actorName} → attack`);
+            enemyRef.current.playAnimation('attack');
+          }
         }
       }
 
@@ -2431,6 +3133,57 @@ export default function CleanBattlefieldSource() {
           updatedHeroes[targetIndex] = { ...target, hp: newHp, shield: newShield };
           
           // ========================================
+          // DRAGON ELEMENTAL DAMAGE (Fire & Poison DoT)
+          // ========================================
+          if (enemy.name === 'Dragon Whelp') {
+            // FIRE DAMAGE - 50% chance to ignite
+            if (Math.random() < 0.5) {
+              const now = Date.now();
+              if (!updatedHeroes[targetIndex].activeDebuffs) {
+                updatedHeroes[targetIndex].activeDebuffs = {};
+              }
+              updatedHeroes[targetIndex].activeDebuffs!.burning = {
+                expiresAt: now + 6000, // 6 seconds
+                appliedBy: enemy.name,
+                lastTick: now,
+                value: Math.floor(actualDamage * 0.15) // 15% of initial damage per tick
+              };
+              console.log(`[Fire] 🔥 ${target.name} is BURNING! (${Math.floor(actualDamage * 0.15)} damage/sec for 6s)`);
+              
+              setTimeout(() => {
+                const heroElement = document.querySelector(`[data-hero-id="${target.id}"]`);
+                if (heroElement) {
+                  const rect = heroElement.getBoundingClientRect();
+                  addSCT('🔥 Burning!', rect.left + rect.width / 2, rect.top + 20, 'dot');
+                }
+              }, 100);
+            }
+          } else if (enemy.name === 'Dragon Guardian') {
+            // POISON DAMAGE - 50% chance to poison
+            if (Math.random() < 0.5) {
+              const now = Date.now();
+              if (!updatedHeroes[targetIndex].activeDebuffs) {
+                updatedHeroes[targetIndex].activeDebuffs = {};
+              }
+              updatedHeroes[targetIndex].activeDebuffs!.poison = {
+                expiresAt: now + 8000, // 8 seconds
+                appliedBy: enemy.name,
+                lastTick: now,
+                value: Math.floor(actualDamage * 0.12) // 12% of initial damage per tick
+              };
+              console.log(`[Poison] ☠️ ${target.name} is POISONED! (${Math.floor(actualDamage * 0.12)} damage/sec for 8s)`);
+              
+              setTimeout(() => {
+                const heroElement = document.querySelector(`[data-hero-id="${target.id}"]`);
+                if (heroElement) {
+                  const rect = heroElement.getBoundingClientRect();
+                  addSCT('☠️ Poisoned!', rect.left + rect.width / 2, rect.top + 20, 'dot');
+                }
+              }, 100);
+            }
+          }
+          
+          // ========================================
           // APPLY DEBUFF (20% regular, 40% bosses)
           // ========================================
           const debuffChance = enemy.isBoss ? 0.4 : 0.2;
@@ -2579,6 +3332,11 @@ export default function CleanBattlefieldSource() {
       if (aliveEnemies.length === 0 && currentEnemies.length > 0) {
         // Victory! Grant XP to all alive heroes
         console.log('[Combat] ✅ Victory! All enemies defeated.');
+        
+        // QUEST TRACKING: Track wave completion
+        aliveHeroes.forEach(hero => {
+          trackQuest(hero.id, 'completeWaves', 1);
+        });
         
         // Check if clean victory (no deaths) for difficulty adjustment
         const anyDeaths = currentHeroes.some(h => h.isDead || h.hp <= 0);
@@ -2828,12 +3586,79 @@ export default function CleanBattlefieldSource() {
           }
         });
         
-        setTimeout(() => {
-          setEnemies([]);
-          enemiesRef.current = [];
-          setInCombat(false);
-          combatInProgress.current = false;
-        }, 1000);
+        // RAID MODE: Check if we need to progress to next wave
+        if (gameMode === 'raid' && instanceData) {
+          const currentWave = instanceData.currentWave || 0;
+          const totalWaves = instanceData.waves || 5;
+          
+          // If not final wave, progress to next wave
+          if (currentWave < totalWaves - 1) {
+            console.log(`[Raid Waves] ✅ Wave ${currentWave + 1} complete! Moving to wave ${currentWave + 2}...`);
+            
+            // Clear combat state FIRST (remove all wave enemies before boss!)
+            console.log(`[Raid Waves] 🧹 Clearing ${enemiesRef.current.length} enemies before next wave...`);
+            setEnemies([]);
+            enemiesRef.current = [];
+            setInCombat(false);
+            combatInProgress.current = false;
+            
+            console.log('[Raid Waves] ⏳ Enemies cleared! Updating wave in 500ms...');
+            
+            // Update wave in Firebase AFTER clearing (triggers raid setup to create new enemies)
+            setTimeout(() => {
+              // Show wave announcement
+              setShowWaveAnnouncement(true);
+              setTimeout(() => setShowWaveAnnouncement(false), 2000);
+              
+              if (currentInstanceId) {
+                const instanceRef = doc(db, 'raidInstances', currentInstanceId);
+                import('firebase/firestore').then(({ updateDoc }) => {
+                  updateDoc(instanceRef, {
+                    currentWave: currentWave + 1
+                  }).then(() => {
+                    console.log(`[Raid Waves] ✅ Updated to wave ${currentWave + 2} in Firebase - raid setup should trigger!`);
+                  }).catch(err => {
+                    console.error('[Raid Waves] ❌ Failed to update wave:', err);
+                  });
+                });
+              }
+            }, 500);
+          }
+          // Final wave complete - raid victory handled above
+          else {
+            console.log('[Raid] 🎊 RAID COMPLETE! Returning to idle...');
+            
+            // Update raid status to "completed" in Firebase to trigger mode switch back to idle
+            if (instanceData?.id) {
+              import('firebase/firestore').then(({ doc, updateDoc }) => {
+                updateDoc(doc(db, 'raidInstances', instanceData.id), {
+                  status: 'completed',
+                  completedAt: new Date()
+                }).then(() => {
+                  console.log('[Raid] ✅ Raid status updated to "completed" in Firebase');
+                }).catch(err => {
+                  console.error('[Raid] ❌ Failed to update raid status:', err);
+                });
+              });
+            }
+            
+            setTimeout(() => {
+              setEnemies([]);
+              enemiesRef.current = [];
+              setInCombat(false);
+              combatInProgress.current = false;
+            }, 5000); // 5s delay to show victory
+          }
+        }
+        // IDLE MODE: Normal victory
+        else {
+          setTimeout(() => {
+            setEnemies([]);
+            enemiesRef.current = [];
+            setInCombat(false);
+            combatInProgress.current = false;
+          }, 1000);
+        }
       } else if (aliveHeroes.length === 0) {
         // TOTAL PARTY WIPE - Resurrect all heroes, clear enemies, lower difficulty
         console.log('[Combat] 💀 TOTAL PARTY WIPE! All heroes died.');
@@ -2916,10 +3741,142 @@ export default function CleanBattlefieldSource() {
 
     console.log('[Sync] Starting periodic sync (every 60s) for', heroes.length, 'heroes');
 
-    const syncInterval = setInterval(() => {
+    const syncInterval = setInterval(async () => {
       console.log('[Sync] Syncing', heroes.length, 'heroes to Firebase...');
       
-      // Batch sync all heroes
+      // QUEST TRACKING: Batch sync quest progress to backend
+      const now = Date.now();
+      const timeSinceLastSync = now - lastQuestSyncRef.current;
+      
+      if (questProgressRef.current.size > 0 && timeSinceLastSync >= 60000) {
+        console.log('[Quest Sync] Syncing quest progress for', questProgressRef.current.size, 'heroes...');
+        
+        // Convert Map to array of updates for batch API
+        const questUpdates: Array<{ userId: string; updates: Array<{ trackingKey: string; type: 'daily' | 'weekly' | 'monthly'; increment: number }> }> = [];
+        
+        questProgressRef.current.forEach((heroProgress, heroId) => {
+          const hero = heroes.find(h => h.id === heroId);
+          if (!hero) return;
+          
+          // Get hero's Twitch ID for backend
+          const twitchUserId = (hero as any).twitchUserId || (hero as any).twitchId;
+          if (!twitchUserId) {
+            console.warn(`[Quest Sync] ⚠️ No twitchUserId for hero ${heroId}, skipping quest sync`);
+            return;
+          }
+          
+          const updates: Array<{ trackingKey: string; type: 'daily' | 'weekly' | 'monthly'; increment: number }> = [];
+          
+          heroProgress.forEach((count, trackingKey) => {
+            if (count > 0) {
+              // Send to all three quest types (backend will filter by active quests)
+              updates.push({ trackingKey, type: 'daily', increment: count });
+              updates.push({ trackingKey, type: 'weekly', increment: count });
+              updates.push({ trackingKey, type: 'monthly', increment: count });
+            }
+          });
+          
+          if (updates.length > 0) {
+            questUpdates.push({ userId: twitchUserId, updates });
+          }
+        });
+        
+        // Send batch quest update to backend
+        if (questUpdates.length > 0) {
+          try {
+            const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/quests/update-batch-all`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ updates: questUpdates })
+            });
+            
+            const result = await response.json();
+            console.log('[Quest Sync] ✅ Quest progress synced:', result);
+            
+            // Check for completed quests and show SCT
+            if (result.success && result.results) {
+              result.results.forEach((userResult: any) => {
+                if (userResult.completedQuests && userResult.completedQuests.length > 0) {
+                  userResult.completedQuests.forEach((completedQuest: any) => {
+                    console.log(`[Quest Complete] 🎉 ${completedQuest.questName} completed!`);
+                    
+                    // Show SCT for quest completion
+                    const hero = heroes.find(h => (h as any).twitchUserId === userResult.userId || (h as any).twitchId === userResult.userId);
+                    if (hero) {
+                      const heroElement = document.querySelector(`[data-hero-id="${hero.id}"]`);
+                      if (heroElement) {
+                        const rect = heroElement.getBoundingClientRect();
+                        addSCT(`Quest Complete!`, rect.left + rect.width / 2, rect.top - 20, 'questcomplete');
+                      }
+                    }
+                  });
+                }
+              });
+            }
+            
+            // Clear quest progress after successful sync
+            questProgressRef.current.clear();
+            lastQuestSyncRef.current = now;
+            
+            // AUTO-CLAIM: Claim all completed quests for each hero
+            heroes.forEach(async (hero) => {
+              const twitchUserId = (hero as any).twitchUserId || (hero as any).twitchId;
+              if (!twitchUserId) return;
+              
+              try {
+                const claimResponse = await questAPI.claimAllQuests(twitchUserId);
+                
+                if (claimResponse.success && claimResponse.claimed > 0) {
+                  console.log(`[Quest Auto-Claim] ✅ ${hero.name} claimed ${claimResponse.claimed} quests!`);
+                  console.log(`[Quest Auto-Claim] Rewards:`, claimResponse.totalRewards);
+                  
+                  // Show SCT for auto-claimed rewards
+                  const heroElement = document.querySelector(`[data-hero-id="${hero.id}"]`);
+                  if (heroElement) {
+                    const rect = heroElement.getBoundingClientRect();
+                    
+                    // Show gold reward
+                    if (claimResponse.totalRewards.gold > 0) {
+                      addSCT(`+${claimResponse.totalRewards.gold}g`, rect.left + rect.width / 2, rect.top - 30, 'loot');
+                    }
+                    
+                    // Show XP reward
+                    if (claimResponse.totalRewards.xp > 0) {
+                      setTimeout(() => {
+                        addSCT(`+${claimResponse.totalRewards.xp} XP`, rect.left + rect.width / 2, rect.top - 10, 'xp');
+                      }, 300);
+                    }
+                    
+                    // Show token reward
+                    if (claimResponse.totalRewards.tokens > 0) {
+                      setTimeout(() => {
+                        addSCT(`+${claimResponse.totalRewards.tokens} 🪙`, rect.left + rect.width / 2, rect.top + 10, 'loot');
+                      }, 600);
+                    }
+                  }
+                  
+                  // If leveled up, show level up notification
+                  if (claimResponse.levelUp) {
+                    const heroElement = document.querySelector(`[data-hero-id="${hero.id}"]`);
+                    if (heroElement) {
+                      const rect = heroElement.getBoundingClientRect();
+                      setTimeout(() => {
+                        addSCT(`LEVEL ${claimResponse.levelUp}!`, rect.left + rect.width / 2, rect.top - 50, 'levelup');
+                      }, 900);
+                    }
+                  }
+                }
+              } catch (error: any) {
+                console.error(`[Quest Auto-Claim] ❌ Failed to auto-claim for ${hero.name}:`, error);
+              }
+            });
+          } catch (error: any) {
+            console.error('[Quest Sync] ❌ Failed to sync quest progress:', error);
+          }
+        }
+      }
+      
+      // Hero state sync
       heroes.forEach(async (hero) => {
         try {
           await heroAPI.updateHero(hero.id, {
@@ -3175,13 +4132,13 @@ export default function CleanBattlefieldSource() {
             if (actualRegen > 0) {
               anyRegen = true;
               
-              console.log(`[HP Regen] ${hero.name} regenerates ${actualRegen} HP`);
+              console.log(`[HP Regen] 💚 ${hero.name} regenerates ${actualRegen} HP`);
               
-              // Show HP regen SCT (BACK INSIDE - but Strict Mode is off now!)
+              // Show HP regen SCT with + prefix for visibility!
               const heroElement = document.querySelector(`[data-hero-id="${hero.id}"]`);
               if (heroElement) {
                 const rect = heroElement.getBoundingClientRect();
-                addSCT(`${actualRegen}`, rect.left + rect.width / 2, rect.top + 10, 'heal-hot');
+                addSCT(`+${actualRegen} ❤️`, rect.left + rect.width / 2, rect.top + 10, 'heal-hot');
               }
               
               return { ...hero, hp: newHp };
@@ -3514,9 +4471,17 @@ export default function CleanBattlefieldSource() {
   };
 
   // Auto-position enemies horizontally (right side, spread apart)
-  const getEnemyPosition = (index: number, total: number) => {
+  const getEnemyPosition = (index: number, total: number, isBoss: boolean = false) => {
     const screenWidth = 1920;
     const screenHeight = 1080;
+    
+    // Boss positioning: moved down 2 inches and further right
+    if (isBoss) {
+      return {
+        left: '1400px', // Further right for massive Elder Dragon (more space from heroes)
+        top: '732px' // Center (540) + 192px (2 inches down)
+      };
+    }
     
     // Enemies on right side, spread nicely (max 3 enemies)
     const rightMargin = 300; // Distance from right edge
@@ -3550,18 +4515,16 @@ export default function CleanBattlefieldSource() {
       : backline.findIndex(h => h.id === hero.id);
     const groupSize = isCurrentHeroTank ? tanks.length : backline.length;
     
-    // Horizontal spacing (with gap so HP bars don't overlap)
-    const leftMargin = 150; // Start position from left edge
-    const hpBarWidth = 150; // HP bars are 150px wide
-    const gap = 10; // Small gap between heroes
-    const spacing = hpBarWidth + gap; // 160px spacing (accommodates HP bars + gap)
+    // Horizontal spacing (WIDER to prevent name overlap!)
+    const leftMargin = 100; // Start position from left edge
+    const spacing = 300; // WIDE spacing (prevents name overlap!)
     const x = leftMargin + (groupIndex * spacing);
     
-    // Vertical position (front row vs back row)
+    // Vertical position (front row vs back row) - MORE separation!
     const centerY = screenHeight / 2;
     const y = isCurrentHeroTank 
-      ? centerY + 50  // Front row (tanks) - slightly lower/forward
-      : centerY - 100; // Back row (healers/DPS) - higher up/back
+      ? centerY + 80  // Front row (tanks) - lower
+      : centerY - 80; // Back row (healers/DPS) - higher
     
     return {
       left: `${x}px`,
@@ -3650,13 +4613,449 @@ export default function CleanBattlefieldSource() {
     );
   }
 
+  // ============================================================================
+  // MODE SWITCHING: Conditional rendering based on gameMode
+  // ============================================================================
+  
+  // DUNGEON MODE
+  if (gameMode === 'dungeon' && instanceData) {
+    return (
+      <div style={{ 
+        width: '1920px', 
+        height: '1080px', 
+        position: 'relative', 
+        backgroundColor: 'transparent', 
+        overflow: 'hidden',
+        opacity: fadeOpacity,
+        transition: 'opacity 0.5s ease-in-out'
+      }}>
+        <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center' }}>
+          <div style={{ color: '#fbbf24', fontSize: '56px', fontWeight: 'bold', textShadow: '3px 3px 6px rgba(0,0,0,0.9)', marginBottom: '20px' }}>
+            🏰 DUNGEON MODE 🏰
+          </div>
+          <div style={{ color: 'white', fontSize: '32px', marginBottom: '40px', textShadow: '2px 2px 4px rgba(0,0,0,0.8)' }}>
+            {instanceData.name || 'Dungeon'}
+          </div>
+          <div style={{ color: '#10b981', fontSize: '24px', marginBottom: '40px', textShadow: '2px 2px 4px rgba(0,0,0,0.8)' }}>
+            Room {instanceData.currentRoom || 0}/{instanceData.totalRooms || 5}
+          </div>
+          <div style={{ color: '#a0a0a0', fontSize: '18px', textShadow: '2px 2px 4px rgba(0,0,0,0.8)' }}>
+            Dungeon combat will be displayed here<br/>
+            (Coming soon!)
+          </div>
+        </div>
+      </div>
+    );
+  }
+  
+  // RAID MODE  
+  if (gameMode === 'raid' && instanceData) {
+    // SIMPLIFIED: Just use heroes/enemies state directly!
+    // Raid setup useEffect already populated them with ONLY raid participants
+    
+    return (
+      <div style={{ 
+        width: '1920px', 
+        height: '1080px', 
+        position: 'relative', 
+        backgroundColor: 'transparent', 
+        overflow: 'hidden', 
+        fontFamily: 'Arial, sans-serif',
+        opacity: fadeOpacity,
+        transition: 'opacity 0.5s ease-in-out'
+      }}>
+        
+        {/* Souls-like Boss Health Bar (bottom-center) - ONLY when boss is active */}
+        {enemies.some(e => e.isBoss) && (() => {
+          const boss = enemies.find(e => e.isBoss);
+          if (!boss) return null;
+          
+          const bossHpPercent = (boss.hp / boss.maxHp) * 100;
+          
+          return (
+            <div style={{
+              position: 'absolute',
+              bottom: '80px',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              width: '1400px',
+              textAlign: 'center',
+              zIndex: 100
+            }}>
+              {/* Boss Name - Dark Souls style (white, clean) */}
+              <div style={{
+                color: '#e5e5e5',
+                fontSize: '28px',
+                fontWeight: '500',
+                textShadow: '3px 3px 6px rgba(0,0,0,1)',
+                marginBottom: '10px',
+                letterSpacing: '8px',
+                textTransform: 'uppercase',
+                fontFamily: 'Georgia, serif'
+              }}>
+                {boss.name}
+              </div>
+              
+              {/* Boss HP Bar - Dark Souls style (clean, no glow) */}
+              <div style={{
+                width: '100%',
+                height: '60px',
+                backgroundColor: 'rgba(20,20,20,0.95)',
+                border: '3px solid rgba(100,100,100,0.8)',
+                borderRadius: '0px', // Sharp edges like Dark Souls
+                overflow: 'hidden',
+                boxShadow: 'inset 0 4px 8px rgba(0,0,0,0.6)',
+                position: 'relative'
+              }}>
+                <div style={{
+                  width: `${bossHpPercent}%`,
+                  height: '100%',
+                  background: '#dc2626', // Solid red, no gradient
+                  transition: 'width 0.5s ease',
+                  boxShadow: 'inset 0 -4px 8px rgba(0,0,0,0.4)'
+                }} />
+                
+                {/* HP Text - Dark Souls style */}
+                <div style={{
+                  position: 'absolute',
+                  width: '100%',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  color: '#e5e5e5',
+                  fontSize: '20px',
+                  fontWeight: 'normal',
+                  textShadow: '2px 2px 4px rgba(0,0,0,1)',
+                  letterSpacing: '2px',
+                  fontFamily: 'Georgia, serif'
+                }}>
+                  {Math.floor(boss.hp).toLocaleString()}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+        {/* REMOVED: Raid Header - Clean HUD like Dark Souls */}
+        
+        {/* Debug: Add Shield Button - HIDDEN (shield visual confirmed working!)
+        <button onClick={() => { setHeroes(current => { const updated = current.map((h, i) => i === 0 ? { ...h, shield: (h.shield || 0) + 500 } : h); heroesRef.current = updated; return updated; }); }} style={{ position: 'absolute', top: '20px', left: '20px', backgroundColor: '#3b82f6', color: 'white', padding: '12px 24px', borderRadius: '8px', fontSize: '16px', cursor: 'pointer', zIndex: 1000 }}>🛡️ Add Shield</button>
+        */}
+        
+        {/* Wave Announcement - Shows between waves */}
+        {showWaveAnnouncement && (
+          <div style={{
+            position: 'absolute',
+            top: '40%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            fontSize: '64px',
+            fontWeight: 'bold',
+            color: '#fbbf24',
+            textShadow: '0 0 30px rgba(0,0,0,1), 0 0 60px rgba(251, 191, 36, 0.8)',
+            zIndex: 999,
+            pointerEvents: 'none',
+            textAlign: 'center',
+            animation: 'fadeInOut 2s ease-in-out'
+          }}>
+            🐉 Wave {(instanceData.currentWave || 0) + 1} / {instanceData.waves || 5} 🐉
+          </div>
+        )}
+        
+        {/* Wave Announcement - Shows between waves */}
+        {showWaveAnnouncement && (
+          <div style={{
+            position: 'absolute',
+            top: '40%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            fontSize: '64px',
+            fontWeight: 'bold',
+            color: '#fbbf24',
+            textShadow: '0 0 30px rgba(0,0,0,1), 0 0 60px rgba(251, 191, 36, 0.8)',
+            zIndex: 999,
+            pointerEvents: 'none',
+            textAlign: 'center',
+            animation: 'fadeInOut 2s ease-in-out'
+          }}>
+            🐉 Wave {(instanceData.currentWave || 0) + 1} / {instanceData.waves || 5} 🐉
+          </div>
+        )}
+        
+        {/* Raid Party - heroes state already filtered to participants! */}
+        {heroes.map((hero, index) => {
+          const position = getHeroPosition(hero, index, heroes);
+          const hpPercent = (hero.hp / hero.maxHp) * 100;
+          const hasShield = (hero.shield || 0) > 0;
+          const spriteKey = hero.isDead ? `${hero.id}-dead` : `${hero.id}-alive`;
+          
+          return (
+            <div
+              key={spriteKey}
+              data-hero-id={hero.id}
+              style={{
+                position: 'absolute',
+                ...position, // Use idle adventure positioning!
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center'
+              }}
+            >
+              {/* Hero Name - HIGH ABOVE sprite (same as idle) */}
+              <div style={{
+                color: hero.isDead ? '#ef4444' : 'white',
+                fontSize: '18px',
+                fontWeight: 'bold',
+                marginBottom: '8px',
+                textShadow: '2px 2px 4px rgba(0,0,0,0.9)',
+                backgroundColor: 'transparent',
+                padding: '2px 8px',
+                borderRadius: '4px',
+                transform: 'translateY(-20px)'
+              }}>
+                {hero.name} (Lv{hero.level})
+                {hero.isDead && ' 💀'}
+              </div>
+              
+              {/* HP Bar - HIGH ABOVE sprite (same as idle) */}
+              <div style={{
+                width: '150px',
+                height: '24px',
+                backgroundColor: 'rgba(0,0,0,0.7)',
+                border: '2px solid #4a5568',
+                borderRadius: '4px',
+                marginBottom: '20px',
+                overflow: 'hidden',
+                transform: 'translateY(-20px)'
+              }}>
+                <div style={{
+                  width: `${hpPercent}%`,
+                  height: '100%',
+                  backgroundColor: hpPercent > 50 ? '#10b981' : hpPercent > 25 ? '#f59e0b' : '#ef4444',
+                  transition: 'width 0.3s ease'
+                }} />
+                <div style={{
+                  position: 'absolute',
+                  width: '150px',
+                  textAlign: 'center',
+                  marginTop: '-18px',
+                  color: 'white',
+                  fontSize: '12px',
+                  fontWeight: 'bold',
+                  textShadow: '1px 1px 2px rgba(0,0,0,1)'
+                }}>
+                  {Math.floor(hero.hp)} / {hero.maxHp}
+                </div>
+              </div>
+              
+              {/* Hero Sprite with ALL visual effects (shield, enrage) */}
+              <div 
+                style={{
+                  display: 'inline-block',
+                  // Combine filters if both shield and enrage are active!
+                  filter: (() => {
+                    const isEnraged = hero.enrageExpiry && hero.enrageExpiry > Date.now();
+                    const filters = [];
+                    
+                    if (hasShield) {
+                      filters.push('drop-shadow(0 0 12px rgba(59, 130, 246, 1))');
+                      filters.push('drop-shadow(0 0 24px rgba(59, 130, 246, 0.7))');
+                      filters.push('drop-shadow(0 0 36px rgba(59, 130, 246, 0.4))');
+                    }
+                    if (isEnraged) {
+                      filters.push('drop-shadow(0 0 12px rgba(239, 68, 68, 1))');
+                      filters.push('drop-shadow(0 0 24px rgba(239, 68, 68, 0.8))');
+                    }
+                    
+                    return filters.length > 0 ? filters.join(' ') : 'none';
+                  })(),
+                  transform: hero.enrageExpiry && hero.enrageExpiry > Date.now() ? 'scale(1.15)' : 'scale(1)',
+                  transition: 'transform 0.3s ease, filter 0.3s ease'
+                }}
+              >
+                {hasShield && console.log(`[Shield Visual] 💙 ${hero.name} has ${hero.shield} shield - BLUE GLOW!`)}
+                {hero.enrageExpiry && hero.enrageExpiry > Date.now() && console.log(`[Enrage Visual] 😡 ${hero.name} is enraged - RED GLOW + scale 1.15x!`)}
+                <HeroSpriteJS
+                  key={spriteKey}
+                  ref={getHeroSpriteRef(hero.id)}
+                  heroId={hero.id}
+                  role={hero.role}
+                  facing={getFacingDirection(hero.role, 'right')}
+                  scale={3.0} // Same scale as idle
+                  shield={0}
+                />
+              </div>
+            </div>
+          );
+        })}
+        
+        {/* Raid Enemies (Wave mobs OR Boss) - SAME AS IDLE MODE */}
+        {enemies.map((enemy, index) => {
+          const position = getEnemyPosition(index, enemies.length, enemy.isBoss);
+          const hpPercent = (enemy.hp / enemy.maxHp) * 100;
+          const hasShield = (enemy.shield || 0) > 0;
+          
+          return (
+            <div
+              key={enemy.id}
+              data-enemy-id={enemy.id}
+              style={{
+                position: 'absolute',
+                ...position,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center'
+              }}
+            >
+              {/* Enemy Name - ONLY for wave mobs, NOT boss (boss uses bottom bar) */}
+              {!enemy.isBoss && (
+                <div style={{
+                  color: '#ef4444',
+                  fontSize: '18px',
+                  fontWeight: 'bold',
+                  marginBottom: '6px',
+                  textShadow: '3px 3px 6px rgba(0,0,0,0.9)',
+                  backgroundColor: 'transparent',
+                  padding: '4px 12px',
+                  borderRadius: '6px',
+                  transform: 'translateY(-48px)',
+                  position: 'relative',
+                  zIndex: 100
+                }}>
+                  {enemy.name} (Lv{enemy.level})
+                </div>
+              )}
+                
+              {/* Enemy HP Bar - ONLY for wave mobs, NOT boss */}
+              {!enemy.isBoss && (
+                <div style={{
+                  width: '150px',
+                  height: '20px',
+                  backgroundColor: 'rgba(0,0,0,0.8)',
+                  border: '2px solid #7f1d1d',
+                  borderRadius: '6px',
+                  marginBottom: '12px',
+                  overflow: 'hidden',
+                  transform: 'translateY(-48px)',
+                  position: 'relative',
+                  zIndex: 100
+                }}>
+                  <div style={{
+                    width: `${hpPercent}%`,
+                    height: '100%',
+                    backgroundColor: '#dc2626',
+                    transition: 'width 0.3s ease'
+                  }} />
+                  <div style={{
+                    position: 'absolute',
+                    width: '150px',
+                    textAlign: 'center',
+                    marginTop: '-18px',
+                    color: 'white',
+                    fontSize: '12px',
+                    fontWeight: 'bold',
+                    textShadow: '2px 2px 4px rgba(0,0,0,1)'
+                  }}>
+                    {Math.floor(enemy.hp).toLocaleString()} / {enemy.maxHp.toLocaleString()}
+                  </div>
+                </div>
+              )}
+                
+              {/* Enemy Sprite - with shield glow and extra space for Elder Dragon tail */}
+              <div 
+                className={hasShield ? 'has-shield' : ''}
+                style={{
+                  width: enemy.isBoss ? '1200px' : 'auto', // Extra width for Elder Dragon tail
+                  overflow: 'visible', // Don't crop the tail!
+                  position: 'relative'
+                }}
+              >
+                {(() => {
+                  // Map enemy names to sprite folder names
+                  const spriteMap: Record<string, string> = {
+                    'Baby Dragon': 'Baby Dragon',
+                    'Dragon Whelp': 'Dragon_1',
+                    'Dragon Guardian': 'Dragon_2',
+                    'Dragon Sentinel': 'Dragon_3',
+                    'Elder Dragon': 'Elder Dragon' // MUST match getEnemyAnimationKey mapping!
+                  };
+                  const mappedType = spriteMap[enemy.name] || enemy.name;
+                  
+                  // console.log(`[Sprite Debug] Enemy: ${enemy.name} → Mapped: ${mappedType}`); // REMOVED - Too spammy!
+                  
+                  return (
+                    <EnemySpriteJS
+                      ref={getEnemySpriteRef(enemy.id)}
+                      enemyId={enemy.id}
+                      enemyType={mappedType}
+                      enemyName={mappedType}
+                      facing={mappedType.startsWith('Dragon_') ? 'left' : 'right'}
+                      scale={enemy.isBoss ? 12.0 : mappedType.startsWith('Dragon_') ? 6.0 : 3.0}
+                    />
+                  );
+                })()}
+              </div>
+            </div>
+          );
+        })}
+        
+        {/* SCT Messages (reuse from idle mode) */}
+        {sctMessages.map(msg => (
+          <div
+            key={msg.id}
+            style={{
+              position: 'absolute',
+              left: `${msg.x}px`,
+              top: `${msg.y}px`,
+              color: msg.type === 'damage' ? '#ef4444' :       // RED for damage!
+                     msg.type === 'crit' ? '#fbbf24' :          // Gold for crits
+                     msg.type === 'heal' ? '#10b981' :          // GREEN for healing!
+                     msg.type === 'heal-hot' ? '#6ee7b7' :      // Light green for HoT
+                     msg.type === 'dot' ? '#a855f7' :           // Purple for DoT
+                     msg.type === 'loot' ? '#fcd34d' :          // Yellow for loot
+                     msg.type === 'levelup' ? '#f472b6' :       // Pink for level up
+                     msg.type === 'questcomplete' ? '#8b5cf6' : // Purple for quest
+                     msg.type === 'xp' ? '#60a5fa' :            // Blue for XP
+                     msg.type === 'gather' ? '#f472b6' :        // Pink for gather
+                     msg.type === 'profession-xp' ? '#a78bfa' : // Light purple
+                     msg.type === 'miss' ? '#9ca3af' :          // Gray for miss
+                     'white',                                    // Default white
+              fontSize: msg.type === 'crit' ? '42px' :          // BIGGER crits!
+                        msg.type === 'levelup' || msg.type === 'questcomplete' ? '28px' :
+                        msg.type === 'loot' ? '24px' :
+                        msg.type === 'xp' ? '20px' :
+                        msg.type === 'heal' ? '28px' :          // Bigger heals!
+                        '24px',
+              fontWeight: 'bold',
+              textShadow: msg.type === 'crit' ? '0 0 10px rgba(251, 191, 36, 0.8), 2px 2px 4px rgba(0,0,0,1)' : 
+                          msg.type === 'heal' ? '0 0 8px rgba(16, 185, 129, 0.6), 2px 2px 4px rgba(0,0,0,1)' :
+                          '2px 2px 4px rgba(0,0,0,0.9)',
+              pointerEvents: 'none',
+              animation: msg.type === 'crit' ? 'float-up 3s ease-out forwards' :  // Crits last longer!
+                         msg.type === 'heal' ? 'float-up 2.5s ease-out forwards' : // Heals linger
+                         'float-up 2s ease-out forwards',
+              zIndex: msg.type === 'crit' ? 1001 : 1000, // Crits on top!
+              transform: msg.type === 'crit' ? 'scale(1.2)' : 'scale(1)' // Crits bigger!
+            }}
+          >
+            {msg.type === 'crit' && '💥 '}{msg.text}{msg.type === 'heal' && ' 💚'}
+          </div>
+        ))}
+      </div>
+    );
+  }
+  
+  // ============================================================================
+  // IDLE ADVENTURE MODE (default)
+  // ============================================================================
+  
   return (
     <div style={{
       width: '1920px',
       height: '1080px',
       background: 'transparent',
       position: 'relative',
-      overflow: 'hidden'
+      overflow: 'hidden',
+      opacity: fadeOpacity,
+      transition: 'opacity 0.5s ease-in-out'
     }}>
       {/* Debug info (top-left corner) */}
       {/* Debug info + test controls */}

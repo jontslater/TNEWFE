@@ -207,3 +207,4 @@ The fix is automatic:
 - ✅ Self-healing if heroes get stuck in removedHeroIds
 
 Just restart the frontend and it will clean itself up! 🎉
+

@@ -137,3 +137,4 @@ Enemies take damage too, but their key doesn't change, so no remounting!
 This bug wasted hours because it seems like a timing issue when it's actually a React rendering issue. The fix is simple but the diagnosis is hard.
 
 **Golden Rule:** Sprite component keys should be as stable as possible. Only change them when you WANT to force a remount.
+
