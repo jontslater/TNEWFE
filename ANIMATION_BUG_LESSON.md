@@ -138,3 +138,5 @@ This bug wasted hours because it seems like a timing issue when it's actually a 
 
 **Golden Rule:** Sprite component keys should be as stable as possible. Only change them when you WANT to force a remount.
 
+
+

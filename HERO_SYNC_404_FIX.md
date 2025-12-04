@@ -129,3 +129,5 @@ If the hero document is deleted from `heroes/` collection but still referenced i
 ⚠️ **ACTION NEEDED** - Clean up stale battlefield data if warnings persist
 📋 **FUTURE IMPROVEMENT** - Add automatic cleanup on hero deletion
 
+
+

@@ -246,3 +246,5 @@ First, let's just add the mode detection and logging - no UI changes yet.
 Then we can add dungeon/raid display components step by step.
 
 **Ready to implement?** 🎯
+
+

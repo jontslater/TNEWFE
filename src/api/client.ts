@@ -940,22 +940,18 @@ export const achievementAPI = {
     return response.data;
   },
   
-  async getHeroAchievements(userId: string) {
-    const response = await apiClient.get(`/api/achievements/${userId}`);
+  async getHeroAchievements(heroId: string) {
+    const response = await apiClient.get(`/api/achievements/${heroId}`);
     return response.data;
   },
   
-  async checkAchievements(userId: string, actionType: string, actionValue?: number) {
-    const response = await apiClient.post('/api/achievements/check', {
-      userId,
-      actionType,
-      actionValue
-    });
+  async equipTitle(heroId: string, title: string | null) {
+    const response = await apiClient.post(`/api/achievements/${heroId}/equip-title`, { title });
     return response.data;
   },
   
-  async setActiveTitle(userId: string, title: string) {
-    const response = await apiClient.put(`/api/achievements/${userId}/title`, { title });
+  async equipBadge(heroId: string, badge: string | null) {
+    const response = await apiClient.post(`/api/achievements/${heroId}/equip-badge`, { badge });
     return response.data;
   }
 };

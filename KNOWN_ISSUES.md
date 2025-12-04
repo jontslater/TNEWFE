@@ -70,3 +70,5 @@ Unknown - likely related to:
 - Auto-clears removedHeroIds for heroes in Firebase
 - Consistent state management
 
+
+

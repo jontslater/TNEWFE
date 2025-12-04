@@ -122,3 +122,5 @@ Add all 10 animations to `spriteAnimationData.ts` with correct frame counts
 Update `spriteAnimationData.ts` with ALL frame counts you provided!
 
 **Ready to start?** 🐉
+
+

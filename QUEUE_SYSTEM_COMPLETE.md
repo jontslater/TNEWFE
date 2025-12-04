@@ -168,3 +168,5 @@ Once queue system works:
 ## ✅ **Ready to Test!**
 
 Try creating a queue in chat and watch the modal pop up! 🎯
+
+
