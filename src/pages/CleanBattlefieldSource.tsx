@@ -231,6 +231,7 @@ export default function CleanBattlefieldSource() {
   // WebSocket message handler
   const handleWebSocketMessage = useCallback((message: any) => {
     console.log('[WebSocket] 📨 Received:', message);
+    console.log('[WebSocket] 🔍 Message type:', message.type, 'Count:', message.count);
     
     switch (message.type) {
       case 'hero_joined_battlefield':
@@ -249,8 +250,10 @@ export default function CleanBattlefieldSource() {
         break;
       
       case 'chatter_count_update':
-        console.log(`[WebSocket] 👥 Active chatters: ${message.count}`);
+        console.log(`[WebSocket] 👥 HIT CHATTER CASE! Count: ${message.count}`);
+        console.log('[WebSocket] 👥 Before setState - activeChatterCount:', message.count);
         setActiveChatterCount(message.count);
+        console.log('[WebSocket] 👥 After setState called');
         break;
       
       case 'chat_activity':
@@ -263,7 +266,7 @@ export default function CleanBattlefieldSource() {
         break;
       
       default:
-        console.log('[WebSocket] Unknown message type:', message.type);
+        console.log('[WebSocket] ⚠️ Unknown message type:', message.type);
     }
   }, []);
   
@@ -509,6 +512,46 @@ export default function CleanBattlefieldSource() {
       }
     });
   }, [heroes]); // Run whenever heroes change
+  
+  // SAFETY CHECK: Periodic scan to fix stuck death animations
+  // Catches edge cases where hero has HP > 0 but sprite is stuck in death
+  useEffect(() => {
+    const interval = setInterval(() => {
+      heroes.forEach(hero => {
+        // If hero has HP but is marked dead or in death animation, fix it
+        if (hero.hp > 0) {
+          const heroRef = getHeroSpriteRef(hero.id);
+          
+          // Check if marked as dead (state issue)
+          if (hero.isDead) {
+            console.log(`[Safety Check] 🔧 ${hero.name} has HP but isDead flag is true - fixing state`);
+            setHeroes(current => {
+              const updated = current.map(h => 
+                h.id === hero.id ? { ...h, isDead: false } : h
+              );
+              heroesRef.current = updated;
+              return updated;
+            });
+          }
+          
+          // Force sprite to idle if it exists
+          if (heroRef.current) {
+            try {
+              const currentAnimation = (heroRef.current as any).currentAnimation || 'unknown';
+              if (currentAnimation === 'death') {
+                console.log(`[Safety Check] 🔧 ${hero.name} has HP but in death animation - forcing idle`);
+                heroRef.current.playAnimation('idle');
+              }
+            } catch (err) {
+              // Silently ignore - sprite ref might not have currentAnimation property
+            }
+          }
+        }
+      });
+    }, 3000); // Check every 3 seconds
+    
+    return () => clearInterval(interval);
+  }, [heroes]); // Re-run when heroes change
   
   // Mode detection: Switch between idle/dungeon/raid based on activeInstance (WITH FADE TRANSITION)
   useEffect(() => {
@@ -2217,11 +2260,61 @@ export default function CleanBattlefieldSource() {
     const executeHeal = (action: CombatAction) => {
       const allCurrentHeroes = testHealer ? [...heroesRef.current, testHealer] : heroesRef.current;
       const healer = allCurrentHeroes.find(h => h.id === action.actorId);
-      const target = allCurrentHeroes.find(h => h.id === action.targetId);
       
-      if (!healer || !target) {
-        console.warn('[Heal] Healer or target not found');
+      if (!healer) {
+        console.warn('[Heal] Healer not found');
         return;
+      }
+      
+      // RE-CHECK HEAL TARGET RIGHT BEFORE CASTING
+      // Other healers may have already healed the original target!
+      const injuredAllies = allCurrentHeroes.filter(h => h.hp > 0 && h.hp < h.maxHp && !h.isDead);
+      
+      if (injuredAllies.length === 0) {
+        console.log(`[Heal] ${healer.name} has no one to heal - all heroes at full HP!`);
+        return; // No one needs healing anymore
+      }
+      
+      // SMART HEALING PRIORITY (re-evaluate current state):
+      // 1. EMERGENCY: Tanks below 50% HP
+      const isTankRole = (role: string) => ['guardian', 'paladin', 'warden', 'bloodknight', 'vanguard', 'brewmaster'].includes(role);
+      const emergencyTanks = injuredAllies.filter(h => 
+        isTankRole(h.role) && (h.hp / h.maxHp) < 0.50
+      );
+      
+      // 2. CRITICAL: Anyone below 30% HP
+      const criticalAllies = injuredAllies.filter(h => 
+        (h.hp / h.maxHp) < 0.30
+      );
+      
+      // 3. NORMAL: Lowest HP %
+      let target;
+      let healPriority = 'NORMAL';
+      
+      if (emergencyTanks.length > 0) {
+        // Emergency: Heal tank with lowest HP %
+        target = emergencyTanks.reduce((lowest, h) => 
+          (h.hp / h.maxHp) < (lowest.hp / lowest.maxHp) ? h : lowest
+        );
+        healPriority = 'EMERGENCY TANK';
+      } else if (criticalAllies.length > 0) {
+        // Critical: Heal ally with lowest HP %
+        target = criticalAllies.reduce((lowest, h) => 
+          (h.hp / h.maxHp) < (lowest.hp / lowest.maxHp) ? h : lowest
+        );
+        healPriority = 'CRITICAL';
+      } else {
+        // Normal: Heal ally with lowest HP %
+        target = injuredAllies.reduce((lowest, h) => 
+          (h.hp / h.maxHp) < (lowest.hp / lowest.maxHp) ? h : lowest
+        );
+      }
+      
+      const originalTargetId = action.targetId;
+      if (originalTargetId !== target.id) {
+        console.log(`[Heal] 🔄 ${healer.name} RETARGETS from ${action.targetName} to ${target.name} (${Math.floor((target.hp / target.maxHp) * 100)}% HP) [${healPriority}]`);
+      } else {
+        console.log(`[Heal] ${healer.name} heals ${target.name} (${Math.floor((target.hp / target.maxHp) * 100)}% HP) [${healPriority}]`);
       }
       
       // Calculate heal amount (based on healer's intellect, wisdom, healing power)
@@ -2238,10 +2331,11 @@ export default function CleanBattlefieldSource() {
       const cappedHealingPower = Math.min(healer.healingPower || 0, 30);
       baseHeal *= (1 + (cappedHealingPower * 0.01));
       
-      // Apply VIEWER BONUS (+1% healing per viewer)
-      if (viewerCount > 0) {
-        const viewerBonus = 1 + (viewerCount * 0.01);
-        baseHeal = Math.floor(baseHeal * viewerBonus);
+      // Apply ACTIVE CHATTER BONUS (+1% healing per active chatter)
+      if (activeChatterCount > 0) {
+        const bonuses = calculateViewerBonuses();
+        baseHeal = Math.floor(baseHeal * bonuses.healing);
+        console.log(`[Viewer Bonus] 👥 ${activeChatterCount} chatters → ${((bonuses.healing - 1) * 100).toFixed(0)}% healing bonus`);
       }
       
       // Check for Divine Grace proc (30% chance for 2x healing)
@@ -2390,10 +2484,10 @@ export default function CleanBattlefieldSource() {
       // Calculate damage ONCE outside of setState (PROPER FORMULA with stat scaling)
       let baseDamage = hero.attack || (hero.level * 5);
       
-      // Apply VIEWER BONUS (+1% damage per viewer)
-      if (viewerCount > 0) {
-        const viewerBonus = 1 + (viewerCount * 0.01);
-        baseDamage = Math.floor(baseDamage * viewerBonus);
+      // Apply ACTIVE CHATTER BONUS (+1% damage per active chatter)
+      if (activeChatterCount > 0) {
+        const bonuses = calculateViewerBonuses();
+        baseDamage = Math.floor(baseDamage * bonuses.damage);
       }
       
       // Apply Attack Buff (+10% ATK)
@@ -2921,9 +3015,10 @@ export default function CleanBattlefieldSource() {
         console.log(`[Debuff] 💔 ${enemy.name} is Weakened (-30% damage)`);
       }
       
-      // APPLY DIFFICULTY (cubed)
-      const difficultyImpact = Math.pow(difficultyModifier, 3);
-      baseDamage = Math.floor(baseDamage * difficultyImpact);
+      // APPLY DIFFICULTY (linear scaling, not exponential!)
+      // Example: 150% difficulty = 1.5x damage (reasonable)
+      // NOT: 1.5³ = 3.375x damage (insane!)
+      baseDamage = Math.floor(baseDamage * difficultyModifier);
 
       // Transform Werewolf on first attack
       if (enemy.name === 'Werewolf' && !enemy.isTransformed) {
@@ -3232,10 +3327,10 @@ export default function CleanBattlefieldSource() {
       
       let defense = targetHeroRef.defense || 0;
       
-      // Apply VIEWER BONUS (+0.5% defense per viewer)
-      if (viewerCount > 0) {
-        const viewerDefenseBonus = 1 + (viewerCount * 0.005);
-        defense = Math.floor(defense * viewerDefenseBonus);
+      // Apply ACTIVE CHATTER BONUS (+0.5% defense per active chatter)
+      if (activeChatterCount > 0) {
+        const bonuses = calculateViewerBonuses();
+        defense = Math.floor(defense * bonuses.defense);
       }
       
       // Apply Defense Buff (+10% DEF)
@@ -4146,7 +4241,7 @@ export default function CleanBattlefieldSource() {
           }
         }
       });
-    }, 60000); // Every 60 seconds
+    }, 300000); // Every 5 minutes (reduced from 60s to save Firebase writes)
     
     syncIntervalRef.current = syncInterval;
 
