@@ -3502,7 +3502,8 @@ export default function AnimationTestPage() {
         const updatedHeroes = prev.map(hero => {
         // Initialize XP if not set
         if (hero.xp === undefined) hero.xp = 0;
-        if (hero.maxXp === undefined) hero.maxXp = 100 + (hero.level * 10);
+        // Calculate exponential XP requirement: 100 * (1.5 ^ (level - 1))
+        if (hero.maxXp === undefined) hero.maxXp = Math.floor(100 * Math.pow(1.5, hero.level - 1));
         
         const newXp = hero.xp + xpValue;
         let updatedHero = { ...hero, xp: newXp };

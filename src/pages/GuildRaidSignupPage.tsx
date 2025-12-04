@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { raidAPI, guildAPI } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
+import { useHero } from '../hooks/useHero';
 import { useGuild } from '../hooks/useGuild';
 import { getItemScore } from '../utils/format';
 
@@ -9,8 +10,8 @@ export default function GuildRaidSignupPage() {
   const { raidId } = useParams<{ raidId: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const targetUserId = user?.id;
-  const { guild, loading: guildLoading } = useGuild(targetUserId || null);
+  const { hero } = useHero(user?.twitchId || null);
+  const { guild, loading: guildLoading } = useGuild(hero?.id || null);
   
   const [raid, setRaid] = useState<any | null>(null);
   const [members, setMembers] = useState<Array<{userId: string, username: string, hero: any | null}>>([]);
@@ -18,27 +19,36 @@ export default function GuildRaidSignupPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [scheduledTime, setScheduledTime] = useState<string>(''); // ISO datetime string
+  const [startMode, setStartMode] = useState<'now' | 'scheduled'>('now');
+  const [simulateMode, setSimulateMode] = useState<boolean>(false); // Simulate vs Live combat
 
   useEffect(() => {
-    if (!raidId || !targetUserId) return;
+    if (!raidId || !hero?.id) return;
     
     loadData();
-  }, [raidId, targetUserId]);
+  }, [raidId, hero?.id]);
 
   const loadData = async () => {
-    if (!raidId || !targetUserId) return;
+    if (!raidId || !hero?.id) return;
     
     try {
       setLoading(true);
       
       // Fetch raid data
+      console.log('[Guild Raid Signup] Loading raid:', raidId);
       const raids = await raidAPI.getRaids();
+      console.log('[Guild Raid Signup] Available raids:', raids.map((r: any) => ({ id: r.id, name: r.name })));
+      
       const foundRaid = raids.find((r: any) => r.id === raidId);
       if (!foundRaid) {
-        setError('Raid not found');
+        console.error('[Guild Raid Signup] Raid not found! raidId:', raidId);
+        console.error('[Guild Raid Signup] Available raid IDs:', raids.map((r: any) => r.id));
+        setError(`Raid not found (ID: ${raidId})`);
         setLoading(false);
         return;
       }
+      console.log('[Guild Raid Signup] Found raid:', foundRaid.name);
       setRaid(foundRaid);
       
       // Fetch guild members with heroes
@@ -98,16 +108,19 @@ export default function GuildRaidSignupPage() {
     setAssignedPlayers(prev => prev.filter(p => p.userId !== userId));
   };
 
-  const handleSignup = async () => {
+  const handleSignup = async (startNow: boolean = false) => {
     if (!raid || !guild) return;
     
-    const minRequired = Math.ceil(raid.minPlayers / 2);
-    if (assignedPlayers.length < minRequired) {
-      alert(`Need at least ${minRequired} players (half of ${raid.minPlayers} minimum)`);
-      return;
+    // Only require minimum players if starting NOW
+    if (startNow) {
+      const minRequired = Math.ceil(raid.minPlayers / 2);
+      if (assignedPlayers.length < minRequired) {
+        alert(`Need at least ${minRequired} players to start now (half of ${raid.minPlayers} minimum)`);
+        return;
+      }
     }
     
-    // Validate requirements
+    // Validate requirements for assigned players
     for (const player of assignedPlayers) {
       if (player.heroLevel < raid.minLevel) {
         alert(`${player.heroName} does not meet level requirement (Level ${raid.minLevel} required)`);
@@ -119,11 +132,57 @@ export default function GuildRaidSignupPage() {
       }
     }
     
+    // Validate scheduled time if not starting now
+    if (!startNow && startMode === 'scheduled') {
+      if (!scheduledTime) {
+        alert('Please select a start time');
+        return;
+      }
+      const scheduledDate = new Date(scheduledTime);
+      if (scheduledDate <= new Date()) {
+        alert('Scheduled time must be in the future');
+        return;
+      }
+    }
+    
     try {
       setSubmitting(true);
-      await raidAPI.guildSignupForRaid(raidId!, guild.id, assignedPlayers);
-      alert('Guild signed up for raid successfully!');
-      navigate('/player-portal?tab=raids');
+      
+      const signupData = {
+        assignedPlayers,
+        startMode: startNow ? 'now' : startMode,
+        scheduledTime: startNow ? null : (startMode === 'scheduled' ? scheduledTime : null)
+      };
+      
+      if (startNow) {
+        if (simulateMode) {
+          // Simulate raid instantly
+          const heroIds = assignedPlayers.map(p => p.heroId);
+          await raidAPI.simulateRaid(raidId!, heroIds);
+          alert('Raid simulated! Check your rewards (70% loot quality)');
+          navigate('/portal');
+        } else {
+          // Start raid immediately (live combat)
+          const heroIds = assignedPlayers.map(p => p.heroId);
+          await raidAPI.startRaid(raidId!, heroIds);
+          alert('Guild raid started!');
+          navigate('/portal');
+        }
+      } else {
+        // Create scheduled raid signup (allows members to self-signup)
+        await raidAPI.createScheduledGuildRaid(raidId!, guild.id, {
+          scheduledTime: scheduledTime || null,
+          organizer: hero!.id,
+          organizerName: hero!.name,
+          initialAssignments: assignedPlayers,
+          status: 'recruiting',
+          simulateMode: simulateMode // Store if this raid should be simulated
+        });
+        
+        const modeText = simulateMode ? '(Simulated - 70% rewards)' : '(Live Combat - 100% rewards)';
+        alert(`Guild raid scheduled! ${startMode === 'scheduled' ? `Starts at ${new Date(scheduledTime).toLocaleString()}` : 'Waiting for signups'} ${modeText}`);
+        navigate('/portal');
+      }
     } catch (err: any) {
       alert(err.response?.data?.error || 'Failed to sign up for raid');
       console.error('Failed to sign up:', err);
@@ -165,16 +224,18 @@ export default function GuildRaidSignupPage() {
   }
 
   const minRequired = Math.ceil(raid.minPlayers / 2);
-  const canSignup = assignedPlayers.length >= minRequired && assignedPlayers.length <= raid.maxPlayers;
+  // Can schedule anytime, but need minimum to start now
+  const canSchedule = assignedPlayers.length <= raid.maxPlayers;
+  const canStartNow = assignedPlayers.length >= minRequired && assignedPlayers.length <= raid.maxPlayers;
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-7xl">
       <div className="mb-6">
         <button
-          onClick={() => navigate('/player-portal?tab=raids')}
+          onClick={() => navigate('/portal')}
           className="text-blue-400 hover:text-blue-300 mb-4"
         >
-          ← Back to Raids
+          ← Back to Guild
         </button>
         <h1 className="text-3xl font-bold text-white mb-2">Guild Raid Signup</h1>
         <h2 className="text-2xl text-gray-300 mb-4">{raid.name}</h2>
@@ -311,20 +372,118 @@ export default function GuildRaidSignupPage() {
             )}
           </div>
           
+          {/* Scheduling Options */}
+          <div className="mt-6 bg-gray-700 rounded-lg p-4 border border-gray-600">
+            <h4 className="text-white font-semibold mb-3">Start Options</h4>
+            
+            <div className="space-y-3">
+              {/* Start Now Option */}
+              <label className="flex items-center space-x-3 cursor-pointer">
+                <input
+                  type="radio"
+                  checked={startMode === 'now'}
+                  onChange={() => setStartMode('now')}
+                  className="w-4 h-4 text-green-600"
+                />
+                <span className="text-white">Start Immediately</span>
+              </label>
+              
+              {/* Schedule for Later Option */}
+              <label className="flex items-center space-x-3 cursor-pointer">
+                <input
+                  type="radio"
+                  checked={startMode === 'scheduled'}
+                  onChange={() => setStartMode('scheduled')}
+                  className="w-4 h-4 text-blue-600"
+                />
+                <span className="text-white">Schedule for Later</span>
+              </label>
+              
+              {/* Time Picker (only show if scheduled) */}
+              {startMode === 'scheduled' && (
+                <div className="ml-7 mt-2">
+                  <input
+                    type="datetime-local"
+                    value={scheduledTime}
+                    onChange={(e) => setScheduledTime(e.target.value)}
+                    min={new Date().toISOString().slice(0, 16)}
+                    className="px-3 py-2 bg-gray-800 border border-gray-600 rounded text-white"
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+          
+          {/* Combat Mode Toggle */}
+          <div className="mt-4 bg-gray-700 rounded-lg p-4 border border-gray-600">
+            <h4 className="text-white font-semibold mb-3">Combat Mode</h4>
+            
+            <div className="space-y-3">
+              {/* Live Combat */}
+              <label className="flex items-center justify-between cursor-pointer p-3 bg-gray-800 rounded border-2 border-green-600 hover:border-green-500">
+                <div className="flex items-center space-x-3">
+                  <input
+                    type="radio"
+                    checked={!simulateMode}
+                    onChange={() => setSimulateMode(false)}
+                    className="w-4 h-4 text-green-600"
+                  />
+                  <div>
+                    <div className="text-white font-semibold">🎬 Live Combat</div>
+                    <div className="text-sm text-gray-400">Watch on stream • Better rewards</div>
+                  </div>
+                </div>
+                <div className="text-green-400 text-sm font-bold">100% Loot</div>
+              </label>
+              
+              {/* Simulate */}
+              <label className="flex items-center justify-between cursor-pointer p-3 bg-gray-800 rounded border-2 border-purple-600 hover:border-purple-500">
+                <div className="flex items-center space-x-3">
+                  <input
+                    type="radio"
+                    checked={simulateMode}
+                    onChange={() => setSimulateMode(true)}
+                    className="w-4 h-4 text-purple-600"
+                  />
+                  <div>
+                    <div className="text-white font-semibold">⚡ Simulate</div>
+                    <div className="text-sm text-gray-400">Instant results • Reduced rewards</div>
+                  </div>
+                </div>
+                <div className="text-purple-400 text-sm font-bold">70% Loot (Max Epic)</div>
+              </label>
+            </div>
+          </div>
+          
+          {/* Action Buttons */}
           <div className="mt-6 flex gap-4">
+            {startMode === 'now' ? (
+              <button
+                onClick={() => handleSignup(true)}
+                disabled={!canStartNow || submitting}
+                className={`flex-1 px-6 py-3 rounded-lg font-semibold transition-colors ${
+                  canStartNow && !submitting
+                    ? 'bg-green-600 hover:bg-green-700 text-white'
+                    : 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                }`}
+              >
+                {submitting ? 'Starting...' : `🚀 Start Raid Now${!canStartNow ? ` (Need ${minRequired - assignedPlayers.length} more)` : ''}`}
+              </button>
+            ) : (
+              <button
+                onClick={() => handleSignup(false)}
+                disabled={!canSchedule || submitting}
+                className={`flex-1 px-6 py-3 rounded-lg font-semibold transition-colors ${
+                  canSchedule && !submitting
+                    ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                    : 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                }`}
+              >
+                {submitting ? 'Scheduling...' : '📅 Schedule Raid (Members can join later)'}
+              </button>
+            )}
             <button
-              onClick={handleSignup}
-              disabled={!canSignup || submitting}
-              className={`flex-1 px-6 py-3 rounded-lg font-semibold transition-colors ${
-                canSignup && !submitting
-                  ? 'bg-green-600 hover:bg-green-700 text-white'
-                  : 'bg-gray-600 text-gray-400 cursor-not-allowed'
-              }`}
-            >
-              {submitting ? 'Signing Up...' : 'Sign Up'}
-            </button>
-            <button
-              onClick={() => navigate('/player-portal?tab=raids')}
+              onClick={() => navigate('/portal')}
               className="px-6 py-3 rounded-lg font-semibold bg-gray-600 hover:bg-gray-700 text-white"
             >
               Cancel

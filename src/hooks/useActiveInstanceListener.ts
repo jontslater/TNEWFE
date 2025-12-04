@@ -39,12 +39,41 @@ export function useActiveInstanceListener(userId: string | null) {
 
     const unsubscribeRaid = onSnapshot(
       raidQuery,
-      (snapshot: QuerySnapshot<DocumentData>) => {
+      async (snapshot: QuerySnapshot<DocumentData>) => {
         console.log(`[ActiveInstance Listener] Raid snapshot: ${snapshot.docs.length} active raids`);
         
         if (snapshot.docs.length > 0) {
           // User is in an active raid - prioritize raids over dungeons
           const instance = snapshot.docs[0];
+          const raidData = instance.data();
+          
+          // SAFEGUARD: Check if raid is too old (2 hours timeout)
+          const RAID_TIMEOUT_MS = 2 * 60 * 60 * 1000; // 2 hours
+          const createdAt = raidData.createdAt?.toDate?.() || new Date(0);
+          const ageMs = Date.now() - createdAt.getTime();
+          
+          if (ageMs > RAID_TIMEOUT_MS) {
+            console.warn(`[ActiveInstance Listener] ⏰ Raid ${instance.id} has timed out (${Math.round(ageMs / 1000 / 60)} minutes old)`);
+            console.log(`[ActiveInstance Listener] 🔧 Auto-completing stale raid...`);
+            
+            // Auto-complete the raid
+            try {
+              await instance.ref.update({
+                status: 'completed',
+                completedAt: new Date(),
+                timeoutReason: 'Auto-completed after 2 hour timeout'
+              });
+              console.log(`[ActiveInstance Listener] ✅ Stale raid auto-completed`);
+            } catch (err) {
+              console.error('[ActiveInstance Listener] Failed to auto-complete raid:', err);
+            }
+            
+            // Clear state and return to idle
+            setActiveInstance({ type: null, instanceId: null });
+            setLoading(false);
+            return;
+          }
+          
           setActiveInstance(prev => {
             // Only update if we don't already have this raid, or if we have a dungeon (raid takes priority)
             if (prev.type === 'raid' && prev.instanceId === instance.id) {
@@ -56,7 +85,7 @@ export function useActiveInstanceListener(userId: string | null) {
             };
           });
           setLoading(false);
-          console.log(`[ActiveInstance Listener] Active raid found: ${instance.id}`);
+          console.log(`[ActiveInstance Listener] Active raid found: ${instance.id} (age: ${Math.round(ageMs / 1000 / 60)} min)`);
         } else {
           // No active raid - clear raid state (dungeon listener will set dungeon if one exists)
           setActiveInstance(prev => {
@@ -86,7 +115,7 @@ export function useActiveInstanceListener(userId: string | null) {
 
     const unsubscribeDungeon = onSnapshot(
       dungeonQuery,
-      (snapshot: QuerySnapshot<DocumentData>) => {
+      async (snapshot: QuerySnapshot<DocumentData>) => {
         console.log(`[ActiveInstance Listener] Dungeon snapshot: ${snapshot.docs.length} active dungeons`);
         
         // Only set dungeon if no active raid (raid takes priority)
@@ -98,11 +127,32 @@ export function useActiveInstanceListener(userId: string | null) {
           
           if (snapshot.docs.length > 0) {
             const instance = snapshot.docs[0];
+            const dungeonData = instance.data();
+            
+            // SAFEGUARD: Check if dungeon is too old (2 hours timeout)
+            const DUNGEON_TIMEOUT_MS = 2 * 60 * 60 * 1000; // 2 hours
+            const createdAt = dungeonData.createdAt?.toDate?.() || new Date(0);
+            const ageMs = Date.now() - createdAt.getTime();
+            
+            if (ageMs > DUNGEON_TIMEOUT_MS) {
+              console.warn(`[ActiveInstance Listener] ⏰ Dungeon ${instance.id} has timed out (${Math.round(ageMs / 1000 / 60)} minutes old)`);
+              console.log(`[ActiveInstance Listener] 🔧 Auto-completing stale dungeon...`);
+              
+              // Auto-complete the dungeon
+              instance.ref.update({
+                status: 'completed',
+                completedAt: new Date(),
+                timeoutReason: 'Auto-completed after 2 hour timeout'
+              }).catch(err => console.error('[ActiveInstance Listener] Failed to auto-complete dungeon:', err));
+              
+              return { type: null, instanceId: null };
+            }
+            
             // Only update if we don't already have this dungeon
             if (prev.type === 'dungeon' && prev.instanceId === instance.id) {
               return prev; // No change needed
             }
-            console.log(`[ActiveInstance Listener] Active dungeon found: ${instance.id}`);
+            console.log(`[ActiveInstance Listener] Active dungeon found: ${instance.id} (age: ${Math.round(ageMs / 1000 / 60)} min)`);
             return {
               type: 'dungeon',
               instanceId: instance.id

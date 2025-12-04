@@ -133,6 +133,7 @@ export default function GuildPage() {
         {showCreateModal && (
           <CreateGuildModal
             userId={userId!}
+            username={user?.twitchUsername || user?.displayName || 'Unknown'}
             onClose={() => {
               setShowCreateModal(false);
               refetchGuild();
@@ -767,7 +768,7 @@ function GuildSettingsTab({ guild, onUpdate }: any) {
   );
 }
 
-function CreateGuildModal({ userId, onClose }: any) {
+function CreateGuildModal({ userId, username, onClose }: any) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [loading, setLoading] = useState(false);
@@ -780,7 +781,7 @@ function CreateGuildModal({ userId, onClose }: any) {
 
     try {
       setLoading(true);
-      await enhancedGuildAPI.createGuild(name, userId);
+      await enhancedGuildAPI.createGuild(name, userId, username);
       onClose();
     } catch (err: any) {
       alert(err.response?.data?.error || 'Failed to create guild');

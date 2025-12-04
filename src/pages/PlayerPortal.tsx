@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useHero } from '../hooks/useHero';
 import { useAllHeroes } from '../hooks/useAllHeroes';
@@ -26,12 +26,14 @@ import BrowserSourceTab from '../components/BrowserSourceTab';
 
 export default function PlayerPortal() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, isAuthenticated, logout } = useAuth();
   const isAdmin = user?.twitchUsername?.toLowerCase() === 'theneverendingwar';
   // Use Twitch ID to resolve all heroes for this account
   const { hero, heroes, loading: heroLoading, refetch: refetchHero, deleteHero, selectHero } = useHero(user?.twitchId || null);
   const { heroes: allHeroes, loading: allHeroesLoading, refetch: refetchAllHeroes } = useAllHeroes(isAdmin);
-  const { guild, loading: guildLoading } = useGuild(user?.id || null);
+  // Use hero ID for guild (hero-based guild system)
+  const { guild, loading: guildLoading, refetch: refetchGuild } = useGuild(hero?.id || null);
   const [raids, setRaids] = useState<Raid[]>([]);
   const [worldBoss, setWorldBoss] = useState<WorldBoss | null>(null);
   const [activeTab, setActiveTab] = useState<'hero' | 'inventory' | 'profession' | 'guild' | 'raids' | 'skills' | 'dungeon' | 'browserSource' | 'achievements' | 'allHeroes'>('hero');
@@ -40,6 +42,14 @@ export default function PlayerPortal() {
   const [showLoginReward, setShowLoginReward] = useState(false);
   const [loginRewardStatus, setLoginRewardStatus] = useState<any>(null);
   const [dungeonQueueStatus, setDungeonQueueStatus] = useState<any>(null);
+  
+  // Handle navigation state (for setting active tab from other pages)
+  useEffect(() => {
+    const state = location.state as any;
+    if (state?.activeTab) {
+      setActiveTab(state.activeTab);
+    }
+  }, [location.state]);
 
   const groupedAllHeroes = useMemo(() => {
     const groups = new Map<string, { twitchId: string; label: string; heroes: Hero[] }>();
@@ -329,7 +339,7 @@ export default function PlayerPortal() {
                   : 'text-gray-400 border-transparent hover:text-gray-300'
               }`}
             >
-              🏆 Achievements
+              Achievements
             </button>
             <button
               onClick={() => setActiveTab('dungeon')}
@@ -352,7 +362,7 @@ export default function PlayerPortal() {
                   : 'text-gray-400 border-transparent hover:text-gray-300'
               }`}
             >
-              📺 Browser Source
+              Browser Source
             </button>
             {isAdmin && (
               <button
@@ -596,7 +606,7 @@ export default function PlayerPortal() {
             }}
           />
         )}
-            {activeTab === 'guild' && <GuildPanel guild={guild} />}
+            {activeTab === 'guild' && <GuildPanel guild={guild} refetchGuild={refetchGuild} />}
             {activeTab === 'raids' && <RaidBrowser hero={hero} userId={hero?.id || user?.id} />}
             {activeTab === 'skills' && <SkillsPage hero={hero} userId={user?.id} />}
             {activeTab === 'achievements' && <AchievementsPanel hero={hero} onUpdate={refetchHero} />}

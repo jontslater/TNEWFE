@@ -71,7 +71,8 @@ code {
 }
 
 /* Browser Source Page - Force transparent background */
-.browser-source-page {
+.browser-source-page,
+.clean-battlefield-page {
   background-color: transparent !important;
   background: transparent !important;
 }
@@ -79,12 +80,20 @@ code {
 /* Override global body/html background for browser source route */
 body:has(.browser-source-page),
 html:has(.browser-source-page),
+body:has(.clean-battlefield-page),
+html:has(.clean-battlefield-page),
 body.browser-source-body,
 html.browser-source-html {
   background-color: transparent !important;
   background: transparent !important;
   margin: 0 !important;
   padding: 0 !important;
+}
+
+/* Force transparent for #root as well */
+#root:has(.clean-battlefield-page) {
+  background-color: transparent !important;
+  background: transparent !important;
 }
 
 /* Loading spinner animation for OBS page */

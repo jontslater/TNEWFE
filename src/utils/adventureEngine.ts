@@ -345,7 +345,8 @@ export class AdventureEngine {
 
       // Grant travel XP (matches Electron app line 8928)
       hero.xp = (hero.xp || 0) + 3;
-      hero.maxXp = hero.maxXp || (100 + (hero.level * 10));
+      // Calculate exponential XP requirement: 100 * (1.5 ^ (level - 1))
+      hero.maxXp = hero.maxXp || Math.floor(100 * Math.pow(1.5, (hero.level || 1) - 1));
 
       // Handle level ups (matches Electron app lines 8930-8932)
       if (this.onLevelUpHero) {
