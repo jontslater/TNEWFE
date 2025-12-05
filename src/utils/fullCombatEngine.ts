@@ -1121,7 +1121,8 @@ export class FullCombatEngine {
       if (!hero) return;
       // Grant travel XP (matches Electron app: hero.xp += 3)
       hero.xp = (hero.xp || 0) + 3;
-      hero.maxXp = hero.maxXp || (100 + (hero.level || 1) * 10);
+      // Calculate exponential XP requirement: 100 * (1.5 ^ (level - 1))
+      hero.maxXp = hero.maxXp || Math.floor(100 * Math.pow(1.5, (hero.level || 1) - 1));
       
       // Handle level ups (matches Electron app lines 8930-8932)
       while (hero.xp >= hero.maxXp) {
@@ -1195,7 +1196,8 @@ export class FullCombatEngine {
       
       // Grant travel XP (matches Electron app line 8928)
       hero.xp = (hero.xp || 0) + 3;
-      hero.maxXp = hero.maxXp || (100 + (hero.level * 10));
+      // Calculate exponential XP requirement: 100 * (1.5 ^ (level - 1))
+      hero.maxXp = hero.maxXp || Math.floor(100 * Math.pow(1.5, (hero.level || 1) - 1));
       
       // Handle level ups (matches Electron app lines 8930-8932)
       while (hero.xp >= hero.maxXp) {
@@ -3230,7 +3232,8 @@ export class FullCombatEngine {
       // Grant XP
       const oldXP = hero.xp || 0;
       hero.xp = oldXP + xpPerHero;
-      hero.maxXp = hero.maxXp || (100 + (hero.level || 1) * 10);
+      // Calculate exponential XP requirement: 100 * (1.5 ^ (level - 1))
+      hero.maxXp = hero.maxXp || Math.floor(100 * Math.pow(1.5, (hero.level || 1) - 1));
       
       // Check for level up
       while (hero.xp >= hero.maxXp) {

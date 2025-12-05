@@ -9,7 +9,7 @@
  * - Nothing else!
  */
 
-import React, { useEffect, useState, useRef, useMemo } from 'react';
+import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { collection, query, where, onSnapshot, doc } from 'firebase/firestore';
 import { db } from '../utils/firebase';
@@ -19,6 +19,7 @@ import EnemySpriteJS from '../components/EnemySpriteJS';
 import { battlefieldAPI, heroAPI, questAPI } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import { useActiveInstanceListener } from '../hooks/useActiveInstanceListener';
+import { useWebSocket } from '../hooks/useWebSocket';
 import { DEBUFFS, SHOP_ITEMS } from '../utils/fullCombatEngine';
 import { generateLoot, isItemBetter, calculateItemPower } from '../utils/lootGeneration';
 import { calculateSetBonuses } from '../utils/setBonuses';
@@ -176,6 +177,30 @@ export default function CleanBattlefieldSource() {
     }
   }, []);
   
+  // Force transparent background for OBS Browser Source
+  useEffect(() => {
+    // Set body and html background to transparent
+    document.body.style.backgroundColor = 'transparent';
+    document.documentElement.style.backgroundColor = 'transparent';
+    
+    // Also ensure #root is transparent
+    const root = document.getElementById('root');
+    if (root) {
+      root.style.backgroundColor = 'transparent';
+    }
+    
+    console.log('[OBS] ✅ Forced transparent background');
+    
+    // Cleanup on unmount (restore original background)
+    return () => {
+      document.body.style.backgroundColor = '';
+      document.documentElement.style.backgroundColor = '';
+      if (root) {
+        root.style.backgroundColor = '';
+      }
+    };
+  }, []);
+  
   const [searchParams] = useSearchParams();
   const { user } = useAuth();
   const [heroes, setHeroes] = useState<Hero[]>([]); // Combat heroes (idle: all on battlefield, raid: participants only)
@@ -184,7 +209,8 @@ export default function CleanBattlefieldSource() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [battlefieldId, setBattlefieldId] = useState<string | null>(null);
-  const [waveCount, setWaveCount] = useState(1);
+  const [waveCount, setWaveCount] = useState(1); // Total ticks (includes rest/travel)
+  const [combatWaveCount, setCombatWaveCount] = useState(0); // Only combat waves
   const [inCombat, setInCombat] = useState(false);
   const [facingPreferences, setFacingPreferences] = useState<Record<string, 'left' | 'right'>>({});
   const [resurrectionTimers, setResurrectionTimers] = useState<Record<string, number>>({});
@@ -193,6 +219,129 @@ export default function CleanBattlefieldSource() {
   const [testHealer, setTestHealer] = useState<Hero | null>(null);
   const [isTraveling, setIsTraveling] = useState(false);
   const [viewerCount, setViewerCount] = useState(0);
+  const [activeChatterCount, setActiveChatterCount] = useState(0); // Active chatters in last hour
+  
+  // Rested XP tracking
+  const heroBattlefieldJoinTime = useRef<Map<string, number>>(new Map());
+  const lastChatTime = useRef<Map<string, number>>(new Map());
+  
+  // Extract twitchId from battlefieldId for WebSocket connection
+  const twitchId = battlefieldId?.split(':')[1] || null;
+  
+  // WebSocket message handler
+  const handleWebSocketMessage = useCallback((message: any) => {
+    console.log('[WebSocket] 📨 Received:', message);
+    console.log('[WebSocket] 🔍 Message type:', message.type, 'Count:', message.count);
+    
+    switch (message.type) {
+      case 'hero_joined_battlefield':
+        console.log(`[WebSocket] ✅ ${message.hero?.name} joined!`);
+        // Firebase listener will auto-update, no manual action needed
+        break;
+      
+      case 'hero_left_battlefield':
+        console.log(`[WebSocket] 👋 ${message.hero?.name} left!`);
+        // Firebase listener will auto-update
+        break;
+      
+      case 'channel_point_redeem':
+        console.log(`[WebSocket] 🎁 ${message.username} redeemed: ${message.reward}`);
+        // TODO: Handle visual effects for redeems
+        break;
+      
+      case 'chatter_count_update':
+        console.log(`[WebSocket] 👥 HIT CHATTER CASE! Count: ${message.count}`);
+        console.log('[WebSocket] 👥 Before setState - activeChatterCount:', message.count);
+        setActiveChatterCount(message.count);
+        console.log('[WebSocket] 👥 After setState called');
+        break;
+      
+      case 'chat_activity':
+        console.log(`[WebSocket] 💬 Chat activity from ${message.username}`);
+        // Track chat time for rested XP bonuses
+        if (message.heroId) {
+          lastChatTime.current.set(message.heroId, Date.now());
+          console.log(`[Rested XP] 📝 Recorded chat activity for hero ${message.heroId}`);
+        }
+        break;
+      
+      default:
+        console.log('[WebSocket] ⚠️ Unknown message type:', message.type);
+    }
+  }, []);
+  
+  // Connect to WebSocket for real-time events
+  const { connected: wsConnected } = useWebSocket(twitchId, handleWebSocketMessage);
+  
+  // Log WebSocket connection status
+  useEffect(() => {
+    if (wsConnected) {
+      console.log(`[WebSocket] ✅ Connected to battlefield ${battlefieldId}`);
+    } else {
+      console.log(`[WebSocket] ⚠️ Not connected to battlefield ${battlefieldId}`);
+    }
+  }, [wsConnected, battlefieldId]);
+  
+  // Track hero join times when they appear on battlefield
+  useEffect(() => {
+    heroes.forEach(hero => {
+      if (!heroBattlefieldJoinTime.current.has(hero.id)) {
+        heroBattlefieldJoinTime.current.set(hero.id, Date.now());
+        console.log(`[Rested XP] ⏰ Tracking join time for ${hero.name} (${hero.id})`);
+      }
+    });
+    
+    // Clean up join times for heroes that left
+    const currentHeroIds = new Set(heroes.map(h => h.id));
+    for (const heroId of heroBattlefieldJoinTime.current.keys()) {
+      if (!currentHeroIds.has(heroId)) {
+        heroBattlefieldJoinTime.current.delete(heroId);
+        lastChatTime.current.delete(heroId);
+        console.log(`[Rested XP] 🧹 Cleaned up tracking for hero ${heroId}`);
+      }
+    }
+  }, [heroes]);
+  
+  // Grant rested XP every 5 minutes
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setHeroes(current => {
+        return current.map(hero => {
+          const joinTime = heroBattlefieldJoinTime.current.get(hero.id);
+          if (!joinTime || hero.isDead) return hero; // Skip dead heroes
+          
+          const hoursOnBattlefield = (Date.now() - joinTime) / (1000 * 60 * 60);
+          const baseRestedXP = Math.floor((hero.maxXp || 100) * Math.min(hoursOnBattlefield * 0.01, 0.5));
+          
+          // Chat activity bonus (if user chatted in last hour)
+          const lastChat = lastChatTime.current.get(hero.id);
+          const chatBonus = lastChat && (Date.now() - lastChat < 3600000) ? 1.5 : 1.0;
+          
+          const restedXP = Math.floor(baseRestedXP * chatBonus);
+          
+          if (restedXP > 0) {
+            console.log(`[Rested XP] 💤 ${hero.name} gains ${restedXP} rested XP (chat bonus: ${chatBonus}x)`);
+            
+            // Show rested XP SCT
+            const heroElement = document.querySelector(`[data-hero-id="${hero.id}"]`);
+            if (heroElement) {
+              const rect = heroElement.getBoundingClientRect();
+              addSCT(`+${restedXP} Rested XP`, rect.left + rect.width / 2, rect.top + 30, 'xp');
+            }
+            
+            // Reset join time to prevent double-counting
+            heroBattlefieldJoinTime.current.set(hero.id, Date.now());
+            
+            return { ...hero, xp: (hero.xp || 0) + restedXP };
+          }
+          
+          return hero;
+        });
+      });
+    }, 5 * 60 * 1000); // Every 5 minutes
+    
+    return () => clearInterval(interval);
+  }, []); // Empty deps - runs once on mount
 
   // MODE SWITCHING: Detect if hero is in dungeon/raid instance
   const [gameMode, setGameMode] = useState<'idle' | 'dungeon' | 'raid'>('idle');
@@ -204,6 +353,205 @@ export default function CleanBattlefieldSource() {
   
   // Listen for active instances (dungeons/raids)
   const { activeInstance, loading: instanceLoading } = useActiveInstanceListener(user?.twitchId || null);
+  
+  // Track scheduled raid auto-start timeouts
+  const scheduledRaidTimeouts = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  
+  // Monitor scheduled guild raids and auto-start at scheduled time
+  useEffect(() => {
+    if (!battlefieldId || gameMode !== 'idle') return;
+    
+    // Extract twitch ID from battlefieldId (format: "twitch:1087777297")
+    const twitchId = battlefieldId.split(':')[1];
+    if (!twitchId) return;
+    
+    console.log('[Scheduled Raids] 🔍 Monitoring for auto-start...');
+    
+    // Query for scheduled guild raids
+    const checkScheduledRaids = async () => {
+      try {
+        // Fetch scheduled raids where participants include someone from this battlefield
+        const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/raids/scheduled/battlefield/${battlefieldId}`);
+        
+        if (!response.ok) {
+          // Endpoint might not exist yet - that's ok
+          return;
+        }
+        
+        const scheduledRaids = await response.json();
+        
+        scheduledRaids.forEach((raid: any) => {
+          // Clear existing timeout if any
+          const existingTimeout = scheduledRaidTimeouts.current.get(raid.id);
+          if (existingTimeout) {
+            clearTimeout(existingTimeout);
+          }
+          
+          if (raid.scheduledTime && raid.status === 'recruiting') {
+            const scheduledDate = new Date(raid.scheduledTime._seconds * 1000);
+            const now = new Date();
+            const timeUntilStart = scheduledDate.getTime() - now.getTime();
+            
+            if (timeUntilStart > 0 && timeUntilStart < 86400000) {
+              // Future raid within 24 hours - schedule auto-start
+              const minPlayers = raid.minPlayers || 5;
+              const hasEnoughPlayers = raid.participants.length >= minPlayers;
+              
+              if (hasEnoughPlayers) {
+                console.log(`[Auto-Start] ⏰ "${raid.raidName}" will start in ${Math.floor(timeUntilStart / 60000)} minutes`);
+                
+                const timeout = setTimeout(async () => {
+                  console.log(`[Auto-Start] 🚀 Starting "${raid.raidName}" NOW! Mode: ${raid.simulateMode ? 'SIMULATE' : 'LIVE'}`);
+                  try {
+                    if (raid.simulateMode) {
+                      // Simulate raid (instant, reduced rewards)
+                      const heroIds = raid.participants.map((p: any) => p.heroId);
+                      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/raids/${raid.raidId}/simulate`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ participants: heroIds })
+                      });
+                      
+                      if (response.ok) {
+                        const result = await response.json();
+                        console.log(`[Auto-Start] ⚡ Raid simulated! Outcome: ${result.outcome}, ${result.message}`);
+                        
+                        // Show brief notification (no visual combat)
+                        // Could add a toast/notification here
+                      }
+                    } else {
+                      // Start live raid (visual combat)
+                      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/raids/scheduled/${raid.id}/start`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' }
+                      });
+                      
+                      if (response.ok) {
+                        console.log('[Auto-Start] ✅ Live raid started! Transition will happen automatically via useActiveInstanceListener');
+                      }
+                    }
+                  } catch (err) {
+                    console.error('[Auto-Start] ❌ Failed to start raid:', err);
+                  }
+                }, timeUntilStart);
+                
+                scheduledRaidTimeouts.current.set(raid.id, timeout);
+              }
+            } else if (timeUntilStart > -300000 && timeUntilStart <= 0) {
+              // Raid should have started in last 5 minutes - start now!
+              const minPlayers = raid.minPlayers || 5;
+              if (raid.participants.length >= minPlayers) {
+                console.log(`[Auto-Start] ⚡ Starting late raid "${raid.raidName}"... Mode: ${raid.simulateMode ? 'SIMULATE' : 'LIVE'}`);
+                
+                if (raid.simulateMode) {
+                  // Simulate
+                  const heroIds = raid.participants.map(p => p.heroId);
+                  fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/raids/${raid.raidId}/simulate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ participants: heroIds })
+                  }).then(() => console.log('[Auto-Start] ⚡ Late raid simulated!'))
+                    .catch(err => console.error('[Auto-Start] Failed:', err));
+                } else {
+                  // Start live
+                  fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/raids/scheduled/${raid.id}/start`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                  }).then(() => console.log('[Auto-Start] ✅ Late raid started!'))
+                    .catch(err => console.error('[Auto-Start] Failed:', err));
+                }
+              }
+            }
+          }
+        });
+      } catch (err) {
+        console.log('[Scheduled Raids] No scheduled raids or endpoint not ready');
+      }
+    };
+    
+    // Check on mount and every 60 seconds
+    checkScheduledRaids();
+    const interval = setInterval(checkScheduledRaids, 60000);
+    
+    return () => {
+      clearInterval(interval);
+      scheduledRaidTimeouts.current.forEach(timeout => clearTimeout(timeout));
+      scheduledRaidTimeouts.current.clear();
+    };
+  }, [battlefieldId, gameMode]);
+  
+  // Resurrection detector: Check for dead heroes who have HP > 0 (healed/resurrected)
+  useEffect(() => {
+    heroes.forEach(hero => {
+      // Detect resurrection: Hero is marked dead but has HP > 0
+      if (hero.isDead && hero.hp > 0) {
+        console.log(`[Resurrection] 💚 ${hero.name} has been resurrected! (HP: ${hero.hp}/${hero.maxHp})`);
+        
+        // Update hero state to not dead
+        setHeroes(current => {
+          const updated = current.map(h => {
+            if (h.id === hero.id) {
+              return { ...h, isDead: false };
+            }
+            return h;
+          });
+          heroesRef.current = updated;
+          return updated;
+        });
+        
+        // Trigger idle animation to replace death animation
+        const heroRef = getHeroSpriteRef(hero.id);
+        if (heroRef.current) {
+          try {
+            heroRef.current.playAnimation('idle');
+            console.log(`[Resurrection] 🎬 ${hero.name} returned to idle animation`);
+          } catch (err) {
+            console.warn(`[Resurrection] ⚠️ Could not play idle animation for ${hero.name}:`, err);
+          }
+        }
+      }
+    });
+  }, [heroes]); // Run whenever heroes change
+  
+  // SAFETY CHECK: Periodic scan to fix stuck death animations
+  // Catches edge cases where hero has HP > 0 but sprite is stuck in death
+  useEffect(() => {
+    const interval = setInterval(() => {
+      heroes.forEach(hero => {
+        // If hero has HP but is marked dead or in death animation, fix it
+        if (hero.hp > 0) {
+          const heroRef = getHeroSpriteRef(hero.id);
+          
+          // Check if marked as dead (state issue)
+          if (hero.isDead) {
+            console.log(`[Safety Check] 🔧 ${hero.name} has HP but isDead flag is true - fixing state`);
+            setHeroes(current => {
+              const updated = current.map(h => 
+                h.id === hero.id ? { ...h, isDead: false } : h
+              );
+              heroesRef.current = updated;
+              return updated;
+            });
+          }
+          
+          // Force sprite to idle if it exists
+          if (heroRef.current) {
+            try {
+              const currentAnimation = (heroRef.current as any).currentAnimation || 'unknown';
+              if (currentAnimation === 'death') {
+                console.log(`[Safety Check] 🔧 ${hero.name} has HP but in death animation - forcing idle`);
+                heroRef.current.playAnimation('idle');
+              }
+            } catch (err) {
+              // Silently ignore - sprite ref might not have currentAnimation property
+            }
+          }
+        }
+      });
+    }, 3000); // Check every 3 seconds
+    
+    return () => clearInterval(interval);
+  }, [heroes]); // Re-run when heroes change
   
   // Mode detection: Switch between idle/dungeon/raid based on activeInstance (WITH FADE TRANSITION)
   useEffect(() => {
@@ -603,6 +951,48 @@ export default function CleanBattlefieldSource() {
   // Get battlefield ID from URL and convert if needed
   const urlBattlefieldId = searchParams.get('battlefieldId');
 
+  // Load wave count from localStorage on mount (persist across refreshes)
+  useEffect(() => {
+    if (!urlBattlefieldId) return;
+    
+    const storageKey = `waveCount_${urlBattlefieldId}`;
+    const savedWaveCount = localStorage.getItem(storageKey);
+    const savedCombatWaveCount = localStorage.getItem(`${storageKey}_combat`);
+    
+    if (savedWaveCount) {
+      const wave = parseInt(savedWaveCount, 10);
+      if (!isNaN(wave) && wave > 0) {
+        setWaveCount(wave);
+        console.log(`[Wave Persistence] ✅ Loaded wave count: ${wave}`);
+      }
+    }
+    
+    if (savedCombatWaveCount) {
+      const combatWave = parseInt(savedCombatWaveCount, 10);
+      if (!isNaN(combatWave) && combatWave >= 0) {
+        setCombatWaveCount(combatWave);
+        console.log(`[Wave Persistence] ✅ Loaded combat wave count: ${combatWave}`);
+      }
+    }
+  }, [urlBattlefieldId]);
+  
+  // Save wave count to localStorage whenever it changes
+  useEffect(() => {
+    if (!urlBattlefieldId || waveCount === 1) return; // Don't save initial value
+    
+    const storageKey = `waveCount_${urlBattlefieldId}`;
+    localStorage.setItem(storageKey, waveCount.toString());
+    console.log(`[Wave Persistence] 💾 Saved wave count: ${waveCount}`);
+  }, [waveCount, urlBattlefieldId]);
+  
+  useEffect(() => {
+    if (!urlBattlefieldId || combatWaveCount === 0) return; // Don't save initial value
+    
+    const storageKey = `waveCount_${urlBattlefieldId}_combat`;
+    localStorage.setItem(storageKey, combatWaveCount.toString());
+    console.log(`[Wave Persistence] 💾 Saved combat wave count: ${combatWaveCount}`);
+  }, [combatWaveCount, urlBattlefieldId]);
+
   // Convert battlefield ID from username to numeric format
   useEffect(() => {
     const convertBattlefieldId = async () => {
@@ -701,6 +1091,8 @@ export default function CleanBattlefieldSource() {
           quests: data.quests || {},
           // CRITICAL: Include twitchUserId for quest sync
           twitchUserId: data.twitchUserId || data.twitchId,
+          // Include active title for display
+          activeTitle: data.activeTitle || null,
           // Store raw equipment for stat calculation (ALL slots)
           equipment: {
             weapon: data.equipment?.weapon || null,
@@ -721,13 +1113,7 @@ export default function CleanBattlefieldSource() {
 
       console.log(`[CleanBattlefield] ✅ Loaded ${loadedHeroes.length} heroes:`, loadedHeroes.map(h => `${h.name} (${h.role} Lv${h.level})`));
       
-      // DEBUG: Log profession data for each hero
-      loadedHeroes.forEach(h => {
-        console.log(`[Debug] ${h.name} profession:`, h.profession || 'NONE');
-        console.log(`[Debug] ${h.name} autoBuy:`, h.autoBuy || false);
-        console.log(`[Debug] ${h.name} gold:`, h.gold || 0);
-      });
-      
+      // DEBUG: Log profession data and title for each hero      
       if (loadedHeroes.length === 0) {
         console.warn('[CleanBattlefield] ⚠️ No heroes found with currentBattlefieldId:', battlefieldId);
         console.warn('[CleanBattlefield] 💡 Heroes need to !join to set their currentBattlefieldId');
@@ -772,19 +1158,33 @@ export default function CleanBattlefieldSource() {
     return () => unsubscribe();
   }, [battlefieldId, gameMode]);
 
-  // Load sprite facing preferences from backend
+  // Load sprite facing preferences from backend (use streamer's ID from battlefieldId)
   useEffect(() => {
-    if (!user?.id) return;
+    // Extract streamer's Twitch ID from battlefieldId (format: "twitch:1087777297")
+    const streamerId = twitchId || user?.id;
+    if (!streamerId) return;
 
-    battlefieldAPI.getSpriteFacingPreferences(user.id)
+    console.log('[CleanBattlefield] Loading facing preferences for streamer:', streamerId);
+    battlefieldAPI.getSpriteFacingPreferences(streamerId)
       .then(prefs => {
-        console.log('[CleanBattlefield] Loaded facing preferences:', prefs);
+        console.log('[CleanBattlefield] ✅ Loaded facing preferences:', prefs);
         setFacingPreferences(prefs);
       })
       .catch(err => {
-        console.warn('[CleanBattlefield] Could not load facing preferences:', err);
+        console.warn('[CleanBattlefield] ⚠️ Could not load facing preferences:', err);
+        // Fallback to localStorage if available
+        const saved = localStorage.getItem('spriteFacingPreferences');
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved);
+            console.log('[CleanBattlefield] 📂 Using cached facing preferences from localStorage');
+            setFacingPreferences(parsed);
+          } catch (e) {
+            console.warn('[CleanBattlefield] Failed to parse cached preferences');
+          }
+        }
       });
-  }, [user?.id]);
+  }, [twitchId, user?.id]);
 
   // Get facing direction (from preferences or defaults)
   const getFacingDirection = (roleOrEnemyName: string, defaultFacing: 'left' | 'right'): 'left' | 'right' => {
@@ -984,270 +1384,126 @@ export default function CleanBattlefieldSource() {
         return;
       }
 
-      const currentWave = waveCount; // Capture current wave
-      console.log(`[Adventure] Tick - Current wave: ${currentWave}, Interval ID: ${adventureIntervalRef.current}`);
-
-      // Increment wave
-      let nextWave = currentWave + 1;
-      setWaveCount(nextWave);
-      console.log(`[Adventure] Wave incremented: ${currentWave} → ${nextWave}`);
-      
-      const isBossWave = nextWave % 10 === 0;
-      const isAutoRest = nextWave % 5 === 0 && !isBossWave;
-
-      if (isBossWave) {
-        console.log(`[Adventure] 👑 BOSS WAVE ${nextWave}`);
-        spawnEnemies(true);
-      } else if (isAutoRest) {
-        console.log(`[Adventure] 😴 Auto-rest wave ${nextWave} - Heroes rest, no combat`);
-        // Auto-rest: Just skip this wave, next tick will continue
-        // Wave count already incremented above, so next tick will be wave ${nextWave + 1}
-      } else {
-        // Random encounter
-        const rand = Math.random();
+      // Use functional setState to avoid stale closure
+      setWaveCount(prevWave => {
+        const nextTick = prevWave + 1;
+        console.log(`[Adventure] Tick ${nextTick}`);
         
-        if (rand < 0.4) {
-          // COMBAT (40%)
-          console.log(`[Adventure] ⚔️ Combat encounter - Wave ${nextWave}`);
-          spawnEnemies(false);
-        } else if (rand < 0.7) {
-          // TREASURE (30%)
-          console.log(`[Adventure] 💰 Treasure - Wave ${nextWave}`);
-          
-          // Grant gold to all alive heroes
-          const goldAmount = Math.floor(5 + waveCount * 0.5);
-          
-          setHeroes(current => {
-            const updated = current.map(hero => {
-              if (hero.isDead) return hero;
-              
-              let newGold = (hero.gold || 0) + goldAmount;
-              let newPotions = hero.potions ? { ...hero.potions } : { health: 0 };
-              let purchasedItem = '';
-              
-              console.log(`[Treasure] ${hero.name} finds ${goldAmount}g!`);
-              
-              // Show gold SCT (back inside setState - Strict Mode is OFF!)
-              const heroElement = document.querySelector(`[data-hero-id="${hero.id}"]`);
-              if (heroElement) {
-                const rect = heroElement.getBoundingClientRect();
-                addSCT(`${goldAmount}g`, rect.left + rect.width / 2, rect.top + 25, 'loot');
-              }
-              
-              // AUTO-BUY during treasure (if autoBuy enabled)
-              if (hero.autoBuy && Math.random() < 0.3) {
-                // Prioritize health potions when low stock
-                if (newGold >= 10 && newPotions.health < 2) {
-                  newGold -= 10;
-                  newPotions.health++;
-                  purchasedItem = `Health Potion (${newPotions.health} total)`;
-                  console.log(`[Auto-Buy] 🛒 ${hero.name} bought Health Potion! (${newPotions.health} potions)`);
-                }
-                // Buy buffs if enough gold (XP Boost, Attack Buff, Defense Buff)
-                else {
-                  const affordableBuffs = [];
-                  if (newGold >= 25) affordableBuffs.push('xpboost');
-                  if (newGold >= 50) affordableBuffs.push('attackbuff');
-                  if (newGold >= 50) affordableBuffs.push('defensebuff');
-                  
-                  if (affordableBuffs.length > 0) {
-                    const buffChoice = affordableBuffs[Math.floor(Math.random() * affordableBuffs.length)];
-                    const cost = SHOP_ITEMS[buffChoice].cost;
-                    newGold -= cost;
-                    purchasedItem = SHOP_ITEMS[buffChoice].name;
-                    
-                    // Apply buff
-                    const newShopBuffs = hero.shopBuffs ? { ...hero.shopBuffs } : {};
-                    const now = Date.now();
-                    
-                    if (buffChoice === 'xpboost') {
-                      newShopBuffs.xpBoost = { remainingDuration: 300000, lastUpdateTime: now }; // 5 min
-                      console.log(`[Auto-Buy] 🛒 ${hero.name} bought XP Boost! (+50% XP for 5min)`);
-                    } else if (buffChoice === 'attackbuff') {
-                      newShopBuffs.attackBuff = { remainingDuration: 600000, lastUpdateTime: now }; // 10 min
-                      console.log(`[Auto-Buy] 🛒 ${hero.name} bought Attack Buff! (+10% ATK for 10min)`);
-                    } else if (buffChoice === 'defensebuff') {
-                      newShopBuffs.defenseBuff = { remainingDuration: 600000, lastUpdateTime: now }; // 10 min
-                      console.log(`[Auto-Buy] 🛒 ${hero.name} bought Defense Buff! (+10% DEF for 10min)`);
-                    }
-                    
-                    // Show buff SCT
-                    const heroElement = document.querySelector(`[data-hero-id="${hero.id}"]`);
-                    if (heroElement) {
-                      const rect = heroElement.getBoundingClientRect();
-                      addSCT(`+${SHOP_ITEMS[buffChoice].name}`, rect.left + rect.width / 2, rect.top + 45, 'loot');
-                    }
-                    
-                    return { ...hero, gold: newGold, potions: newPotions, shopBuffs: newShopBuffs };
-                  }
-                }
-              }
-              
-              return { ...hero, gold: newGold, potions: newPotions };
+        const isBossWave = nextTick % 10 === 0;
+        const isAutoRest = nextTick % 5 === 0 && !isBossWave;
+
+        // Spawn enemies or handle special waves
+        setTimeout(() => {
+          if (isBossWave) {
+            // BOSS WAVE - increment combat wave counter
+            setCombatWaveCount(prev => {
+              const newWave = prev + 1;
+              console.log(`[Adventure] 👑 BOSS WAVE ${newWave}`);
+              return newWave;
             });
+            spawnEnemies(true);
+          } else if (isAutoRest) {
+            console.log(`[Adventure] 😴 Auto-rest - Heroes rest, no wave count`);
+            // Auto-rest: Just skip, don't count as combat wave
+          } else {
+            // Random encounter
+            const rand = Math.random();
             
-            heroesRef.current = updated;
-            return updated;
-          });
-          
-          // Auto-buy for heroes during treasure (already done above, this is for future treasure events)
-        } else {
-          // PEACEFUL TRAVEL (30%)
-          console.log(`[Adventure] 🚶 Peaceful travel - Wave ${nextWave}`);
-          
-          // TRAVEL ANIMATION: Heroes walk/run during travel
-          setIsTraveling(true);
-          allHeroes.forEach(hero => {
-            const heroRef = getHeroSpriteRef(hero.id);
-            if (heroRef.current) {
-              // Try walk animation, fallback to run, then idle
-              try {
-                heroRef.current.playAnimation('walk');
-                console.log(`[Travel] 🚶 ${hero.name} is walking...`);
-              } catch {
-                try {
-                  heroRef.current.playAnimation('run');
-                  console.log(`[Travel] 🏃 ${hero.name} is running...`);
-                } catch {
-                  console.log(`[Travel] ${hero.name} no walk/run animation available`);
-                }
-              }
-            }
-          });
-          
-          // Return to idle after 4.5 seconds (before next tick)
-          setTimeout(() => {
-            setIsTraveling(false);
-            allHeroes.forEach(hero => {
-              const heroRef = getHeroSpriteRef(hero.id);
-              if (heroRef.current) {
-                heroRef.current.playAnimation('idle');
-              }
-            });
-          }, 4500);
-          
-          // Track XP gains and level ups (for logs outside setState)
-          const xpGains: Array<{heroId: string; name: string; xp: number; maxXp: number; leveledUp: boolean; oldLevel?: number; newLevel?: number}> = [];
-          
-          // Grant +3 XP to all alive heroes
-          setHeroes(current => {
-            const updated = current.map(hero => {
-              if (hero.isDead || hero.hp <= 0) return hero;
-              
-              const newXP = (hero.xp || 0) + 3;
-              const maxXP = hero.maxXp || (100 + hero.level * 10);
-              
-              // Check for level up from travel
-              if (newXP >= maxXP) {
-                const newLevel = hero.level + 1;
-                const newMaxXP = 100 + newLevel * 10;
-                
-                xpGains.push({
-                  heroId: hero.id,
-                  name: hero.name,
-                  xp: newXP,
-                  maxXp: maxXP,
-                  leveledUp: true,
-                  oldLevel: hero.level,
-                  newLevel: newLevel
-                });
-                
-                const leveledHero = calculateHeroStats({
-                  ...hero,
-                  level: newLevel,
-                  xp: newXP - maxXP,
-                  maxXp: newMaxXP
-                });
-                
-                return leveledHero;
-              }
-              
-              xpGains.push({
-                heroId: hero.id,
-                name: hero.name,
-                xp: newXP,
-                maxXp: maxXP,
-                leveledUp: false
+            if (rand < 0.4) {
+              // COMBAT (40%) - increment combat wave counter
+              setCombatWaveCount(prev => {
+                const newWave = prev + 1;
+                console.log(`[Adventure] ⚔️ Combat Wave ${newWave}`);
+                return newWave;
               });
-              
-              return { ...hero, xp: newXP };
-            });
-            
-            heroesRef.current = updated;
-            return updated;
-          });
-          
-          // Show logs OUTSIDE setState (prevents React Strict Mode duplicates)
-          xpGains.forEach(gain => {
-            console.log(`[Travel] ${gain.name} gains +3 XP (${gain.xp}/${gain.maxXp})`);
-            
-            if (gain.leveledUp) {
-              console.log(`[Level Up] ✨ ${gain.name} leveled up from travel! ${gain.oldLevel} → ${gain.newLevel}`);
+              spawnEnemies(false);
+            } else if (rand < 0.7) {
+              // TREASURE (30%) - no wave count
+              console.log(`[Adventure] 💰 Treasure - no wave count`);
+              const goldAmount = Math.floor(5 + nextTick * 0.5);
+              handleTreasure(goldAmount);
+            } else {
+              // SAFE TRAVEL (30%) - no wave count
+              console.log(`[Adventure] 🚶 Travel - no wave count`);
             }
-          });
+          }
+        }, 0);
+        
+        return nextTick;
+      });
+    };
+    
+    // Treasure handler function
+    const handleTreasure = (goldAmount: number) => {
+      setHeroes(current => {
+        const updated = current.map(hero => {
+          if (hero.isDead) return hero;
           
-          // Gathering during travel (ALWAYS if has profession)
-          setHeroes(current => {
-            const updated = current.map(hero => {
-              if (!hero.profession || hero.isDead) return hero;
+          let newGold = (hero.gold || 0) + goldAmount;
+          let newPotions = hero.potions ? { ...hero.potions } : { health: 0 };
+          
+          console.log(`[Treasure] ${hero.name} finds ${goldAmount}g!`);
+          
+          // Show gold SCT
+          const heroElement = document.querySelector(`[data-hero-id="${hero.id}"]`);
+          if (heroElement) {
+            const rect = heroElement.getBoundingClientRect();
+            addSCT(`${goldAmount}g`, rect.left + rect.width / 2, rect.top + 25, 'loot');
+          }
+          
+          // AUTO-BUY during treasure (if autoBuy enabled)
+          if (hero.autoBuy && Math.random() < 0.3) {
+            // Prioritize health potions when low stock
+            if (newGold >= 10 && newPotions.health < 2) {
+              newGold -= 10;
+              newPotions.health++;
+              console.log(`[Auto-Buy] 🛒 ${hero.name} bought Health Potion! (${newPotions.health} potions)`);
+            }
+            // Buy buffs if enough gold
+            else {
+              const affordableBuffs = [];
+              if (newGold >= 25) affordableBuffs.push('xpboost');
+              if (newGold >= 50) affordableBuffs.push('attackbuff');
+              if (newGold >= 50) affordableBuffs.push('defensebuff');
               
-              const profType = hero.profession.type;
-              const profLevel = hero.profession.level || 1;
-              
-              // Determine material and amount
-              let material = '';
-              let amount = 0;
-              
-              if (profType === 'herbalism') {
-                material = 'herbs';
-                amount = Math.floor(1 + profLevel / 20); // 1-5 herbs based on level
-              } else if (profType === 'mining') {
-                material = 'ore';
-                amount = Math.floor(1 + profLevel / 20); // 1-5 ore based on level
-              } else {
-                return hero; // Enchanting doesn't gather during travel
-              }
-              
-              const profXP = amount * 5; // 5 XP per material
-              
-              console.log(`[Gathering] ${hero.name} gathers ${amount} ${material} (+${profXP} profession XP)`);
-              
-              // QUEST TRACKING: Track materials gathered
-              trackQuest(hero.id, 'gather', amount);
-              
-              // Show gathering SCT (back inside setState - Strict Mode is OFF!)
-              const heroElement = document.querySelector(`[data-hero-id="${hero.id}"]`);
-              if (heroElement) {
-                const rect = heroElement.getBoundingClientRect();
-                addSCT(`${amount} ${material}`, rect.left + rect.width / 2, rect.top + 30, 'gather');
+              if (affordableBuffs.length > 0) {
+                const buffChoice = affordableBuffs[Math.floor(Math.random() * affordableBuffs.length)];
+                const cost = SHOP_ITEMS[buffChoice].cost;
+                newGold -= cost;
                 
-                // Show profession XP (purple, below material)
-                setTimeout(() => {
-                  addSCT(`${profXP}`, rect.left + rect.width / 2, rect.top + 50, 'profession-xp');
-                }, 200);
-              }
-              
-              // Add materials and profession XP
-              const newMaterials = { ...hero.profession.materials };
-              newMaterials[material] = (newMaterials[material] || 0) + amount;
-              
-              const newProfXP = (hero.profession.xp || 0) + profXP;
-              
-              return {
-                ...hero,
-                profession: {
-                  ...hero.profession,
-                  xp: newProfXP,
-                  materials: newMaterials
+                // Apply buff
+                const newShopBuffs = hero.shopBuffs ? { ...hero.shopBuffs } : {};
+                const now = Date.now();
+                
+                if (buffChoice === 'xpboost') {
+                  newShopBuffs.xpBoost = { remainingDuration: 300000, lastUpdateTime: now };
+                  console.log(`[Auto-Buy] 🛒 ${hero.name} bought XP Boost!`);
+                } else if (buffChoice === 'attackbuff') {
+                  newShopBuffs.attackBuff = { remainingDuration: 600000, lastUpdateTime: now };
+                  console.log(`[Auto-Buy] 🛒 ${hero.name} bought Attack Buff!`);
+                } else if (buffChoice === 'defensebuff') {
+                  newShopBuffs.defenseBuff = { remainingDuration: 600000, lastUpdateTime: now };
+                  console.log(`[Auto-Buy] 🛒 ${hero.name} bought Defense Buff!`);
                 }
-              };
-            });
-            
-            heroesRef.current = updated;
-            return updated;
-          });
-        }
-      }
+                
+                // Show buff SCT
+                const heroEl = document.querySelector(`[data-hero-id="${hero.id}"]`);
+                if (heroEl) {
+                  const rect = heroEl.getBoundingClientRect();
+                  addSCT(`+${SHOP_ITEMS[buffChoice].name}`, rect.left + rect.width / 2, rect.top + 45, 'loot');
+                }
+                
+                return { ...hero, gold: newGold, potions: newPotions, shopBuffs: newShopBuffs };
+              }
+            }
+          }
+          
+          return { ...hero, gold: newGold, potions: newPotions };
+        });
+        
+        heroesRef.current = updated;
+        return updated;
+      });
     };
 
     // Spawn enemies function
@@ -1307,14 +1563,21 @@ export default function CleanBattlefieldSource() {
         convertedEnemies[0].maxHp = Math.floor(convertedEnemies[0].maxHp * 1.5);
       }
 
-      console.log(`[Adventure] Spawned ${convertedEnemies.length} enemies:`, convertedEnemies.map(e => e.name).join(', '));
+      console.log(`[Adventure] ✅ Spawned ${convertedEnemies.length} enemies:`, convertedEnemies.map(e => `${e.name} (${e.hp} HP)`).join(', '));
+      
+      if (convertedEnemies.length === 0) {
+        console.error('[Adventure] ❌ NO ENEMIES GENERATED! Skipping combat.');
+        return;
+      }
+      
       setEnemies(convertedEnemies);
       enemiesRef.current = convertedEnemies; // Keep ref in sync
+      console.log('[Adventure] 📝 Enemy state updated, refs synced');
       
       // IMPORTANT: Delay combat start to let enemy sprites appear first!
       setTimeout(() => {
+        console.log('[Adventure] ⚔️ Starting combat with', convertedEnemies.length, 'enemies');
         setInCombat(true);
-        console.log('[Adventure] ⚔️ Combat starting (enemies visible)');
       }, 500); // 500ms delay for sprites to render
     };
 
@@ -1761,12 +2024,41 @@ export default function CleanBattlefieldSource() {
           );
           
           if (injuredAllies.length > 0) {
-            // Heal lowest HP ally
-            const healTarget = injuredAllies.reduce((lowest, h) => 
-              (h.hp / h.maxHp) < (lowest.hp / lowest.maxHp) ? h : lowest
+            // SMART HEALING PRIORITY:
+            // 1. EMERGENCY: Tanks below 50% HP
+            const emergencyTanks = injuredAllies.filter(h => 
+              isTankRole(h.role) && (h.hp / h.maxHp) < 0.50
             );
             
-            console.log(`[Combat] ${hero.name} will HEAL ${healTarget.name} (${Math.floor((healTarget.hp / healTarget.maxHp) * 100)}% HP)`);
+            // 2. CRITICAL: Anyone below 30% HP
+            const criticalAllies = injuredAllies.filter(h => 
+              (h.hp / h.maxHp) < 0.30
+            );
+            
+            // 3. NORMAL: Lowest HP %
+            let healTarget;
+            let healPriority = 'NORMAL';
+            
+            if (emergencyTanks.length > 0) {
+              // Emergency: Heal tank with lowest HP %
+              healTarget = emergencyTanks.reduce((lowest, h) => 
+                (h.hp / h.maxHp) < (lowest.hp / lowest.maxHp) ? h : lowest
+              );
+              healPriority = 'EMERGENCY TANK';
+            } else if (criticalAllies.length > 0) {
+              // Critical: Heal ally with lowest HP %
+              healTarget = criticalAllies.reduce((lowest, h) => 
+                (h.hp / h.maxHp) < (lowest.hp / lowest.maxHp) ? h : lowest
+              );
+              healPriority = 'CRITICAL';
+            } else {
+              // Normal: Heal ally with lowest HP %
+              healTarget = injuredAllies.reduce((lowest, h) => 
+                (h.hp / h.maxHp) < (lowest.hp / lowest.maxHp) ? h : lowest
+              );
+            }
+            
+            console.log(`[Combat] ${hero.name} will HEAL ${healTarget.name} (${Math.floor((healTarget.hp / healTarget.maxHp) * 100)}% HP) [${healPriority}]`);
             
             actions.push({
               type: 'heal', // Special type for healing
@@ -1968,11 +2260,61 @@ export default function CleanBattlefieldSource() {
     const executeHeal = (action: CombatAction) => {
       const allCurrentHeroes = testHealer ? [...heroesRef.current, testHealer] : heroesRef.current;
       const healer = allCurrentHeroes.find(h => h.id === action.actorId);
-      const target = allCurrentHeroes.find(h => h.id === action.targetId);
       
-      if (!healer || !target) {
-        console.warn('[Heal] Healer or target not found');
+      if (!healer) {
+        console.warn('[Heal] Healer not found');
         return;
+      }
+      
+      // RE-CHECK HEAL TARGET RIGHT BEFORE CASTING
+      // Other healers may have already healed the original target!
+      const injuredAllies = allCurrentHeroes.filter(h => h.hp > 0 && h.hp < h.maxHp && !h.isDead);
+      
+      if (injuredAllies.length === 0) {
+        console.log(`[Heal] ${healer.name} has no one to heal - all heroes at full HP!`);
+        return; // No one needs healing anymore
+      }
+      
+      // SMART HEALING PRIORITY (re-evaluate current state):
+      // 1. EMERGENCY: Tanks below 50% HP
+      const isTankRole = (role: string) => ['guardian', 'paladin', 'warden', 'bloodknight', 'vanguard', 'brewmaster'].includes(role);
+      const emergencyTanks = injuredAllies.filter(h => 
+        isTankRole(h.role) && (h.hp / h.maxHp) < 0.50
+      );
+      
+      // 2. CRITICAL: Anyone below 30% HP
+      const criticalAllies = injuredAllies.filter(h => 
+        (h.hp / h.maxHp) < 0.30
+      );
+      
+      // 3. NORMAL: Lowest HP %
+      let target;
+      let healPriority = 'NORMAL';
+      
+      if (emergencyTanks.length > 0) {
+        // Emergency: Heal tank with lowest HP %
+        target = emergencyTanks.reduce((lowest, h) => 
+          (h.hp / h.maxHp) < (lowest.hp / lowest.maxHp) ? h : lowest
+        );
+        healPriority = 'EMERGENCY TANK';
+      } else if (criticalAllies.length > 0) {
+        // Critical: Heal ally with lowest HP %
+        target = criticalAllies.reduce((lowest, h) => 
+          (h.hp / h.maxHp) < (lowest.hp / lowest.maxHp) ? h : lowest
+        );
+        healPriority = 'CRITICAL';
+      } else {
+        // Normal: Heal ally with lowest HP %
+        target = injuredAllies.reduce((lowest, h) => 
+          (h.hp / h.maxHp) < (lowest.hp / lowest.maxHp) ? h : lowest
+        );
+      }
+      
+      const originalTargetId = action.targetId;
+      if (originalTargetId !== target.id) {
+        console.log(`[Heal] 🔄 ${healer.name} RETARGETS from ${action.targetName} to ${target.name} (${Math.floor((target.hp / target.maxHp) * 100)}% HP) [${healPriority}]`);
+      } else {
+        console.log(`[Heal] ${healer.name} heals ${target.name} (${Math.floor((target.hp / target.maxHp) * 100)}% HP) [${healPriority}]`);
       }
       
       // Calculate heal amount (based on healer's intellect, wisdom, healing power)
@@ -1989,10 +2331,11 @@ export default function CleanBattlefieldSource() {
       const cappedHealingPower = Math.min(healer.healingPower || 0, 30);
       baseHeal *= (1 + (cappedHealingPower * 0.01));
       
-      // Apply VIEWER BONUS (+1% healing per viewer)
-      if (viewerCount > 0) {
-        const viewerBonus = 1 + (viewerCount * 0.01);
-        baseHeal = Math.floor(baseHeal * viewerBonus);
+      // Apply ACTIVE CHATTER BONUS (+1% healing per active chatter)
+      if (activeChatterCount > 0) {
+        const bonuses = calculateViewerBonuses();
+        baseHeal = Math.floor(baseHeal * bonuses.healing);
+        console.log(`[Viewer Bonus] 👥 ${activeChatterCount} chatters → ${((bonuses.healing - 1) * 100).toFixed(0)}% healing bonus`);
       }
       
       // Check for Divine Grace proc (30% chance for 2x healing)
@@ -2141,10 +2484,10 @@ export default function CleanBattlefieldSource() {
       // Calculate damage ONCE outside of setState (PROPER FORMULA with stat scaling)
       let baseDamage = hero.attack || (hero.level * 5);
       
-      // Apply VIEWER BONUS (+1% damage per viewer)
-      if (viewerCount > 0) {
-        const viewerBonus = 1 + (viewerCount * 0.01);
-        baseDamage = Math.floor(baseDamage * viewerBonus);
+      // Apply ACTIVE CHATTER BONUS (+1% damage per active chatter)
+      if (activeChatterCount > 0) {
+        const bonuses = calculateViewerBonuses();
+        baseDamage = Math.floor(baseDamage * bonuses.damage);
       }
       
       // Apply Attack Buff (+10% ATK)
@@ -2672,9 +3015,10 @@ export default function CleanBattlefieldSource() {
         console.log(`[Debuff] 💔 ${enemy.name} is Weakened (-30% damage)`);
       }
       
-      // APPLY DIFFICULTY (cubed)
-      const difficultyImpact = Math.pow(difficultyModifier, 3);
-      baseDamage = Math.floor(baseDamage * difficultyImpact);
+      // APPLY DIFFICULTY (linear scaling, not exponential!)
+      // Example: 150% difficulty = 1.5x damage (reasonable)
+      // NOT: 1.5³ = 3.375x damage (insane!)
+      baseDamage = Math.floor(baseDamage * difficultyModifier);
 
       // Transform Werewolf on first attack
       if (enemy.name === 'Werewolf' && !enemy.isTransformed) {
@@ -2983,10 +3327,10 @@ export default function CleanBattlefieldSource() {
       
       let defense = targetHeroRef.defense || 0;
       
-      // Apply VIEWER BONUS (+0.5% defense per viewer)
-      if (viewerCount > 0) {
-        const viewerDefenseBonus = 1 + (viewerCount * 0.005);
-        defense = Math.floor(defense * viewerDefenseBonus);
+      // Apply ACTIVE CHATTER BONUS (+0.5% defense per active chatter)
+      if (activeChatterCount > 0) {
+        const bonuses = calculateViewerBonuses();
+        defense = Math.floor(defense * bonuses.defense);
       }
       
       // Apply Defense Buff (+10% DEF)
@@ -3897,7 +4241,7 @@ export default function CleanBattlefieldSource() {
           }
         }
       });
-    }, 60000); // Every 60 seconds
+    }, 300000); // Every 5 minutes (reduced from 60s to save Firebase writes)
     
     syncIntervalRef.current = syncInterval;
 
@@ -4261,6 +4605,17 @@ export default function CleanBattlefieldSource() {
   };
 
   // Calculate average party gear score
+  // Calculate viewer bonuses based on active chatters
+  const calculateViewerBonuses = () => {
+    const chatters = activeChatterCount;
+    return {
+      damage: 1 + (chatters * 0.01),      // +1% per chatter
+      healing: 1 + (chatters * 0.01),     // +1% per chatter
+      defense: 1 + (chatters * 0.005),    // +0.5% per chatter
+      loot: Math.min(chatters * 0.002, 0.3) // +0.2% per chatter, max 30%
+    };
+  };
+
   const calculateAverageGearScore = (heroes: Hero[]): number => {
     if (heroes.length === 0) return 0;
     
@@ -4475,56 +4830,81 @@ export default function CleanBattlefieldSource() {
     const screenWidth = 1920;
     const screenHeight = 1080;
     
-    // Boss positioning: moved down 2 inches and further right
+    // Boss positioning: aligned with LOWEST hero (900 + 30 stagger = 930px)
+    // Raid/dungeon bosses use special positioning (already handled separately)
     if (isBoss) {
       return {
         left: '1400px', // Further right for massive Elder Dragon (more space from heroes)
-        top: '732px' // Center (540) + 192px (2 inches down)
+        top: '930px' // Aligned with lowest hero
       };
     }
     
-    // Enemies on right side, spread nicely (max 3 enemies)
-    const rightMargin = 300; // Distance from right edge
-    const maxSpread = 400; // Total width for enemy formation
+    // Regular enemies: right 2/5 of screen (1152px to 1920px = 768px width)
+    const heroZoneEnd = screenWidth * 0.6; // 1152px (end of hero zone)
+    const enemyZoneWidth = screenWidth * 0.4; // 768px (enemy zone)
+    const leftMargin = 80; // Distance from hero zone
+    const rightMargin = 100; // Distance from right edge (safety buffer for sprite width)
+    const availableEnemyWidth = enemyZoneWidth - leftMargin - rightMargin; // ~588px for enemies
     
-    // Calculate horizontal position (spread evenly)
-    const spacing = total > 1 ? maxSpread / (total - 1) : 0;
-    const x = screenWidth - rightMargin - (index * spacing);
+    // Calculate horizontal position (spread evenly, never exceed screen bounds)
+    const enemyStartX = heroZoneEnd + leftMargin; // 1232px
+    const spacing = total > 1 ? Math.min(250, availableEnemyWidth / (total - 1)) : 0;
+    const x = enemyStartX + (index * spacing);
     
-    // Vertical position (centered)
-    const y = screenHeight / 2;
+    // Safety check: ensure enemy never goes past right edge
+    const maxX = screenWidth - rightMargin; // 1820px max
+    const finalX = Math.min(x, maxX);
+    
+    // Vertical position - aligned with lowest hero (900 + 30 = 930px)
+    const y = 930;
     
     return {
-      left: `${x}px`,
+      left: `${finalX}px`,
       top: `${y}px`
     };
   };
 
-  // Auto-position heroes horizontally (left to right)
-  // Tanks in front, healers/DPS in back
+  // Auto-position heroes horizontally with vertical stagger
+  // DPS/Healers left, Tanks right (closest to enemies)
   const getHeroPosition = (hero: Hero, index: number, allHeroes: Hero[]) => {
     const screenHeight = 1080;
     
-    // Categorize heroes
-    const tanks = allHeroes.filter(h => isTankRole(h.role));
-    const backline = allHeroes.filter(h => !isTankRole(h.role));
+    // Sort heroes: DPS/Healers on left, tanks on RIGHT (closest to enemies)
+    const sortedHeroes = [...allHeroes].sort((a, b) => {
+      const aIsTank = isTankRole(a.role);
+      const bIsTank = isTankRole(b.role);
+      const aIsHealer = isHealerRole(a.role);
+      const bIsHealer = isHealerRole(b.role);
+      
+      if (aIsTank && !bIsTank) return 1; // Tanks to the right
+      if (!aIsTank && bIsTank) return -1;
+      if (aIsHealer && !bIsHealer && !bIsTank) return -1; // Healers before DPS
+      if (!aIsHealer && bIsHealer && !aIsTank) return 1;
+      return 0; // Keep order
+    });
     
-    const isCurrentHeroTank = isTankRole(hero.role);
-    const groupIndex = isCurrentHeroTank 
-      ? tanks.findIndex(h => h.id === hero.id)
-      : backline.findIndex(h => h.id === hero.id);
-    const groupSize = isCurrentHeroTank ? tanks.length : backline.length;
+    const sortedIndex = sortedHeroes.findIndex(h => h.id === hero.id);
     
-    // Horizontal spacing (WIDER to prevent name overlap!)
-    const leftMargin = 100; // Start position from left edge
-    const spacing = 300; // WIDE spacing (prevents name overlap!)
-    const x = leftMargin + (groupIndex * spacing);
+    // Dynamic horizontal spacing - Stay within left 3/5 of screen (1152px max)
+    const screenWidth = 1920;
+    const maxHeroWidth = screenWidth * 0.6; // 1152px - left 3/5 of screen
+    const leftMargin = 60; // Start from left edge
+    const availableWidth = maxHeroWidth - leftMargin - 80; // Reserve 80px buffer on right
     
-    // Vertical position (front row vs back row) - MORE separation!
-    const centerY = screenHeight / 2;
-    const y = isCurrentHeroTank 
-      ? centerY + 80  // Front row (tanks) - lower
-      : centerY - 80; // Back row (healers/DPS) - higher
+    // Calculate spacing dynamically based on hero count
+    const heroCount = sortedHeroes.length;
+    const spacing = heroCount > 1 ? Math.min(140, availableWidth / (heroCount - 1)) : 140;
+    
+    const x = leftMargin + (sortedIndex * spacing);
+    
+    // Vertical stagger - FEET AT BOTTOM for OBS overlay
+    // Sprite height scaled 3.0x ~= 240px, UI above ~= 100px, total ~= 340px
+    // Positioned to ensure all heroes fit on 1080px canvas
+    const baseY = 900; // Safe bottom position (ensures UI doesn't go off-screen)
+    const staggerAmount = 30; // Vertical offset (reduced to fit on screen)
+    const y = sortedIndex % 2 === 0 
+      ? baseY - staggerAmount // Even index: slightly higher
+      : baseY + staggerAmount; // Odd index: slightly lower
     
     return {
       left: `${x}px`,
@@ -4799,32 +5179,48 @@ export default function CleanBattlefieldSource() {
                 alignItems: 'center'
               }}
             >
+              {/* Active Title - ABOVE hero name */}
+              {(hero as any).activeTitle && (
+                <div style={{
+                  color: '#fbbf24',
+                  fontSize: '14px',
+                  fontWeight: 'bold',
+                  fontStyle: 'italic',
+                  textShadow: '2px 2px 4px rgba(0,0,0,0.9), 0 0 10px rgba(251,191,36,0.5)',
+                  backgroundColor: 'transparent',
+                  marginBottom: '4px',
+                  transform: 'translateY(-40px)'
+                }}>
+                  {(hero as any).activeTitle}
+                </div>
+              )}
+              
               {/* Hero Name - HIGH ABOVE sprite (same as idle) */}
               <div style={{
                 color: hero.isDead ? '#ef4444' : 'white',
                 fontSize: '18px',
                 fontWeight: 'bold',
-                marginBottom: '8px',
+                marginBottom: '6px',
                 textShadow: '2px 2px 4px rgba(0,0,0,0.9)',
                 backgroundColor: 'transparent',
                 padding: '2px 8px',
                 borderRadius: '4px',
-                transform: 'translateY(-20px)'
+                transform: 'translateY(-40px)'
               }}>
-                {hero.name} (Lv{hero.level})
+                {hero.name} <span style={{ color: '#fbbf24' }}>{hero.level}</span>
                 {hero.isDead && ' 💀'}
               </div>
               
-              {/* HP Bar - HIGH ABOVE sprite (same as idle) */}
+              {/* HP Bar - Smaller for OBS */}
               <div style={{
-                width: '150px',
-                height: '24px',
+                width: '120px',
+                height: '16px',
                 backgroundColor: 'rgba(0,0,0,0.7)',
-                border: '2px solid #4a5568',
-                borderRadius: '4px',
-                marginBottom: '20px',
+                border: '1px solid #4a5568',
+                borderRadius: '3px',
+                marginBottom: '8px',
                 overflow: 'hidden',
-                transform: 'translateY(-20px)'
+                transform: 'translateY(-40px)'
               }}>
                 <div style={{
                   width: `${hpPercent}%`,
@@ -4834,11 +5230,11 @@ export default function CleanBattlefieldSource() {
                 }} />
                 <div style={{
                   position: 'absolute',
-                  width: '150px',
+                  width: '120px',
                   textAlign: 'center',
-                  marginTop: '-18px',
+                  marginTop: '-14px',
                   color: 'white',
-                  fontSize: '12px',
+                  fontSize: '10px',
                   fontWeight: 'bold',
                   textShadow: '1px 1px 2px rgba(0,0,0,1)'
                 }}>
@@ -5048,7 +5444,7 @@ export default function CleanBattlefieldSource() {
   // ============================================================================
   
   return (
-    <div style={{
+    <div className="clean-battlefield-page" style={{
       width: '1920px',
       height: '1080px',
       background: 'transparent',
@@ -5057,211 +5453,6 @@ export default function CleanBattlefieldSource() {
       opacity: fadeOpacity,
       transition: 'opacity 0.5s ease-in-out'
     }}>
-      {/* Debug info (top-left corner) */}
-      {/* Debug info + test controls */}
-      <div style={{
-        position: 'absolute',
-        top: '10px',
-        left: '10px',
-        color: 'white',
-        fontSize: '14px',
-        backgroundColor: 'rgba(0,0,0,0.5)',
-        padding: '8px',
-        borderRadius: '4px',
-        zIndex: 1000
-      }}>
-        <div>Battlefield: {battlefieldId}</div>
-        <div>Heroes: {heroes?.length || 0} {testHealer && '(+1 Test Healer)'}</div>
-        <div>Enemies: {enemies?.length || 0}</div>
-        <div style={{ 
-          color: (waveCount % 10 === 0) ? '#ffd700' : 'white',
-          fontSize: (waveCount % 10 === 0) ? '18px' : '14px',
-          fontWeight: (waveCount % 10 === 0) ? 'bold' : 'normal'
-        }}>
-          Wave: {waveCount} {(waveCount % 10 === 0) && '👑 BOSS WAVE'}
-        </div>
-        <div style={{ color: inCombat ? '#ef4444' : '#10b981' }}>
-          {inCombat ? '⚔️ COMBAT' : '✅ Idle'}
-        </div>
-        <div style={{ 
-          color: difficultyModifier > 1.0 ? '#fbbf24' : difficultyModifier >= 1.0 ? '#10b981' : difficultyModifier >= 0.7 ? '#fbbf24' : '#ef4444'
-        }}>
-          Difficulty: {(difficultyModifier * 100).toFixed(0)}% {difficultyModifier > 1.0 && '🔥'} ({consecutiveWins} wins)
-        </div>
-        <div style={{ fontSize: '12px', marginTop: '5px' }}>
-          Shields: {allHeroes.filter(h => (h.shield || 0) > 0).map(h => `${h.name}:${h.shield}`).join(', ') || 'None'}
-        </div>
-        <div style={{ fontSize: '12px', marginTop: '5px' }}>
-          Avg Gear Score: {calculateAverageGearScore(heroes)}
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', marginTop: '10px' }}>
-          <button
-            onClick={toggleTestHealer}
-            style={{
-              padding: '5px 10px',
-              background: testHealer ? '#ef4444' : '#10b981',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '14px'
-            }}
-          >
-            {testHealer ? '❌ Remove Test Healer' : '➕ Add Test Healer'}
-          </button>
-          <button
-            onClick={addTestShield}
-            style={{
-              padding: '5px 10px',
-              background: '#3b82f6',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '14px'
-            }}
-          >
-            🛡️ Add Shield (+500)
-          </button>
-          <button
-            onClick={addTestHpRegen}
-            style={{
-              padding: '5px 10px',
-              background: '#10b981',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '14px'
-            }}
-          >
-            💚 Add HP Regen (+10/sec)
-          </button>
-        </div>
-        
-        {/* Test buttons */}
-        <div style={{ marginTop: '8px', display: 'flex', gap: '8px', flexDirection: 'column' }}>
-          <button
-            onClick={() => {
-              // Spawn test enemies (1-3)
-              const testEnemies: Enemy[] = [
-                {
-                  id: 'test-enemy-1',
-                  name: 'Kobold Warrior',
-                  level: 5,
-                  hp: 150,
-                  maxHp: 150,
-                  isBoss: false
-                }
-              ];
-              setEnemies(testEnemies);
-              console.log('[Test] Spawned 1 test enemy');
-            }}
-            style={{
-              padding: '4px 8px',
-              backgroundColor: '#ef4444',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '12px'
-            }}
-          >
-            Test: Spawn 1 Enemy
-          </button>
-          
-          <button
-            onClick={() => {
-              const testEnemies: Enemy[] = [
-                {
-                  id: 'test-enemy-1',
-                  name: 'Werewolf',
-                  level: 8,
-                  hp: 300,
-                  maxHp: 300,
-                  isBoss: false
-                },
-                {
-                  id: 'test-enemy-2',
-                  name: 'Skeleton Mage',
-                  level: 10,
-                  hp: 250,
-                  maxHp: 250,
-                  isBoss: false
-                },
-                {
-                  id: 'test-enemy-3',
-                  name: 'Witch',
-                  level: 12,
-                  hp: 280,
-                  maxHp: 280,
-                  isBoss: false
-                }
-              ];
-              setEnemies(testEnemies);
-              console.log('[Test] Spawned 3 test enemies');
-            }}
-            style={{
-              padding: '4px 8px',
-              backgroundColor: '#dc2626',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '12px'
-            }}
-          >
-            Test: Spawn 3 Enemies
-          </button>
-          
-          <button
-            onClick={() => {
-              const testEnemies: Enemy[] = [
-                {
-                  id: 'test-boss-1',
-                  name: 'Adult Dragon',
-                  level: 35,
-                  hp: 1500,
-                  maxHp: 1500,
-                  isBoss: true
-                }
-              ];
-              setEnemies(testEnemies);
-              console.log('[Test] Spawned boss enemy');
-            }}
-            style={{
-              padding: '4px 8px',
-              backgroundColor: '#fbbf24',
-              color: 'black',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '12px'
-            }}
-          >
-            Test: Spawn Boss
-          </button>
-          
-          <button
-            onClick={() => {
-              setEnemies([]);
-              setInCombat(false);
-              console.log('[Test] Cleared enemies and reset combat state');
-            }}
-            style={{
-              padding: '4px 8px',
-              backgroundColor: '#6b7280',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '12px'
-            }}
-          >
-            Clear Enemies
-          </button>
-        </div>
-      </div>
 
       {/* Heroes (including test healer) */}
       {allHeroes && allHeroes.map((hero, index) => {
@@ -5272,11 +5463,6 @@ export default function CleanBattlefieldSource() {
         const spriteKey = hero.isDead ? `${hero.id}-dead` : `${hero.id}-alive`;
 
         const hasShield = (hero.shield || 0) > 0;
-        
-        // Debug shield state
-        if (hasShield) {
-          console.log(`[Shield Debug] ${hero.name} has ${hero.shield} shield - applying has-shield class`);
-        }
 
         return (
           <div
@@ -5290,19 +5476,35 @@ export default function CleanBattlefieldSource() {
               alignItems: 'center'
             }}
           >
+            {/* Active Title - ABOVE hero name */}
+            {(hero as any).activeTitle && (
+              <div style={{
+                color: '#fbbf24',
+                fontSize: '14px',
+                fontWeight: 'bold',
+                fontStyle: 'italic',
+                textShadow: '2px 2px 4px rgba(0,0,0,0.9), 0 0 10px rgba(251,191,36,0.5)',
+                backgroundColor: 'transparent',
+                marginBottom: '4px',
+                transform: 'translateY(-40px)'
+              }}>
+                {(hero as any).activeTitle}
+              </div>
+            )}
+            
             {/* Hero Name - HIGH ABOVE sprite */}
             <div style={{
               color: hero.isDead ? '#ef4444' : 'white',
               fontSize: '18px',
               fontWeight: 'bold',
-              marginBottom: '8px',
+              marginBottom: '6px',
               textShadow: '2px 2px 4px rgba(0,0,0,0.9)',
               backgroundColor: 'transparent',
               padding: '2px 8px',
               borderRadius: '4px',
-              transform: 'translateY(-20px)' // Move UP by 20px
+              transform: 'translateY(-40px)' // Move UP by 40px
             }}>
-              {hero.name} (Lv{hero.level})
+              {hero.name} <span style={{ color: '#fbbf24' }}>{hero.level}</span>
               {hero.isDead && ' 💀'}
             </div>
 
@@ -5318,22 +5520,22 @@ export default function CleanBattlefieldSource() {
                 padding: '4px 8px',
                 borderRadius: '4px',
                 border: '1px solid #fbbf24',
-                transform: 'translateY(-20px)' // Move UP to match name/HP
+                transform: 'translateY(-40px)' // Move UP to match name/HP
               }}>
                 ✨ Resurrecting in {Math.ceil(resurrectionTimers[hero.id] / 1000)}s
               </div>
             )}
 
-            {/* HP Bar - HIGH ABOVE sprite */}
+            {/* HP Bar - Smaller for OBS */}
             <div style={{
-              width: '150px',
-              height: '24px',
+              width: '120px',
+              height: '16px',
               backgroundColor: 'rgba(0,0,0,0.7)',
-              border: '2px solid #4a5568',
-              borderRadius: '4px',
-              marginBottom: '20px',
+              border: '1px solid #4a5568',
+              borderRadius: '3px',
+              marginBottom: '8px',
               overflow: 'hidden',
-              transform: 'translateY(-20px)' // Move UP by 20px to match name
+              transform: 'translateY(-40px)' // Move UP by 40px to match name
             }}>
               {/* HP Fill */}
               <div style={{
@@ -5346,11 +5548,11 @@ export default function CleanBattlefieldSource() {
               {/* HP Text */}
               <div style={{
                 position: 'absolute',
-                width: '150px',
+                width: '120px',
                 textAlign: 'center',
-                marginTop: '-18px',
+                marginTop: '-14px',
                 color: 'white',
-                fontSize: '12px',
+                fontSize: '10px',
                 fontWeight: 'bold',
                 textShadow: '1px 1px 2px rgba(0,0,0,1)'
               }}>
@@ -5369,19 +5571,6 @@ export default function CleanBattlefieldSource() {
                 scale={3.0}
                 shield={0}
               />
-            </div>
-
-            {/* Role Label (optional - can remove later) */}
-            <div style={{
-              color: 'white',
-              fontSize: '12px',
-              marginTop: '8px',
-              textShadow: '1px 1px 2px rgba(0,0,0,0.8)',
-              backgroundColor: 'rgba(0,0,0,0.5)',
-              padding: '2px 6px',
-              borderRadius: '4px'
-            }}>
-              {hero.role}
             </div>
           </div>
         );
@@ -5412,22 +5601,24 @@ export default function CleanBattlefieldSource() {
               fontWeight: 'bold',
               marginBottom: '4px',
               textShadow: '2px 2px 4px rgba(0,0,0,0.8)',
-              backgroundColor: 'rgba(0,0,0,0.5)',
+              backgroundColor: 'transparent',
               padding: '2px 8px',
-              borderRadius: '4px'
+              borderRadius: '4px',
+              transform: 'translateY(-40px)' // Moved UP to match hero UI
             }}>
               {enemy.isBoss && '👑 '}{enemy.name} (Lv{enemy.level})
             </div>
 
-            {/* HP Bar */}
+            {/* HP Bar - Smaller for OBS, moved UP to match heroes */}
             <div style={{
-              width: '150px',
-              height: '20px',
+              width: '120px',
+              height: '16px',
               backgroundColor: 'rgba(0,0,0,0.7)',
-              border: enemy.isBoss ? '2px solid #fbbf24' : '2px solid #7f1d1d',
-              borderRadius: '4px',
+              border: '1px solid #4a5568',
+              borderRadius: '3px',
               marginBottom: '8px',
-              overflow: 'hidden'
+              overflow: 'hidden',
+              transform: 'translateY(-40px)' // Moved UP to match hero UI
             }}>
               {/* HP Fill */}
               <div style={{
@@ -5440,11 +5631,11 @@ export default function CleanBattlefieldSource() {
               {/* HP Text */}
               <div style={{
                 position: 'absolute',
-                width: '150px',
+                width: '120px',
                 textAlign: 'center',
-                marginTop: '-18px',
+                marginTop: '-14px',
                 color: 'white',
-                fontSize: '12px',
+                fontSize: '10px',
                 fontWeight: 'bold',
                 textShadow: '1px 1px 2px rgba(0,0,0,1)'
               }}>
@@ -5468,50 +5659,56 @@ export default function CleanBattlefieldSource() {
         );
       })}
 
-      {/* Travel Text Overlay */}
-      {isTraveling && (
-        <div style={{
-          position: 'absolute',
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          color: 'white',
-          fontSize: '64px',
-          fontWeight: 'bold',
-          textShadow: '4px 4px 8px rgba(0,0,0,0.9), 0 0 20px rgba(255,255,255,0.3)',
-          animation: 'travel-fade 4.5s ease-in-out',
-          zIndex: 9998,
-          pointerEvents: 'none'
-        }}>
-          🚶 Travelling...
-        </div>
-      )}
-
-      {/* Test Buttons (Top-left corner) */}
+      {/* Minimal Status - Bottom Left */}
       <div style={{
         position: 'absolute',
-        top: '10px',
+        bottom: '10px',
         left: '10px',
-        zIndex: 10000,
-        display: 'flex',
-        gap: '10px'
+        color: 'white',
+        fontSize: '16px',
+        fontFamily: 'monospace',
+        textShadow: '2px 2px 4px rgba(0,0,0,0.9)',
+        zIndex: 1000,
+        lineHeight: '1.5'
       }}>
-        <button
-          onClick={testLevelUp}
-          style={{
-            padding: '8px 16px',
-            background: '#fbbf24',
-            color: 'black',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontWeight: 'bold',
-            fontSize: '14px'
-          }}
-        >
-          ⬆️ Test Level Up
-        </button>
+        {/* Status and Wave */}
+        <div style={{ color: isTraveling ? '#fbbf24' : inCombat ? '#ef4444' : '#10b981', fontSize: '18px', marginBottom: '6px' }}>
+          {isTraveling ? 'Travel' : inCombat ? 'Combat' : 'Idle'} {combatWaveCount > 0 && `• W${combatWaveCount}${(combatWaveCount % 10 === 0) ? '👑' : ''}`}
+        </div>
+        
+        {/* Viewer Bonus and Difficulty */}
+        <div style={{ display: 'flex', gap: '16px', alignItems: 'center', marginBottom: '6px' }}>
+          <div style={{ color: '#a78bfa', fontSize: '21px', fontWeight: 'bold' }}>
+            {activeChatterCount}👥 +{Math.floor((calculateViewerBonuses().damage - 1) * 100)}%
+          </div>
+          <div style={{ color: '#fbbf24', fontSize: '18px' }}>
+            Difficulty: {Math.floor(difficultyModifier * 100)}%
+          </div>
+        </div>
+        
+        {/* Needed Classes */}
+        {(() => {
+          const aliveHeroes = allHeroes.filter(h => !h.isDead && h.hp > 0);
+          const tanks = aliveHeroes.filter(h => h.role === 'guardian' || h.role === 'paladin');
+          const healers = aliveHeroes.filter(h => h.role === 'shaman' || h.role === 'monk' || h.role === 'cleric');
+          const dps = aliveHeroes.filter(h => h.role === 'berserker' || h.role === 'mage' || h.role === 'ranger' || h.role === 'rogue' || h.role === 'assassin');
+          
+          const needed = [];
+          if (tanks.length === 0) needed.push('Tank');
+          if (healers.length === 0) needed.push('Healer');
+          if (dps.length < 2) needed.push('DPS');
+          
+          if (needed.length > 0) {
+            return (
+              <div style={{ color: '#ef4444', fontSize: '16px' }}>
+                Need: {needed.join(', ')}
+              </div>
+            );
+          }
+          return null;
+        })()}
       </div>
+
 
       {/* No Heroes Message */}
       {(!allHeroes || allHeroes.length === 0) && !loading && (
