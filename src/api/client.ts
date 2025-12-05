@@ -397,26 +397,19 @@ export const guildAPI = {
     return response.data;
   },
   
-  async createGuild(name: string, heroId: string, heroName?: string, heroRole?: string, heroLevel?: number): Promise<Guild> {
+  async createGuild(name: string, userId: string): Promise<Guild> {
     if (USE_MOCK) {
       return new Promise((resolve) => {
         setTimeout(() => resolve({
           ...mockGuild,
           id: 'new-guild',
           name,
-          createdBy: heroId
+          createdBy: userId
         }), 300);
       });
     }
     
-    const response = await apiClient.post('/api/guilds', { 
-      name, 
-      createdBy: heroId, // Hero ID (not user ID)
-      creatorHeroName: heroName || 'Unknown', // Hero name for display
-      creatorUsername: heroName || 'Unknown', // Deprecated, but kept for compatibility
-      heroRole: heroRole || 'warrior', // Hero class/role
-      heroLevel: heroLevel || 1 // Hero level
-    });
+    const response = await apiClient.post('/api/guilds', { name, createdBy: userId });
     return response.data;
   },
   
@@ -480,11 +473,6 @@ export const raidAPI = {
   
   async startRaid(raidId: string, participants: string[]): Promise<{success: boolean, instanceId: string, raidData: any}> {
     const response = await apiClient.post(`/api/raids/${raidId}/start`, { participants });
-    return response.data;
-  },
-  
-  async simulateRaid(raidId: string, participants: string[]): Promise<{success: boolean, outcome: 'success' | 'failure', rewards: any, message: string}> {
-    const response = await apiClient.post(`/api/raids/${raidId}/simulate`, { participants });
     return response.data;
   },
   
@@ -654,54 +642,10 @@ export const raidAPI = {
     return response.data;
   },
   
-  async guildSignupForRaid(raidId: string, guildId: string, assignedPlayers: any[], scheduledTime?: string): Promise<{success: boolean, signupId?: string, message: string}> {
+  async guildSignupForRaid(raidId: string, guildId: string, assignedPlayers: any[]): Promise<{success: boolean, signupId?: string, message: string}> {
     const response = await apiClient.post(`/api/raids/${raidId}/guild-signup`, {
       guildId,
-      assignedPlayers,
-      scheduledTime: scheduledTime || null
-    });
-    return response.data;
-  },
-  
-  async createScheduledGuildRaid(raidId: string, guildId: string, signupData: {scheduledTime: string | null, organizer: string, organizerName: string, initialAssignments: any[], status: string}): Promise<{success: boolean, signupId: string}> {
-    const response = await apiClient.post(`/api/raids/${raidId}/schedule`, {
-      guildId,
-      ...signupData
-    });
-    return response.data;
-  },
-  
-  async signUpForScheduledRaid(signupId: string, heroId: string, heroName: string, heroLevel: number, heroRole: string, itemScore: number): Promise<{success: boolean}> {
-    const response = await apiClient.post(`/api/raids/scheduled/${signupId}/signup`, {
-      heroId,
-      heroName,
-      heroLevel,
-      heroRole,
-      itemScore
-    });
-    return response.data;
-  },
-  
-  async leaveScheduledRaid(signupId: string, heroId: string): Promise<{success: boolean}> {
-    const response = await apiClient.post(`/api/raids/scheduled/${signupId}/leave`, {
-      heroId
-    });
-    return response.data;
-  },
-  
-  async getGuildScheduledRaids(guildId: string): Promise<any[]> {
-    const response = await apiClient.get(`/api/raids/scheduled/guild/${guildId}`);
-    return response.data;
-  },
-  
-  async startScheduledRaid(signupId: string): Promise<{success: boolean, instanceId: string}> {
-    const response = await apiClient.post(`/api/raids/scheduled/${signupId}/start`);
-    return response.data;
-  },
-  
-  async deleteScheduledRaid(signupId: string, organizerId: string): Promise<{success: boolean}> {
-    const response = await apiClient.delete(`/api/raids/scheduled/${signupId}`, {
-      data: { organizerId }
+      assignedPlayers
     });
     return response.data;
   },
@@ -996,13 +940,22 @@ export const achievementAPI = {
     return response.data;
   },
   
-  async getHeroAchievements(heroId: string) {
-    const response = await apiClient.get(`/api/achievements/${heroId}`);
+  async getHeroAchievements(userId: string) {
+    const response = await apiClient.get(`/api/achievements/${userId}`);
     return response.data;
   },
   
-  async setActiveTitle(heroId: string, title: string) {
-    const response = await apiClient.put(`/api/achievements/${heroId}/title`, { title });
+  async checkAchievements(userId: string, actionType: string, actionValue?: number) {
+    const response = await apiClient.post('/api/achievements/check', {
+      userId,
+      actionType,
+      actionValue
+    });
+    return response.data;
+  },
+  
+  async setActiveTitle(userId: string, title: string) {
+    const response = await apiClient.put(`/api/achievements/${userId}/title`, { title });
     return response.data;
   }
 };

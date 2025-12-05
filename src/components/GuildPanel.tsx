@@ -3,47 +3,30 @@ import { Guild } from '../types/Guild';
 import { formatNumber, getRoleBg } from '../utils/format';
 import { useAuth } from '../hooks/useAuth';
 import { guildAPI } from '../api/client';
-import { useHero } from '../hooks/useHero';
-import GuildRaidsPanel from './GuildRaidsPanel';
 
 interface GuildPanelProps {
   guild: Guild | null;
-  refetchGuild?: () => Promise<void>;
 }
 
-export default function GuildPanel({ guild, refetchGuild }: GuildPanelProps) {
+export default function GuildPanel({ guild }: GuildPanelProps) {
   const { user } = useAuth();
-  const { hero } = useHero(user?.twitchId || null);
   const [showCreateGuild, setShowCreateGuild] = useState(false);
   const [guildName, setGuildName] = useState('');
   const [creating, setCreating] = useState(false);
   const [showGuildList, setShowGuildList] = useState(false);
   const [guilds, setGuilds] = useState<Guild[]>([]);
   const [loadingGuilds, setLoadingGuilds] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'raids'>('overview');
 
   const handleCreateGuild = async () => {
-    if (!guildName.trim() || !hero?.id) return;
+    if (!guildName.trim() || !user?.id) return;
     
     try {
       setCreating(true);
-      // Use hero ID, name, role, and level
-      const newGuild = await guildAPI.createGuild(
-        guildName.trim(), 
-        hero.id, 
-        hero.name,
-        hero.role,
-        hero.level
-      );
+      const newGuild = await guildAPI.createGuild(guildName.trim(), user.id);
       alert(`Guild "${newGuild.name}" created successfully!`);
       setShowCreateGuild(false);
       setGuildName('');
-      // Refetch guild data (stays on guild tab)
-      if (refetchGuild) {
-        await refetchGuild();
-      } else {
-        window.location.reload();
-      }
+      window.location.reload(); // Refresh to load the new guild
     } catch (err: any) {
       alert(err.response?.data?.error || 'Failed to create guild');
     } finally {
@@ -155,7 +138,7 @@ export default function GuildPanel({ guild, refetchGuild }: GuildPanelProps) {
     );
   }
 
-  const sortedMembers = [...(guild.members || [])].sort((a, b) => {
+  const sortedMembers = [...guild.members].sort((a, b) => {
     const rankOrder = { leader: 0, officer: 1, member: 2 };
     return rankOrder[a.rank] - rankOrder[b.rank] || b.contributionPoints - a.contributionPoints;
   });
@@ -167,11 +150,11 @@ export default function GuildPanel({ guild, refetchGuild }: GuildPanelProps) {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-3xl font-bold text-white">{guild.name}</h2>
-            <div className="text-purple-400 mt-1">Level {guild.level || 1} Guild</div>
+            <div className="text-purple-400 mt-1">Level {guild.level} Guild</div>
           </div>
           <div className="text-right">
             <div className="text-sm text-gray-400">Guild Gold</div>
-            <div className="text-2xl font-bold text-yellow-500">{formatNumber(guild.gold || 0)}</div>
+            <div className="text-2xl font-bold text-yellow-500">{formatNumber(guild.gold)}</div>
           </div>
         </div>
         
@@ -179,16 +162,14 @@ export default function GuildPanel({ guild, refetchGuild }: GuildPanelProps) {
           <div className="flex items-center space-x-6 text-sm">
             <div>
               <span className="text-gray-400">Members: </span>
-              <span className="text-white font-semibold">{guild.members?.length || 0} / {guild.maxMembers || 50}</span>
+              <span className="text-white font-semibold">{guild.members.length} / {guild.maxMembers}</span>
             </div>
             <div>
               <span className="text-gray-400">Founded by: </span>
-              <span className="text-purple-400 font-semibold">
-                {(guild as any).createdByHeroName || guild.members?.find(m => m.rank === 'leader')?.username || 'Unknown'}
-              </span>
+              <span className="text-purple-400 font-semibold">{guild.createdBy}</span>
             </div>
           </div>
-          {user?.id && guild.members?.find(m => m.userId === user.id && m.rank !== 'leader') && (
+          {user?.id && guild.members.find(m => m.userId === user.id && m.rank !== 'leader') && (
             <button
               onClick={handleLeaveGuild}
               className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors text-sm font-semibold"
@@ -199,72 +180,40 @@ export default function GuildPanel({ guild, refetchGuild }: GuildPanelProps) {
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex space-x-4 border-b border-gray-700">
-        <button
-          onClick={() => setActiveTab('overview')}
-          className={`px-6 py-3 font-semibold transition-colors border-b-2 ${
-            activeTab === 'overview'
-              ? 'text-purple-400 border-purple-400'
-              : 'text-gray-400 border-transparent hover:text-gray-300'
-          }`}
-        >
-          Overview
-        </button>
-        <button
-          onClick={() => setActiveTab('raids')}
-          className={`px-6 py-3 font-semibold transition-colors border-b-2 ${
-            activeTab === 'raids'
-              ? 'text-purple-400 border-purple-400'
-              : 'text-gray-400 border-transparent hover:text-gray-300'
-          }`}
-        >
-          Guild Raids
-        </button>
+      {/* Guild Perks */}
+      <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+        <h3 className="text-xl font-bold text-white mb-4">Guild Perks</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {guild.perks.craftingBonus && (
+            <div className="bg-green-900/30 border border-green-600 rounded-lg p-4 text-center">
+              <div className="text-2xl mb-2">⚗️</div>
+              <div className="text-sm text-gray-300">Crafting Bonus</div>
+              <div className="text-xl font-bold text-green-400">+{guild.perks.craftingBonus * 100}%</div>
+            </div>
+          )}
+          {guild.perks.gatherBonus && (
+            <div className="bg-blue-900/30 border border-blue-600 rounded-lg p-4 text-center">
+              <div className="text-2xl mb-2">🌿</div>
+              <div className="text-sm text-gray-300">Gathering Bonus</div>
+              <div className="text-xl font-bold text-blue-400">+{guild.perks.gatherBonus * 100}%</div>
+            </div>
+          )}
+          {guild.perks.combatBonus && (
+            <div className="bg-red-900/30 border border-red-600 rounded-lg p-4 text-center">
+              <div className="text-2xl mb-2">⚔️</div>
+              <div className="text-sm text-gray-300">Combat Bonus</div>
+              <div className="text-xl font-bold text-red-400">+{guild.perks.combatBonus * 100}%</div>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Tab Content */}
-      {activeTab === 'raids' && hero ? (
-        <GuildRaidsPanel hero={hero} guildId={guild.id} />
-      ) : activeTab === 'overview' && (
-        <div className="space-y-6">
-
-      {/* Guild Perks */}
-      {guild.perks && (guild.perks.craftingBonus || guild.perks.gatherBonus || guild.perks.combatBonus) && (
-        <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-          <h3 className="text-xl font-bold text-white mb-4">Guild Perks</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {guild.perks?.craftingBonus && (
-              <div className="bg-green-900/30 border border-green-600 rounded-lg p-4 text-center">
-                <div className="text-2xl mb-2">⚗️</div>
-                <div className="text-sm text-gray-300">Crafting Bonus</div>
-                <div className="text-xl font-bold text-green-400">+{guild.perks.craftingBonus * 100}%</div>
-              </div>
-            )}
-            {guild.perks?.gatherBonus && (
-              <div className="bg-blue-900/30 border border-blue-600 rounded-lg p-4 text-center">
-                <div className="text-2xl mb-2">🌿</div>
-                <div className="text-sm text-gray-300">Gathering Bonus</div>
-                <div className="text-xl font-bold text-blue-400">+{guild.perks.gatherBonus * 100}%</div>
-              </div>
-            )}
-            {guild.perks?.combatBonus && (
-              <div className="bg-red-900/30 border border-red-600 rounded-lg p-4 text-center">
-                <div className="text-2xl mb-2">⚔️</div>
-                <div className="text-sm text-gray-300">Combat Bonus</div>
-                <div className="text-xl font-bold text-red-400">+{guild.perks.combatBonus * 100}%</div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
       {/* Crafting Stations */}
-      {guild.craftingStations && guild.craftingStations.length > 0 && (
+      {guild.craftingStations.length > 0 && (
         <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
           <h3 className="text-xl font-bold text-white mb-4">Crafting Stations</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {guild.craftingStations?.map((station) => (
+            {guild.craftingStations.map((station) => (
               <div key={station.id} className="bg-gray-700 rounded-lg p-4 border border-gray-600">
                 <div className="font-semibold text-white capitalize">
                   {station.type.replace(/_/g, ' ')}
@@ -281,7 +230,7 @@ export default function GuildPanel({ guild, refetchGuild }: GuildPanelProps) {
 
       {/* Members */}
       <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-        <h3 className="text-xl font-bold text-white mb-4">Members ({guild.members?.length || 0})</h3>
+        <h3 className="text-xl font-bold text-white mb-4">Members ({guild.members.length})</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           {sortedMembers.map((member) => {
             const professionIcon = member.profession?.type === 'herbalism' ? '🌿' : 
@@ -302,14 +251,12 @@ export default function GuildPanel({ guild, refetchGuild }: GuildPanelProps) {
                   </div>
                 </div>
                 
-                {member.heroRole && (
-                  <div className="flex items-center justify-between text-xs mb-1">
-                    <span className={`px-2 py-0.5 rounded font-semibold ${getRoleBg(member.heroRole || 'warrior')} text-white`}>
-                      {member.heroRole}
-                    </span>
-                    <span className="text-gray-400">Lv {member.heroLevel || 1}</span>
-                  </div>
-                )}
+                <div className="flex items-center justify-between text-xs mb-1">
+                  <span className={`px-2 py-0.5 rounded font-semibold ${getRoleBg(member.heroRole)} text-white`}>
+                    {member.heroRole}
+                  </span>
+                  <span className="text-gray-400">Lv {member.heroLevel}</span>
+                </div>
                 
                 {member.profession && (
                   <div className="flex items-center justify-between text-xs">
@@ -328,8 +275,6 @@ export default function GuildPanel({ guild, refetchGuild }: GuildPanelProps) {
           })}
         </div>
       </div>
-        </div>
-      )}
     </div>
   );
 }

@@ -24,7 +24,6 @@ import GuildManagementPage from './pages/GuildManagementPage';
 import DungeonFinderPage from './pages/DungeonFinderPage';
 import EnchantingPage from './pages/EnchantingPage';
 import GuildRaidSignupPage from './pages/GuildRaidSignupPage';
-import InteractiveRaidViewer from './pages/InteractiveRaidViewer';
 import InstanceViewerPage from './pages/InstanceViewerPage';
 import RaidBrowserSourcePage from './pages/RaidBrowserSourcePage';
 import UnifiedBrowserSource from './pages/UnifiedBrowserSource';
@@ -65,7 +64,6 @@ function App() {
         <Route path="/dungeon-finder" element={<DungeonFinderPage />} />
         <Route path="/enchanting" element={<EnchantingPage />} />
         <Route path="/raids/guild-signup/:raidId" element={<GuildRaidSignupPage />} />
-        <Route path="/raid-viewer/:instanceId" element={<InteractiveRaidViewer />} />
         <Route path="/instance/view" element={<InstanceViewerPage />} />
         <Route path="/browser-source/raid/:instanceId" element={<RaidBrowserSourcePage />} />
       </Routes>

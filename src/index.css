@@ -71,8 +71,7 @@ code {
 }
 
 /* Browser Source Page - Force transparent background */
-.browser-source-page,
-.clean-battlefield-page {
+.browser-source-page {
   background-color: transparent !important;
   background: transparent !important;
 }
@@ -80,20 +79,12 @@ code {
 /* Override global body/html background for browser source route */
 body:has(.browser-source-page),
 html:has(.browser-source-page),
-body:has(.clean-battlefield-page),
-html:has(.clean-battlefield-page),
 body.browser-source-body,
 html.browser-source-html {
   background-color: transparent !important;
   background: transparent !important;
   margin: 0 !important;
   padding: 0 !important;
-}
-
-/* Force transparent for #root as well */
-#root:has(.clean-battlefield-page) {
-  background-color: transparent !important;
-  background: transparent !important;
 }
 
 /* Loading spinner animation for OBS page */
@@ -1934,44 +1925,35 @@ html.browser-source-html {
   position: absolute;
   opacity: 1;
   animation: floatUp 1.2s ease-out forwards;
-  font-size: 10px;
+  font-size: 12px; /* Smaller default size */
   font-weight: bold;
   user-select: none;
-  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
   white-space: nowrap;
   z-index: 1001;
 }
 
 /* Damage text - red */
 .combat-text.damage {
-  color: #ef4444; /* Red for damage */
+  color: #ff4444;
 }
 
 /* Healing text - green */
 .combat-text.healing {
-  color: #10b981; /* Green for healing */
+  color: #44ff44;
 }
 
 /* HoT (Heal over Time) text - light green */
 .combat-text.hot {
-  font-size: 8px;
-  color: #10b981; /* Green for HoT healing */
+  color: #7CFF7C;
 }
 
-/* DoT (Damage over Time) text - purple */
+/* DoT (Damage over Time) text - purple/magenta */
 .combat-text.dot {
-  color: #9333ea; /* Purple for damage over time */
-  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8),
-               0 0 4px rgba(147, 51, 234, 0.6); /* Purple glow effect */
+  color: #FF6BFF;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8),
+               0 0 8px rgba(255, 107, 255, 0.6); /* Purple glow effect */
   font-weight: bold;
-}
-
-/* Critical hit text - gold */
-.combat-text.crit {
-  font-size: 12px;
-  color: #ffd700; /* Gold for critical hits */
-  font-weight: 900;
-  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.9), 0 0 4px rgba(255, 215, 0, 0.6);
 }
 
 /* Float up animation for combat text */
@@ -1984,11 +1966,6 @@ html.browser-source-html {
     transform: translateY(-50px);
     opacity: 0;
   }
-}
-
-/* Enrage active state - simple visual indicator */
-.hero-sprite.enrage-active {
-  filter: drop-shadow(0 0 4px rgba(220, 38, 38, 0.8)) drop-shadow(0 0 8px rgba(220, 38, 38, 0.6));
 }
 
 /* ============================================

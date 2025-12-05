@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Hero } from '../types/Hero';
 import { formatNumber, getRarityColor, getRarityBg, getRoleBg, formatTime, getItemScore } from '../utils/format';
 import ItemTooltip from './ItemTooltip';
 import { useAuth } from '../hooks/useAuth';
-import { heroAPI, achievementAPI } from '../api/client';
+import { heroAPI } from '../api/client';
 
 interface HeroDashboardProps {
   hero: Hero;
@@ -15,51 +15,9 @@ export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: Hero
   const { user } = useAuth();
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [availableTitles, setAvailableTitles] = useState<string[]>([]);
-  const [selectedTitle, setSelectedTitle] = useState<string | null>(null);
   const hpPercent = (hero.hp / hero.maxHp) * 100;
   const xpPercent = (Math.floor(hero.xp) / Math.floor(hero.maxXp)) * 100;
   const itemScore = getItemScore(hero.equipment);
-
-  useEffect(() => {
-    loadAchievementsData();
-  }, [hero.id]);
-
-  const loadAchievementsData = async () => {
-    try {
-      const data = await achievementAPI.getHeroAchievements(hero.id);
-      
-      console.log('[HeroDashboard] 🎯 Achievement Data:');
-      console.log('[HeroDashboard] Data:', data);
-      console.log('[HeroDashboard] Titles:', data?.titles);
-      console.log('[HeroDashboard] Active title:', data?.activeTitle);
-      
-      // Check for "Genocide"
-      const genocideTitle = data?.titles?.find((t: any) => t?.includes('Genocide'));
-      if (genocideTitle) console.error('[HeroDashboard] ❌ FOUND GENOCIDE:', genocideTitle);
-      
-      if (data) {
-        setAvailableTitles(data.titles || []);
-        setSelectedTitle(data.activeTitle || null);
-      }
-    } catch (error) {
-      console.error('Failed to load achievement data:', error);
-    }
-  };
-
-  const handleTitleChange = async (title: string) => {
-    try {
-      await achievementAPI.setActiveTitle(hero.id, title);
-      setSelectedTitle(title);
-      if (onHeroUpdate) {
-        // Trigger a refresh
-        onHeroUpdate({ ...hero, activeTitle: title } as any);
-      }
-    } catch (error) {
-      console.error('Failed to set title:', error);
-      alert('Failed to set title');
-    }
-  };
   
   const handleDelete = async () => {
     try {
@@ -111,21 +69,6 @@ export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: Hero
                 <span className="text-gray-400">•</span>
                 <span className="text-yellow-500">⚡ {itemScore} Item Score</span>
               </div>
-              {availableTitles.length > 0 && (
-                <div className="mt-3">
-                  <label className="text-xs text-gray-400 block mb-1">Title</label>
-                  <select
-                    value={selectedTitle || ''}
-                    onChange={(e) => handleTitleChange(e.target.value)}
-                    className="bg-gray-700 text-white px-3 py-1 rounded text-sm border border-gray-600 focus:outline-none focus:border-amber-400"
-                  >
-                    <option value="">No Title</option>
-                    {availableTitles.map(title => (
-                      <option key={title} value={title}>{title}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
             </div>
           </div>
           
