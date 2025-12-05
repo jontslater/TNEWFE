@@ -45,6 +45,14 @@ export interface Item {
     description: string;
   };
   appliedUpgrades?: AppliedUpgrade[];
+  upgradeLevel?: number; // Current upgrade level (0 = no upgrades, max 10)
+  upgradeStats?: Array<{
+    level: number; // Which upgrade level (1-10)
+    selectedStats: Array<{
+      type: 'attack' | 'defense' | 'hp' | 'critChance' | 'critDamage' | 'healingPower' | 'spellDamage';
+      value: number; // Percentage bonus
+    }>;
+  }>;
   // Profession item fields
   professionItem?: boolean;
   professionType?: 'herbalism' | 'mining' | 'enchanting';
@@ -128,6 +136,14 @@ export interface Hero {
   // User identification
   twitchUserId?: string;
   tiktokUserId?: string;
+  // Cosmetic/badge system
+  founderBadge?: string; // Path to founder badge image (e.g., "/Badges/FoundersGold.png")
+  activeBadge?: string; // Currently active badge (for future badge system expansion)
+  nameColor?: string; // Custom hex color for hero name (e.g., "#FF5733")
+  nameFrame?: string; // Name frame style: 'bronze' | 'silver' | 'gold' | 'platinum' | null
+  auraEffect?: string; // Aura effect style: 'bronze' | 'silver' | 'gold' | 'platinum' | null
+  auraColor?: string; // Custom hex color for aura effect (e.g., "#FF5733") - overrides tier default color
+  spellEffect?: string; // Spell effect style: 'bronze' | 'silver' | 'gold' | 'platinum' | null - Enhanced visual effects for projectiles/abilities
 }
 
 export interface Profession {

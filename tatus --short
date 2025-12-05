@@ -1,0 +1,160 @@
+[1mdiff --git a/src/pages/CleanBattlefieldSource.tsx b/src/pages/CleanBattlefieldSource.tsx[m
+[1mindex 77c65be..343b6e4 100644[m
+[1m--- a/src/pages/CleanBattlefieldSource.tsx[m
+[1m+++ b/src/pages/CleanBattlefieldSource.tsx[m
+[36m@@ -9,7 +9,7 @@[m
+  * - Nothing else![m
+  */[m
+ [m
+[31m-import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';[m
+[32m+[m[32mimport React, { useEffect, useState, useRef, useMemo } from 'react';[m
+ import { useSearchParams } from 'react-router-dom';[m
+ import { collection, query, where, onSnapshot, doc } from 'firebase/firestore';[m
+ import { db } from '../utils/firebase';[m
+[36m@@ -19,7 +19,6 @@[m [mimport EnemySpriteJS from '../components/EnemySpriteJS';[m
+ import { battlefieldAPI, heroAPI, questAPI } from '../api/client';[m
+ import { useAuth } from '../hooks/useAuth';[m
+ import { useActiveInstanceListener } from '../hooks/useActiveInstanceListener';[m
+[31m-import { useWebSocket } from '../hooks/useWebSocket';[m
+ import { DEBUFFS, SHOP_ITEMS } from '../utils/fullCombatEngine';[m
+ import { generateLoot, isItemBetter, calculateItemPower } from '../utils/lootGeneration';[m
+ import { calculateSetBonuses } from '../utils/setBonuses';[m
+[36m@@ -177,30 +176,6 @@[m [mexport default function CleanBattlefieldSource() {[m
+     }[m
+   }, []);[m
+   [m
+[31m-  // Force transparent background for OBS Browser Source[m
+[31m-  useEffect(() => {[m
+[31m-    // Set body and html background to transparent[m
+[31m-    document.body.style.backgroundColor = 'transparent';[m
+[31m-    document.documentElement.style.backgroundColor = 'transparent';[m
+[31m-    [m
+[31m-    // Also ensure #root is transparent[m
+[31m-    const root = document.getElementById('root');[m
+[31m-    if (root) {[m
+[31m-      root.style.backgroundColor = 'transparent';[m
+[31m-    }[m
+[31m-    [m
+[31m-    console.log('[OBS] ✅ Forced transparent background');[m
+[31m-    [m
+[31m-    // Cleanup on unmount (restore original background)[m
+[31m-    return () => {[m
+[31m-      document.body.style.backgroundColor = '';[m
+[31m-      document.documentElement.style.backgroundColor = '';[m
+[31m-      if (root) {[m
+[31m-        root.style.backgroundColor = '';[m
+[31m-      }[m
+[31m-    };[m
+[31m-  }, []);[m
+[31m-  [m
+   const [searchParams] = useSearchParams();[m
+   const { user } = useAuth();[m
+   const [heroes, setHeroes] = useState<Hero[]>([]); // Combat heroes (idle: all on battlefield, raid: participants only)[m
+[36m@@ -209,8 +184,7 @@[m [mexport default function CleanBattlefieldSource() {[m
+   const [loading, setLoading] = useState(true);[m
+   const [error, setError] = useState<string | null>(null);[m
+   const [battlefieldId, setBattlefieldId] = useState<string | null>(null);[m
+[31m-  const [waveCount, setWaveCount] = useState(1); // Total ticks (includes rest/travel)[m
+[31m-  const [combatWaveCount, setCombatWaveCount] = useState(0); // Only combat waves[m
+[32m+[m[32m  const [waveCount, setWaveCount] = useState(1);[m
+   const [inCombat, setInCombat] = useState(false);[m
+   const [facingPreferences, setFacingPreferences] = useState<Record<string, 'left' | 'right'>>({});[m
+   const [resurrectionTimers, setResurrectionTimers] = useState<Record<string, number>>({});[m
+[36m@@ -219,126 +193,6 @@[m [mexport default function CleanBattlefieldSource() {[m
+   const [testHealer, setTestHealer] = useState<Hero | null>(null);[m
+   const [isTraveling, setIsTraveling] = useState(false);[m
+   const [viewerCount, setViewerCount] = useState(0);[m
+[31m-  const [activeChatterCount, setActiveChatterCount] = useState(0); // Active chatters in last hour[m
+[31m-  [m
+[31m-  // Rested XP tracking[m
+[31m-  const heroBattlefieldJoinTime = useRef<Map<string, number>>(new Map());[m
+[31m-  const lastChatTime = useRef<Map<string, number>>(new Map());[m
+[31m-  [m
+[31m-  // Extract twitchId from battlefieldId for WebSocket connection[m
+[31m-  const twitchId = battlefieldId?.split(':')[1] || null;[m
+[31m-  [m
+[31m-  // WebSocket message handler[m
+[31m-  const handleWebSocketMessage = useCallback((message: any) => {[m
+[31m-    console.log('[WebSocket] 📨 Received:', message);[m
+[31m-    [m
+[31m-    switch (message.type) {[m
+[31m-      case 'hero_joined_battlefield':[m
+[31m-        console.log(`[WebSocket] ✅ ${message.hero?.name} joined!`);[m
+[31m-        // Firebase listener will auto-update, no manual action needed[m
+[31m-        break;[m
+[31m-      [m
+[31m-      case 'hero_left_battlefield':[m
+[31m-        console.log(`[WebSocket] 👋 ${message.hero?.name} left!`);[m
+[31m-        // Firebase listener will auto-update[m
+[31m-        break;[m
+[31m-      [m
+[31m-      case 'channel_point_redeem':[m
+[31m-        console.log(`[WebSocket] 🎁 ${message.username} redeemed: ${message.reward}`);[m
+[31m-        // TODO: Handle visual effects for redeems[m
+[31m-        break;[m
+[31m-      [m
+[31m-      case 'chatter_count_update':[m
+[31m-        console.log(`[WebSocket] 👥 Active chatters: ${message.count}`);[m
+[31m-        setActiveChatterCount(message.count);[m
+[31m-        break;[m
+[31m-      [m
+[31m-      case 'chat_activity':[m
+[31m-        console.log(`[WebSocket] 💬 Chat activity from ${message.username}`);[m
+[31m-        // Track chat time for rested XP bonuses[m
+[31m-        if (message.heroId) {[m
+[31m-          lastChatTime.current.set(message.heroId, Date.now());[m
+[31m-          console.log(`[Rested XP] 📝 Recorded chat activity for hero ${message.heroId}`);[m
+[31m-        }[m
+[31m-        break;[m
+[31m-      [m
+[31m-      default:[m
+[31m-        console.log('[WebSocket] Unknown message type:', message.type);[m
+[31m-    }[m
+[31m-  }, []);[m
+[31m-  [m
+[31m-  // Connect to WebSocket for real-time events[m
+[31m-  const { connected: wsConnected } = useWebSocket(twitchId, handleWebSocketMessage);[m
+[31m-  [m
+[31m-  // Log WebSocket connection status[m
+[31m-  useEffect(() => {[m
+[31m-    if (wsConnected) {[m
+[31m-      console.log(`[WebSocket] ✅ Connected to battlefield ${battlefieldId}`);[m
+[31m-    } else {[m
+[31m-      console.log(`[WebSocket] ⚠️ Not connected to battlefield ${battlefieldId}`);[m
+[31m-    }[m
+[31m-  }, [wsConnected, battlefieldId]);[m
+[31m-  [m
+[31m-  // Track hero join times when they appear on battlefield[m
+[31m-  useEffect(() => {[m
+[31m-    heroes.forEach(hero => {[m
+[31m-      if (!heroBattlefieldJoinTime.current.has(hero.id)) {[m
+[31m-        heroBattlefieldJoinTime.current.set(hero.id, Date.now());[m
+[31m-        console.log(`[Rested XP] ⏰ Tracking join time for ${hero.name} (${hero.id})`);[m
+[31m-      }[m
+[31m-    });[m
+[31m-    [m
+[31m-    // Clean up join times for heroes that left[m
+[31m-    const currentHeroIds = new Set(heroes.map(h => h.id));[m
+[31m-    for (const heroId of heroBattlefieldJoinTime.current.keys()) {[m
+[31m-      if (!currentHeroIds.has(heroId)) {[m
+[31m-        heroBattlefieldJoinTime.current.delete(heroId);[m
+[31m-        lastChatTime.current.delete(heroId);[m
+[31m-        console.log(`[Rested XP] 🧹 Cleaned up tracking for hero ${heroId}`);[m
+[31m-      }[m
+[31m-    }[m
+[31m-  }, [heroes]);[m
+[31m-  [m
+[31m-  // Grant rested XP every 5 minutes[m
+[31m-  useEffect(() => {[m
+[31m-    const interval = setInterval(() => {[m
+[31m-      setHeroes(current => {[m
+[31m-        return current.map(hero => {[m
+[31m-          const joinTime = heroBattlefieldJoinTime.current.get(hero.id);[m
+[31m-          if (!joinTime || hero.isDead) return hero; // Skip dead heroes[m
+[31m-          [m
+[31m-          const hoursOnBattlefield = (Date.now() - joinTime) / (1000 * 60 * 60);[m
+[31m-          const baseRestedXP = Math.floor((hero.maxXp || 100) * Math.min(hoursOnBattlefield * 0.01, 0.5));[m
+[31m-          [m
+[31m-          // Chat activity bonus (if user chatted in last hour)[m
+[31m-          const lastChat = lastChatTime.current.get(hero.id);[m
+[31m-          const chatBonus = lastChat && (Date.now() - lastChat < 3600000) ? 1.5 : 1.0;

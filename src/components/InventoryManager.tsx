@@ -3,19 +3,22 @@ import { Hero, Item, CraftedItem } from '../types/Hero';
 import ItemTooltip from './ItemTooltip';
 import { getRarityColor, getRarityBg } from '../utils/format';
 import { HERBALISM_RECIPES, MINING_RECIPES, ENCHANTING_RECIPES } from '../api/mock-data';
+import UpgradeModal from './UpgradeModal';
 
 interface InventoryManagerProps {
   hero: Hero;
   onEquipChange: (slot: string, item: Item | null) => void;
   onApplyUpgrade?: (itemId: string, equipmentSlot: string) => void;
   onUseConsumable?: (itemId: string) => void;
+  onUpgradeItem?: (itemId: string, selectedStats: Array<{ type: string; value: number }>) => Promise<void>;
   userId?: string;
   onUpdate?: () => void;
 }
 
-export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, onUseConsumable, userId, onUpdate }: InventoryManagerProps) {
+export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, onUseConsumable, onUpgradeItem, userId, onUpdate }: InventoryManagerProps) {
   const [draggedItem, setDraggedItem] = useState<{ item: Item; source: 'inventory' | 'equipment'; slot?: string } | null>(null);
   const [applyingItem, setApplyingItem] = useState<{ craftedItem: CraftedItem; recipeKey: string } | null>(null);
+  const [upgradeItem, setUpgradeItem] = useState<{ item: Item; location: 'equipment' | 'inventory'; slot?: string } | null>(null);
   
 
   // Handle drag start
@@ -117,8 +120,11 @@ export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, 
                   >
                     <ItemTooltip item={item} position="above">
                       <div className="hover:bg-gray-600/30 rounded p-1 -m-1 transition-colors">
-                        <div className={`font-semibold mb-2 ${getRarityColor(item.rarity)}`}>
-                          {item.name}
+                        <div className={`font-semibold mb-2 ${getRarityColor(item.rarity)} flex items-center gap-2`}>
+                          <span>{item.name}</span>
+                          {(item as any).upgradeLevel && (item as any).upgradeLevel > 0 && (
+                            <span className="text-amber-400 font-semibold text-xs">+{(item as any).upgradeLevel}</span>
+                          )}
                         </div>
                         
                         <div className="space-y-1 text-xs mb-3">
@@ -126,6 +132,35 @@ export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, 
                           {item.defense > 0 && <div className="text-blue-400">+{item.defense} DEF</div>}
                           {item.hp > 0 && <div className="text-green-400">+{item.hp} HP</div>}
                         </div>
+
+                        {/* Upgrade Stats (Custom Upgrade System) */}
+                        {(item as any).upgradeStats && Array.isArray((item as any).upgradeStats) && (item as any).upgradeStats.length > 0 && (
+                          <div className="mb-3 pt-2 border-t border-gray-600">
+                            <div className="text-xs text-amber-400 font-semibold mb-1">⬆️ Upgrades:</div>
+                            <div className="space-y-1">
+                              {(item as any).upgradeStats.flatMap((upgrade: any) => 
+                                upgrade.selectedStats?.map((stat: any) => {
+                                  const statNames: Record<string, string> = {
+                                    attack: 'Attack',
+                                    defense: 'Defense',
+                                    hp: 'HP',
+                                    critChance: 'Crit Chance',
+                                    critDamage: 'Crit Damage',
+                                    healingPower: 'Healing Power',
+                                    spellDamage: 'Spell Damage'
+                                  };
+                                  
+                                  // Show the percentage they selected (all upgrades are percentages)
+                                  return (
+                                    <div key={`${upgrade.level}-${stat.type}`} className="text-xs text-amber-300">
+                                      +{stat.value}% {statNames[stat.type] || stat.type}
+                                    </div>
+                                  );
+                                }) || []
+                              )}
+                            </div>
+                          </div>
+                        )}
 
                         {/* Applied Upgrades/Enchantments */}
                         {(item as any).appliedUpgrades && (item as any).appliedUpgrades.length > 0 && (
@@ -152,12 +187,28 @@ export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, 
                     </ItemTooltip>
                   </div>
 
-                  <button
-                    onClick={() => handleUnequip(slot)}
-                    className="w-full bg-red-600 hover:bg-red-700 text-white text-xs py-1 rounded transition-colors mt-auto"
-                  >
-                    Unequip
-                  </button>
+                  <div className="flex gap-2 mt-auto">
+                    {onUpgradeItem && item.id && (
+                      <button
+                        onClick={() => setUpgradeItem({ item, location: 'equipment', slot })}
+                        disabled={(item.upgradeLevel || 0) >= 2}
+                        className={`flex-1 text-white text-xs py-1 rounded transition-colors ${
+                          (item.upgradeLevel || 0) >= 2
+                            ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                            : 'bg-amber-600 hover:bg-amber-700'
+                        }`}
+                        title={(item.upgradeLevel || 0) >= 2 ? 'Item is fully upgraded (+2)' : 'Upgrade item'}
+                      >
+                        {(item.upgradeLevel || 0) >= 2 ? 'Max Level' : 'Upgrade'}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleUnequip(slot)}
+                      className="flex-1 bg-red-600 hover:bg-red-700 text-white text-xs py-1 rounded transition-colors"
+                    >
+                      Unequip
+                    </button>
+                  </div>
                 </>
               ) : (
                 <div className="text-gray-500 italic text-center flex-grow flex items-center justify-center">Empty</div>
@@ -331,8 +382,11 @@ export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, 
                     >
                       <ItemTooltip item={item}>
                         <div className="hover:brightness-110 transition-all">
-                          <div className={`font-semibold text-sm mb-1 ${getRarityColor(item.rarity)}`}>
-                            {item.name}
+                          <div className={`font-semibold text-sm mb-1 ${getRarityColor(item.rarity)} flex items-center gap-2`}>
+                            <span>{item.name}</span>
+                            {(item as any).upgradeLevel && (item as any).upgradeLevel > 0 && (
+                              <span className="text-amber-400 font-semibold text-xs">+{(item as any).upgradeLevel}</span>
+                            )}
                           </div>
                           <div className="text-xs text-gray-400 capitalize mb-2">{item.slot}</div>
                           <div className="space-y-1 text-xs mb-2">
@@ -341,20 +395,39 @@ export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, 
                             {item.hp > 0 && <div className="text-green-400">+{item.hp} HP</div>}
                           </div>
                           {item.slot && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (onEquipChange && item.slot) {
-                                  console.log('Equipping item:', item.name, 'to slot:', item.slot);
-                                  onEquipChange(item.slot, item);
-                                } else {
-                                  console.error('Cannot equip: missing slot or onEquipChange handler', { slot: item.slot, hasHandler: !!onEquipChange });
-                                }
-                              }}
-                              className="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs py-1.5 rounded font-semibold transition-colors"
-                            >
-                              Equip
-                            </button>
+                            <div className="flex gap-2">
+                              {onUpgradeItem && item.id && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setUpgradeItem({ item, location: 'inventory' });
+                                  }}
+                                  disabled={(item.upgradeLevel || 0) >= 2}
+                                  className={`flex-1 text-white text-xs py-1.5 rounded font-semibold transition-colors ${
+                                    (item.upgradeLevel || 0) >= 2
+                                      ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                                      : 'bg-amber-600 hover:bg-amber-700'
+                                  }`}
+                                  title={(item.upgradeLevel || 0) >= 2 ? 'Item is fully upgraded (+2)' : 'Upgrade item'}
+                                >
+                                  {(item.upgradeLevel || 0) >= 2 ? 'Max Level' : 'Upgrade'}
+                                </button>
+                              )}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (onEquipChange && item.slot) {
+                                    console.log('Equipping item:', item.name, 'to slot:', item.slot);
+                                    onEquipChange(item.slot, item);
+                                  } else {
+                                    console.error('Cannot equip: missing slot or onEquipChange handler', { slot: item.slot, hasHandler: !!onEquipChange });
+                                  }
+                                }}
+                                className={`${onUpgradeItem && item.id ? 'flex-1' : 'w-full'} bg-blue-600 hover:bg-blue-700 text-white text-xs py-1.5 rounded font-semibold transition-colors`}
+                              >
+                                Equip
+                              </button>
+                            </div>
                           )}
                           {!item.slot && (
                             <div className="text-xs text-gray-500 text-center py-1">
@@ -453,6 +526,21 @@ export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, 
           <span className="text-white">{inventoryItems.length} / 50 items</span>
         </div>
       </div>
+
+      {/* Upgrade Modal */}
+      {upgradeItem && onUpgradeItem && (
+        <UpgradeModal
+          item={upgradeItem.item}
+          currentGold={hero.gold || 0}
+          onClose={() => setUpgradeItem(null)}
+          onUpgrade={async (itemId, selectedStats) => {
+            await onUpgradeItem(itemId, selectedStats);
+            if (onUpdate) onUpdate();
+          }}
+          itemLocation={upgradeItem.location}
+          slot={upgradeItem.slot}
+        />
+      )}
     </div>
   );
 }

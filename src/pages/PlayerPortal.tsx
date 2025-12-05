@@ -43,13 +43,19 @@ export default function PlayerPortal() {
   const [loginRewardStatus, setLoginRewardStatus] = useState<any>(null);
   const [dungeonQueueStatus, setDungeonQueueStatus] = useState<any>(null);
   
-  // Handle navigation state (for setting active tab from other pages)
+  // Handle navigation state and URL params (for setting active tab from other pages)
   useEffect(() => {
     const state = location.state as any;
     if (state?.activeTab) {
       setActiveTab(state.activeTab);
     }
-  }, [location.state]);
+    // Also check URL query params
+    const params = new URLSearchParams(location.search);
+    const tabParam = params.get('tab');
+    if (tabParam && ['hero', 'inventory', 'profession', 'guild', 'raids', 'skills', 'dungeon', 'browserSource', 'achievements', 'allHeroes'].includes(tabParam)) {
+      setActiveTab(tabParam as any);
+    }
+  }, [location.state, location.search]);
 
   const groupedAllHeroes = useMemo(() => {
     const groups = new Map<string, { twitchId: string; label: string; heroes: Hero[] }>();
@@ -567,6 +573,32 @@ export default function PlayerPortal() {
                 alert(error.response?.data?.error || 'Failed to use item');
               }
             }}
+            onUpgradeItem={async (itemId, selectedStats) => {
+              const heroId = hero?.id || user?.id;
+              if (!heroId) return;
+              console.log(`[Upgrade] Starting upgrade for item ${itemId} with stats:`, selectedStats);
+              try {
+                const result = await heroAPI.upgradeItem(heroId, itemId, selectedStats);
+                console.log(`[Upgrade] API response:`, result);
+                if (result.success) {
+                  console.log(`[Upgrade] ✅ Upgrade successful!`);
+                  console.log(`[Upgrade] Upgraded item data:`, result.item);
+                  console.log(`[Upgrade] Item upgradeLevel:`, result.item?.upgradeLevel);
+                  console.log(`[Upgrade] Item upgradeStats:`, result.item?.upgradeStats);
+                  // Update hero gold if returned
+                  if (result.newGold !== undefined) {
+                    // Gold will be updated when we refetch
+                  }
+                  await refetchHero();
+                } else {
+                  console.error(`[Upgrade] ❌ Upgrade failed:`, result.message);
+                  alert(result.message || 'Failed to upgrade item');
+                }
+              } catch (error: any) {
+                console.error(`[Upgrade] ❌ Error upgrading item:`, error);
+                alert(error.response?.data?.error || 'Failed to upgrade item. Please try again.');
+              }
+            }}
           />
         )}
         {activeTab === 'profession' && (
@@ -866,7 +898,17 @@ function DungeonFinderTab({ hero, userId, onQueueChange }: any) {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
             <div>
               <div className="text-gray-400">Name</div>
-              <div className="text-white font-semibold">{hero.name || 'Unknown'}</div>
+              <div className="text-white font-semibold flex items-center gap-2">
+                {hero.founderBadge && (
+                  <img
+                    src={hero.founderBadge}
+                    alt="Founder Badge"
+                    className="w-6 h-6 object-contain"
+                    title="Founder Badge"
+                  />
+                )}
+                <span style={{ color: hero.nameColor || 'white' }}>{hero.name || 'Unknown'}</span>
+              </div>
             </div>
             <div>
               <div className="text-gray-400">Class</div>

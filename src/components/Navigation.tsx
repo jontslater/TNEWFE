@@ -93,6 +93,12 @@ export default function Navigation() {
               >
                 🏪 Store
               </button>
+              <button
+                onClick={() => navigate('/founders-pack')}
+                className="text-purple-400 hover:text-purple-300 transition-colors font-semibold"
+              >
+                ⭐ Founders Pack
+              </button>
               {isAuthenticated && (
                 <>
                   <button

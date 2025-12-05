@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { achievementAPI } from '../api/client';
+import { achievementAPI, heroAPI } from '../api/client';
 import { Hero } from '../types/Hero';
+import { useAuth } from '../hooks/useAuth';
 
 interface AchievementsPanelProps {
   hero: Hero;
@@ -14,11 +15,21 @@ const RARITY_COLORS: { [key: string]: string } = {
   legendary: 'bg-orange-900 border-orange-600 text-orange-300'
 };
 
+const FOUNDER_BADGES = [
+  { id: 'bronze', name: 'Bronze Founder', path: '/Badges/FoundersBronze.png' },
+  { id: 'silver', name: 'Silver Founder', path: '/Badges/FoundersSilver.png' },
+  { id: 'gold', name: 'Gold Founder', path: '/Badges/FoundersGold.png' },
+  { id: 'platinum', name: 'Platinum Founder', path: '/Badges/FoundersPlatinum.png' }
+];
+
 export default function AchievementsPanel({ hero }: AchievementsPanelProps) {
+  const { user } = useAuth();
+  const isAdmin = user?.twitchUsername?.toLowerCase() === 'theneverendingwar';
   const [achievementsData, setAchievementsData] = useState<any>(null);
   const [allAchievements, setAllAchievements] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [updatingBadge, setUpdatingBadge] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -117,6 +128,90 @@ export default function AchievementsPanel({ hero }: AchievementsPanelProps) {
             Active: {achievementsData.activeTitle || 'None'}
           </div>
         </div>
+      </div>
+
+      {/* Badge Selection Section */}
+      <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+        <h2 className="text-2xl font-bold text-white mb-4">⭐ Founder Badges</h2>
+        {isAdmin && (
+          <div className="mb-2 text-yellow-400 text-sm font-semibold">
+            🔧 Admin Mode: All badges available for testing
+          </div>
+        )}
+        <p className="text-gray-400 mb-4 text-sm">Select a badge to display next to your hero's name in-game and on the browser source.</p>
+        
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {FOUNDER_BADGES.map((badge) => {
+            const isActive = hero.founderBadge === badge.path;
+            return (
+              <div
+                key={badge.id}
+                className={`relative rounded-lg p-4 border-2 transition-all cursor-pointer ${
+                  isActive
+                    ? 'border-yellow-500 bg-yellow-900/20 shadow-lg scale-105'
+                    : 'border-gray-600 bg-gray-700/50 hover:border-gray-500 hover:bg-gray-700'
+                }`}
+                onClick={async () => {
+                  if (updatingBadge || !hero?.id) return;
+                  if (isActive) {
+                    // Deselect badge
+                    setUpdatingBadge(true);
+                    try {
+                      await heroAPI.updateHeroById(hero.id, { founderBadge: null });
+                      // Update local hero state - parent will need to refresh
+                      window.location.reload(); // Simple refresh for now
+                    } catch (error) {
+                      console.error('Failed to update badge:', error);
+                      alert('Failed to update badge. Please try again.');
+                    } finally {
+                      setUpdatingBadge(false);
+                    }
+                  } else {
+                    // Select badge
+                    setUpdatingBadge(true);
+                    try {
+                      await heroAPI.updateHeroById(hero.id, { founderBadge: badge.path });
+                      // Update local hero state - parent will need to refresh
+                      window.location.reload(); // Simple refresh for now
+                    } catch (error) {
+                      console.error('Failed to update badge:', error);
+                      alert('Failed to update badge. Please try again.');
+                    } finally {
+                      setUpdatingBadge(false);
+                    }
+                  }
+                }}
+              >
+                {isActive && (
+                  <div className="absolute top-2 right-2 bg-yellow-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold">
+                    ✓
+                  </div>
+                )}
+                <img
+                  src={badge.path}
+                  alt={badge.name}
+                  className="w-full h-24 object-contain mb-2"
+                />
+                <div className="text-center">
+                  <div className={`text-sm font-semibold ${isActive ? 'text-yellow-400' : 'text-white'}`}>
+                    {badge.name}
+                  </div>
+                </div>
+                {updatingBadge && isActive && (
+                  <div className="absolute inset-0 bg-black/50 rounded-lg flex items-center justify-center">
+                    <div className="text-white">Updating...</div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        
+        {!hero.founderBadge && (
+          <div className="mt-4 text-center text-gray-500 text-sm">
+            No badge currently selected. Purchase a Founder Pack to unlock badges!
+          </div>
+        )}
       </div>
 
       {/* Category Filters */}

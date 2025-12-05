@@ -138,6 +138,17 @@ export const heroAPI = {
     const response = await apiClient.put(`/api/heroes/${userId}`, updates);
     return response.data;
   },
+
+  async updateHeroById(heroId: string, updates: Partial<Hero>): Promise<Hero> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({ ...mockHero, ...updates }), 300);
+      });
+    }
+    
+    const response = await apiClient.put(`/api/heroes/${heroId}`, updates);
+    return response.data;
+  },
   
   async deleteHero(heroId: string, userId: string): Promise<{ message: string }> {
     if (USE_MOCK) {
@@ -313,19 +324,19 @@ export const heroAPI = {
     return response.data;
   },
 
-  async upgradeItem(userId: string, itemId: string, levels: number = 1): Promise<{success: boolean, message: string, item: any, newGold: number}> {
+  async upgradeItem(userId: string, itemId: string, selectedStats: Array<{ type: string; value: number }>): Promise<{success: boolean, message: string, item: any, newGold: number}> {
     if (USE_MOCK) {
       return new Promise((resolve) => {
         setTimeout(() => resolve({ 
           success: true, 
           message: 'Item upgraded!',
-          item: { id: itemId, level: 1 },
+          item: { id: itemId, upgradeLevel: 1, upgradeStats: [{ level: 1, selectedStats }] },
           newGold: 0
         }), 300);
       });
     }
     
-    const response = await apiClient.post(`/api/heroes/${userId}/upgrade-item`, { itemId, levels });
+    const response = await apiClient.post(`/api/heroes/${userId}/upgrade-item`, { itemId, selectedStats });
     return response.data;
   },
 
@@ -1089,6 +1100,90 @@ export const enchantingAPI = {
   
   async getAllEnchantments() {
     const response = await apiClient.get('/api/enchanting/enchantments');
+    return response.data;
+  }
+};
+
+// Founders Pack API
+export const foundersPackAPI = {
+  /**
+   * Initiate a founders pack purchase
+   * @param userId - User ID
+   * @param packTier - Pack tier ID ('bronze' | 'silver' | 'gold' | 'platinum')
+   * @returns Purchase session data including payment intent ID
+   */
+  async initiatePurchase(userId: string, packTier: 'bronze' | 'silver' | 'gold' | 'platinum'): Promise<{
+    success: boolean;
+    purchaseId: string;
+    sessionId?: string; // Stripe session ID when ready
+    message: string;
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          success: true,
+          purchaseId: `mock-${Date.now()}`,
+          message: 'Purchase initiated (mock)'
+        }), 300);
+      });
+    }
+
+    const response = await apiClient.post('/api/purchases/founders-pack', {
+      userId,
+      packTier
+    });
+    return response.data;
+  },
+
+  /**
+   * Check purchase status
+   * @param purchaseId - Purchase ID from initiatePurchase
+   * @returns Purchase status and completion details
+   */
+  async getPurchaseStatus(purchaseId: string): Promise<{
+    status: 'pending' | 'completed' | 'failed' | 'cancelled';
+    packTier?: string;
+    badgeAssigned?: boolean;
+    message?: string;
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          status: 'pending',
+          message: 'Purchase pending (mock)'
+        }), 300);
+      });
+    }
+
+    const response = await apiClient.get(`/api/purchases/status/${purchaseId}`);
+    return response.data;
+  },
+
+  /**
+   * Complete purchase after payment processing
+   * This will be called by the backend webhook when Stripe payment completes
+   * Frontend can poll getPurchaseStatus instead
+   */
+  async completePurchase(purchaseId: string): Promise<{
+    success: boolean;
+    badgeAssigned: boolean;
+    titleAssigned: boolean;
+    tokensAdded: boolean;
+    message: string;
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          success: true,
+          badgeAssigned: true,
+          titleAssigned: true,
+          tokensAdded: true,
+          message: 'Purchase completed (mock)'
+        }), 300);
+      });
+    }
+
+    const response = await apiClient.post(`/api/purchases/complete/${purchaseId}`);
     return response.data;
   }
 };

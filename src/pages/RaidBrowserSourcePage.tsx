@@ -1057,7 +1057,8 @@ export default function RaidBrowserSourcePage({ instanceId: propInstanceId }: Ra
           gold: backendHero.gold || 0,
           tokens: backendHero.tokens || 0,
           lastTokenClaim: Date.now(),
-          lastCommandTime: Date.now()
+          lastCommandTime: Date.now(),
+          spellEffect: backendHero.spellEffect || undefined
         };
 
         // Apply saved facing preference
@@ -1892,7 +1893,8 @@ export default function RaidBrowserSourcePage({ instanceId: propInstanceId }: Ra
           }
 
           // Check if hero uses projectiles
-          const spellcasters = ['mage', 'warlock', 'necromancer', 'firemage', 'frostmage', 'dragonsorcerer'];
+          // All ranged heroes that use projectiles
+          const spellcasters = ['mage', 'warlock', 'necromancer', 'firemage', 'frostmage', 'dragonsorcerer', 'ranger', 'shadowpriest', 'mooncaller', 'stormcaller'];
           const healers = ['cleric', 'atoner', 'druid', 'lightbringer', 'shaman', 'mistweaver', 'chronomancer', 'bard'];
           let usesProjectile = spellcasters.includes(hero.role.toLowerCase()) || healers.includes(hero.role.toLowerCase());
 
@@ -2315,7 +2317,8 @@ export default function RaidBrowserSourcePage({ instanceId: propInstanceId }: Ra
                   }
                 },
                 true, // isHero: true
-                elementType // elementType for mage projectiles
+                elementType, // elementType for mage projectiles
+                (hero as any).spellEffect as any // spellEffect for founder pack tiers
               );
             }, 300);
           } else {

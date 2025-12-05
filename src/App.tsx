@@ -28,6 +28,7 @@ import InteractiveRaidViewer from './pages/InteractiveRaidViewer';
 import InstanceViewerPage from './pages/InstanceViewerPage';
 import RaidBrowserSourcePage from './pages/RaidBrowserSourcePage';
 import UnifiedBrowserSource from './pages/UnifiedBrowserSource';
+import FoundersPackPage from './pages/FoundersPackPage';
 // Old UnifiedBrowserSourcePage kept for reference but route now uses new component
 // import UnifiedBrowserSourcePage from './pages/UnifiedBrowserSourcePage';
 import LoginRewardModal from './components/LoginRewardModal';
@@ -68,6 +69,7 @@ function App() {
         <Route path="/raid-viewer/:instanceId" element={<InteractiveRaidViewer />} />
         <Route path="/instance/view" element={<InstanceViewerPage />} />
         <Route path="/browser-source/raid/:instanceId" element={<RaidBrowserSourcePage />} />
+        <Route path="/founders-pack" element={<FoundersPackPage />} />
       </Routes>
     </Router>
   );

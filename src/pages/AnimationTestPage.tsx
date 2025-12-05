@@ -100,6 +100,7 @@ export interface TestHero {
   lastTokenClaim?: number; // Last time tokens were claimed
   lastCommandTime?: number; // Last time a command was used (for active token bonus)
   twitchUserId?: string; // Twitch user ID for matching heroes
+  spellEffect?: string; // Founder pack spell effect for projectiles
 }
 export interface TestEnemy {
   id: string;

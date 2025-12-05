@@ -5,6 +5,7 @@
  */
 
 import { getEnemyAnimationKey, ENEMY_ANIMATIONS, getHeroProjectileData, HERO_PROJECTILE_MAPPING } from './spriteAnimationData';
+import { getSpellEffectFilter, getSpellEffectAnimation, SpellEffectType } from './spellEffects';
 
 /**
  * Create and animate a projectile from attacker to target
@@ -16,6 +17,7 @@ import { getEnemyAnimationKey, ENEMY_ANIMATIONS, getHeroProjectileData, HERO_PRO
  * @param onComplete - Callback when projectile reaches target
  * @param isHero - Whether the attacker is a hero (default: false)
  * @param elementType - Element type for mage projectiles: 'fire' | 'frost' | 'arcane' (optional)
+ * @param spellEffect - Spell effect for founder pack tiers: 'bronze' | 'silver' | 'gold' | 'platinum' (optional)
  */
 export function createProjectile(
   attackerElement: HTMLElement | null,
@@ -24,7 +26,8 @@ export function createProjectile(
   projectileType?: 'projectile' | 'projectileDiagonal',
   onComplete?: () => void,
   isHero: boolean = false,
-  elementType?: 'fire' | 'frost' | 'arcane'
+  elementType?: 'fire' | 'frost' | 'arcane',
+  spellEffect?: SpellEffectType
 ): Promise<void> {
   return new Promise((resolve) => {
     if (!attackerElement || !targetElement) {
@@ -150,6 +153,12 @@ export function createProjectile(
     }
   }
   
+  // Apply spell effect scale multiplier (for founder pack tiers)
+  const spellEffectData = spellEffect ? getSpellEffectFilter(spellEffect) : null;
+  if (spellEffectData && spellEffectData.scale) {
+    projectileScale *= spellEffectData.scale;
+  }
+  
   const scaledWidth = projectileData.frameWidth * projectileScale;
   const scaledHeight = projectileData.frameHeight * projectileScale;
   
@@ -242,24 +251,41 @@ export function createProjectile(
   spriteElement.style.transformOrigin = 'top left';
   spriteElement.style.transform = 'translateX(0px)';
 
+  // Build filter stack: element filter + spell effect filter
+  const filters: string[] = [];
+  
   // Apply element-based color filter for mage projectiles and Monk Chi Burst
   if (elementType && isHero) {
-    let filter = '';
     switch (elementType) {
       case 'fire':
         // Red/orange tint with warm glow
-        filter = 'hue-rotate(-20deg) saturate(1.4) brightness(1.2) drop-shadow(0 0 4px rgba(255, 100, 0, 0.8))';
+        filters.push('hue-rotate(-20deg) saturate(1.4) brightness(1.2) drop-shadow(0 0 4px rgba(255, 100, 0, 0.8))');
         break;
       case 'frost':
         // Blue/cyan tint with cool glow (used for Mage Frost and Monk Chi Burst)
-        filter = 'hue-rotate(180deg) saturate(1.3) brightness(1.15) drop-shadow(0 0 4px rgba(100, 200, 255, 0.8))';
+        filters.push('hue-rotate(180deg) saturate(1.3) brightness(1.15) drop-shadow(0 0 4px rgba(100, 200, 255, 0.8))');
         break;
       case 'arcane':
         // Purple/magenta tint with magical glow
-        filter = 'hue-rotate(280deg) saturate(1.5) brightness(1.1) drop-shadow(0 0 4px rgba(200, 100, 255, 0.8))';
+        filters.push('hue-rotate(280deg) saturate(1.5) brightness(1.1) drop-shadow(0 0 4px rgba(200, 100, 255, 0.8))');
         break;
     }
-    spriteElement.style.filter = filter;
+  }
+  
+  // Apply spell effect filter (founder pack tiers) - layers on top of element filter
+  if (spellEffectData && spellEffectData.filter) {
+    filters.push(spellEffectData.filter);
+  }
+  
+  // Combine all filters
+  if (filters.length > 0) {
+    spriteElement.style.filter = filters.join(' ');
+  }
+  
+  // Apply spell effect animation class if needed
+  const spellAnimationClass = spellEffect ? getSpellEffectAnimation(spellEffect) : null;
+  if (spellAnimationClass) {
+    spriteElement.classList.add(spellAnimationClass);
   }
 
   projectile.appendChild(spriteElement);

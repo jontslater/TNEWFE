@@ -1,0 +1,59 @@
+warning: in the working copy of 'src/App.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/api/client.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/components/GuildPanel.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/components/HeroDashboard.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/hooks/useActiveInstanceListener.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/index.css', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/pages/AnimationTestPage.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/pages/CleanBattlefieldSource.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/pages/GuildPage.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/pages/GuildRaidSignupPage.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/pages/PlayerPortal.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/utils/adventureEngine.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/utils/fullCombatEngine.ts', LF will be replaced by CRLF the next time Git touches it
+M	ANIMATION_BUG_LESSON.md
+M	BATTLEFIELD_ID_AUTO_CONVERSION.md
+M	BROWSER_SOURCE_CURRENT_STATUS.md
+M	BROWSER_SOURCE_REBUILD_PLAN.md
+M	CLEAN_BATTLEFIELD_TESTING.md
+M	COMPLETE_FEATURE_CHECKLIST.md
+M	DOT_DEBUFF_SYSTEM_IMPLEMENTED.md
+M	DUNGEON_RAID_TRANSITION_PLAN.md
+M	ENEMY_SPAWNING_SYSTEM.md
+M	FINAL_FEATURE_CHECK.md
+M	FINAL_SESSION_SUMMARY.md
+M	HERO_SYNC_404_FIX.md
+M	IMPLEMENTING_CLASS_ABILITIES.md
+M	KNOWN_ISSUES.md
+M	LOCALSTORAGE_FIX.md
+M	MASSIVE_PROGRESS_SESSION.md
+M	PROGRESS_SUMMARY.md
+M	SESSION_COMPLETE_SUMMARY.md
+M	TRAVEL_ANIMATION_FEATURE.md
+M	UNIFIED_BROWSER_ENEMY_SPAWNING.md
+M	UNIFIED_SOURCE_IMPLEMENTATION.md
+M	docs/ECONOMY_IMPLEMENTATION_SUMMARY.md
+M	docs/ECONOMY_SYSTEM_DESIGN.md
+M	src/App.tsx
+M	src/api/client.ts
+D	src/components/AchievementsPanel.tsx
+M	src/components/GuildPanel.tsx
+D	src/components/GuildRaidsPanel.tsx
+M	src/components/HeroDashboard.tsx
+M	src/hooks/useActiveInstanceListener.ts
+M	src/index.css
+M	src/pages/AnimationTestPage.tsx
+M	src/pages/CleanBattlefieldSource.tsx
+M	src/pages/GuildPage.tsx
+M	src/pages/GuildRaidSignupPage.tsx
+D	src/pages/InteractiveRaidViewer.tsx
+M	src/pages/PlayerPortal.tsx
+M	src/utils/adventureEngine.ts
+M	src/utils/economySystem.ts
+M	src/utils/enemySpawning.ts
+M	src/utils/equipmentBonuses.ts
+M	src/utils/fullCombatEngine.ts
+M	src/utils/raidSystem.ts
+M	src/utils/setBonuses.ts
+M	src/utils/skillSystem.ts
+M	src/utils/turnBasedCombat.ts

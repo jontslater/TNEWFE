@@ -1067,6 +1067,11 @@ export const HERO_PROJECTILE_MAPPING: Record<string, { type: 'babyDragon' | 'wit
   firemage: { type: 'babyDragon', projectileType: 'projectile' },
   frostmage: { type: 'babyDragon', projectileType: 'projectile' },
   dragonsorcerer: { type: 'babyDragon', projectileType: 'projectile' },
+  // Other ranged DPS heroes
+  ranger: { type: 'babyDragon', projectileType: 'projectile' },
+  shadowpriest: { type: 'witch', projectileType: 'projectile' },
+  mooncaller: { type: 'babyDragon', projectileType: 'projectile' },
+  stormcaller: { type: 'babyDragon', projectileType: 'projectile' },
   // Necromancer uses Witch projectile
   necromancer: { type: 'witch', projectileType: 'projectile' },
   // Healers use Wizard projectile (hero-specific)

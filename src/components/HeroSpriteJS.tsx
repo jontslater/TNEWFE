@@ -256,6 +256,23 @@ const HeroSpriteJS = forwardRef<HeroSpriteJSHandle, HeroSpriteJSProps>(
 
     // Calculate final scale with animated enrage multiplier
     const finalScale = scale * enrageScale;
+    
+    // Combat glow filter - applies to wrapper (for ability effects only)
+    // Shield/enrage are handled by browser source wrapper
+    const getCombatGlowFilter = () => {
+      const filters = [];
+      
+      // Ability effects only - shield/enrage handled by browser source
+      if (abilityEffect === 'backstab') {
+        filters.push("drop-shadow(0 0 4px rgba(0, 0, 0, 0.9)) drop-shadow(0 0 8px rgba(139, 69, 19, 0.8)) brightness(1.2)");
+      } else if (abilityEffect === 'deathStrike') {
+        filters.push("drop-shadow(0 0 4px rgba(75, 0, 130, 0.9)) drop-shadow(0 0 8px rgba(138, 43, 226, 0.8)) brightness(1.3) hue-rotate(270deg)");
+      } else if (abilityEffect === 'holyStrike') {
+        filters.push("drop-shadow(0 0 4px rgba(255, 215, 0, 0.9)) drop-shadow(0 0 8px rgba(255, 255, 255, 0.8)) brightness(1.4) saturate(1.3)");
+      }
+      
+      return filters.length > 0 ? filters.join(' ') : 'none';
+    };
 
     return (
       <div
@@ -268,7 +285,7 @@ const HeroSpriteJS = forwardRef<HeroSpriteJSHandle, HeroSpriteJSProps>(
           ...style,
           width: `${VIEWPORT}px`,
           height: `${VIEWPORT}px`,
-          overflow: "hidden", // Prevent sprite from sliding outside viewport
+          overflow: "visible", // Allow effects to extend beyond sprite bounds
           position: "relative",
           paddingBottom: hasShield ? "4px" : "0px", // Allow space for glow at bottom
           transform:
@@ -279,7 +296,7 @@ const HeroSpriteJS = forwardRef<HeroSpriteJSHandle, HeroSpriteJSProps>(
           imageRendering: "pixelated",
         }}
       >
-        {/* Sprite with glow - wrapper clips to frame and allows glow to extend */}
+        {/* Sprite with glow - wrapper allows glow and auras to extend */}
         <div
           ref={glowWrapperRef}
           style={{
@@ -288,20 +305,9 @@ const HeroSpriteJS = forwardRef<HeroSpriteJSHandle, HeroSpriteJSProps>(
             left: 0,
             width: `${VIEWPORT}px`,
             height: `${VIEWPORT}px`,
-            overflow: "visible", // Allow glow to extend beyond frame
-            filter: hasShield 
-              ? "drop-shadow(0 0 2px rgba(100, 150, 255, 0.8)) drop-shadow(0 0 4px rgba(100, 150, 255, 0.6)) drop-shadow(0 0 6px rgba(100, 150, 255, 0.4))" 
-              : enrageActive
-              ? "drop-shadow(0 0 3px rgba(220, 38, 38, 0.6)) drop-shadow(0 0 6px rgba(220, 38, 38, 0.4))"
-              : abilityEffect === 'backstab'
-              ? "drop-shadow(0 0 4px rgba(0, 0, 0, 0.9)) drop-shadow(0 0 8px rgba(139, 69, 19, 0.8)) brightness(1.2)"
-              : abilityEffect === 'deathStrike'
-              ? "drop-shadow(0 0 4px rgba(75, 0, 130, 0.9)) drop-shadow(0 0 8px rgba(138, 43, 226, 0.8)) brightness(1.3) hue-rotate(270deg)"
-              : abilityEffect === 'holyStrike'
-              ? "drop-shadow(0 0 4px rgba(255, 215, 0, 0.9)) drop-shadow(0 0 8px rgba(255, 255, 255, 0.8)) brightness(1.4) saturate(1.3)"
-              : "none",
+            overflow: "visible", // Allow glow and aura to extend beyond frame
+            filter: getCombatGlowFilter(), // Combat effects (shield/enrage) - top layer
             pointerEvents: "none",
-            contain: "layout style paint", // Contain filter effects to wrapper bounds for better performance
           }}
         >
           <div
@@ -312,20 +318,28 @@ const HeroSpriteJS = forwardRef<HeroSpriteJSHandle, HeroSpriteJSProps>(
               position: "absolute",
               top: 0,
               left: 0,
+              width: `${VIEWPORT}px`,
+              height: `${VIEWPORT}px`,
               overflow: "hidden", // Clip sprite background to frame
               transition: "none",
-              animation: "none",
               backgroundRepeat: "no-repeat",
               imageRendering: "pixelated",
-              filter: enrageActive 
-                ? "hue-rotate(-5deg) saturate(1.15) brightness(1.05)" 
-                : abilityEffect === 'backstab'
-                ? "brightness(1.1) contrast(1.2)"
-                : abilityEffect === 'deathStrike'
-                ? "brightness(1.2) contrast(1.3) saturate(1.4)"
-                : abilityEffect === 'holyStrike'
-                ? "brightness(1.3) saturate(1.2) hue-rotate(10deg)"
-                : "none",
+              // Ability effect filters only - shield/enrage/aura handled by browser source wrapper
+              filter: (() => {
+                const filters = [];
+                
+                if (enrageActive) {
+                  filters.push("hue-rotate(-5deg) saturate(1.15) brightness(1.05)");
+                } else if (abilityEffect === 'backstab') {
+                  filters.push("brightness(1.1) contrast(1.2)");
+                } else if (abilityEffect === 'deathStrike') {
+                  filters.push("brightness(1.2) contrast(1.3) saturate(1.4)");
+                } else if (abilityEffect === 'holyStrike') {
+                  filters.push("brightness(1.3) saturate(1.2) hue-rotate(10deg)");
+                }
+                
+                return filters.length > 0 ? filters.join(' ') : 'none';
+              })(),
             }}
           />
         </div>

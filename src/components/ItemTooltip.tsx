@@ -25,7 +25,12 @@ export default function ItemTooltip({ item, children, position = 'below' }: Item
         <div className="bg-gray-900 border-2 border-gray-700 rounded-lg p-4 shadow-2xl min-w-64">
           {/* Item Name */}
           <div className={`text-lg font-bold mb-2 ${getRarityColor(item.rarity)}`}>
-            {item.name}
+            <div className="flex items-center gap-2">
+              <span>{item.name}</span>
+              {(item as any).upgradeLevel && (item as any).upgradeLevel > 0 && (
+                <span className="text-amber-400 font-semibold">+{(item as any).upgradeLevel}</span>
+              )}
+            </div>
           </div>
 
           {/* Slot and Rarity */}
@@ -127,7 +132,43 @@ export default function ItemTooltip({ item, children, position = 'below' }: Item
             </div>
           )}
 
-          {/* Applied Upgrades/Enchantments */}
+          {/* Upgrade Stats (Custom Upgrade System) */}
+          {(item as any).upgradeStats && Array.isArray((item as any).upgradeStats) && (item as any).upgradeStats.length > 0 && (
+            <div className="border-t border-gray-700 pt-3 mt-3">
+              <div className="text-xs font-semibold text-amber-400 mb-2">⬆️ Upgrade Stats:</div>
+              {(item as any).upgradeStats.map((upgrade: any, idx: number) => {
+                const statNames: Record<string, string> = {
+                  attack: 'Attack',
+                  defense: 'Defense',
+                  hp: 'HP',
+                  critChance: 'Crit Chance',
+                  critDamage: 'Crit Damage',
+                  healingPower: 'Healing Power',
+                  spellDamage: 'Spell Damage'
+                };
+                
+                return (
+                  <div key={idx} className="text-sm mb-2">
+                    <div className="text-xs text-gray-400 mb-1">
+                      Level {upgrade.level}:
+                    </div>
+                    <div className="space-y-1">
+                      {upgrade.selectedStats && upgrade.selectedStats.map((stat: any, statIdx: number) => {
+                        // Show the percentage they selected (all upgrades are percentages)
+                        return (
+                          <div key={statIdx} className="text-xs text-amber-300">
+                            +{stat.value}% {statNames[stat.type] || stat.type}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Applied Upgrades/Enchantments (Craftables) */}
           {(item as any).appliedUpgrades && (item as any).appliedUpgrades.length > 0 && (
             <div className="border-t border-gray-700 pt-3 mt-3">
               <div className="text-xs font-semibold text-orange-400 mb-2">⚒️ Applied Enhancements:</div>

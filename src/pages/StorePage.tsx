@@ -55,30 +55,59 @@ const SLOTS = ['weapon', 'armor', 'accessory', 'shield'] as const;
 export default function StorePage() {
   const navigate = useNavigate();
   const { user, isAuthenticated } = useAuth();
-  const { hero, refetch: refetchHero } = useHero(user?.twitchId || null);
+  const { hero, heroes, refetch: refetchHero } = useHero(user?.twitchId || null);
   const [purchasing, setPurchasing] = useState(false);
   const [selectedTokenItem, setSelectedTokenItem] = useState<{ rarity: string; slot: string } | null>(null);
+  const [selectedGoldItem, setSelectedGoldItem] = useState<{ itemKey: string; heroId: string | null } | null>(null);
 
-  const handleGoldPurchase = async (itemKey: string) => {
-    if (!user?.id || !hero) return;
+  const handleGoldPurchaseClick = (itemKey: string) => {
+    // Check if user has multiple heroes
+    if (!heroes || heroes.length === 0) {
+      alert('No heroes found. Create a hero first!');
+      return;
+    }
+
+    if (heroes.length === 1) {
+      // Only one hero - purchase directly
+      handleGoldPurchase(itemKey, heroes[0].id!);
+      return;
+    }
+
+    // Multiple heroes - show selection modal
+    setSelectedGoldItem({ itemKey, heroId: null });
+  };
+
+  const handleGoldPurchase = async (itemKey: string, heroId: string) => {
+    if (!user?.id || !heroId) return;
 
     const item = GOLD_SHOP_ITEMS[itemKey as keyof typeof GOLD_SHOP_ITEMS];
     if (!item) return;
 
-    if ((hero.gold || 0) < item.cost) {
-      alert(`Not enough gold! You need ${item.cost}g (you have ${hero.gold || 0}g)`);
+    // Find the selected hero to check gold
+    const targetHero = heroes?.find(h => h.id === heroId);
+    if (!targetHero) {
+      alert('Hero not found');
+      return;
+    }
+
+    if ((targetHero.gold || 0) < item.cost) {
+      alert(`Not enough gold! ${targetHero.name} needs ${item.cost}g (has ${targetHero.gold || 0}g)`);
       return;
     }
 
     setPurchasing(true);
     try {
-      await heroAPI.purchaseGoldItem(user.id, itemKey);
-      alert(`✅ Purchased ${item.name}!`);
+      // Purchase using hero document ID (backend expects hero doc ID, not Twitch user ID)
+      await heroAPI.purchaseGoldItem(heroId, itemKey);
+      alert(`✅ Purchased ${item.name} for ${targetHero.name}!`);
       refetchHero();
     } catch (error: any) {
-      alert(error.response?.data?.error || 'Failed to purchase item');
+      const errorMsg = error.response?.data?.error || 'Failed to purchase item';
+      alert(errorMsg);
+      console.error('Purchase error:', error);
     } finally {
       setPurchasing(false);
+      setSelectedGoldItem(null);
     }
   };
 
@@ -137,7 +166,7 @@ export default function StorePage() {
     );
   }
 
-  if (!hero) {
+  if (!heroes || heroes.length === 0) {
     return (
       <>
         <Navigation />
@@ -155,6 +184,9 @@ export default function StorePage() {
       </>
     );
   }
+  
+  // Use first hero for display purposes (gold/token display)
+  const displayHero = hero || heroes[0];
 
   return (
     <>
@@ -171,13 +203,13 @@ export default function StorePage() {
           <div className="bg-gray-800 rounded-lg p-6 border border-gray-700 mb-8">
             <div className="flex items-center justify-center gap-8">
               <div className="text-center">
-                <div className="text-sm text-gray-400">Your Gold</div>
-                <div className="text-3xl font-bold text-yellow-400">💰 {hero.gold || 0}g</div>
+                <div className="text-sm text-gray-400">Total Gold (All Heroes)</div>
+                <div className="text-3xl font-bold text-yellow-400">💰 {heroes?.reduce((sum, h) => sum + (h.gold || 0), 0) || 0}g</div>
               </div>
               <div className="h-12 w-px bg-gray-600"></div>
               <div className="text-center">
-                <div className="text-sm text-gray-400">Your Tokens</div>
-                <div className="text-3xl font-bold text-blue-400">🎫 {hero.tokens || 0}t</div>
+                <div className="text-sm text-gray-400">Total Tokens (All Heroes)</div>
+                <div className="text-3xl font-bold text-blue-400">🎫 {heroes?.reduce((sum, h) => sum + (h.tokens || 0), 0) || 0}t</div>
               </div>
             </div>
             <div className="text-center mt-4 text-sm text-gray-500">
@@ -194,7 +226,8 @@ export default function StorePage() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               {Object.entries(GOLD_SHOP_ITEMS).map(([key, item]) => {
-                const canAfford = (hero.gold || 0) >= item.cost;
+                // Check if any hero can afford it
+                const canAfford = heroes?.some(h => (h.gold || 0) >= item.cost) || false;
 
                 return (
                   <div 
@@ -215,8 +248,8 @@ export default function StorePage() {
                       <div className="text-2xl font-bold text-yellow-400">{item.cost}g</div>
                     </div>
                     <button
-                      onClick={() => handleGoldPurchase(key)}
-                      disabled={!canAfford || purchasing}
+                      onClick={() => handleGoldPurchaseClick(key)}
+                      disabled={purchasing}
                       className={`w-full py-2 rounded font-semibold transition-colors ${
                         canAfford && !purchasing
                           ? 'bg-yellow-600 hover:bg-yellow-700 text-white'
@@ -263,7 +296,8 @@ export default function StorePage() {
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     {SLOTS.map(slot => {
                       const cost = TOKEN_SHOP_PRICES[rarity];
-                      const canAfford = (hero.tokens || 0) >= cost;
+                      // Check if any hero can afford it
+                      const canAfford = heroes?.some(h => (h.tokens || 0) >= cost) || false;
                       const slotIcon = slot === 'weapon' ? '⚔️' : slot === 'armor' ? '🛡️' : slot === 'accessory' ? '💍' : '🔰';
 
                       return (
@@ -304,50 +338,7 @@ export default function StorePage() {
               Improve your gear and expand storage with gold • Balanced prices, meaningful upgrades
             </p>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* Equipment Upgrade */}
-              <div className="bg-gray-700 rounded-lg p-6 border-2 border-gray-600">
-                <div className="text-4xl mb-3 text-center">⬆️</div>
-                <div className="font-bold text-white text-center mb-2">Upgrade Equipment</div>
-                <div className="text-sm text-gray-400 mb-4 text-center min-h-[60px]">
-                  Increase item level by 1-5 levels<br />
-                  Cost: 100g per level (scales with item level)
-                </div>
-                <div className="text-center mb-4">
-                  <div className="text-lg font-bold text-yellow-400">100g+ per level</div>
-                </div>
-                <button
-                  onClick={() => alert('Select an item from your inventory or equipment to upgrade!')}
-                  className="w-full py-2 rounded font-semibold transition-colors bg-yellow-600 hover:bg-yellow-700 text-white"
-                >
-                  Upgrade Item
-                </button>
-                <div className="text-xs text-gray-500 mt-2 text-center">
-                  +5% stats per level
-                </div>
-              </div>
-
-              {/* Stat Reforge */}
-              <div className="bg-gray-700 rounded-lg p-6 border-2 border-gray-600">
-                <div className="text-4xl mb-3 text-center">🔨</div>
-                <div className="font-bold text-white text-center mb-2">Reforge Stats</div>
-                <div className="text-sm text-gray-400 mb-4 text-center min-h-[60px]">
-                  Reroll secondary stats on rare+ items<br />
-                  Keeps primary stats, rerolls secondary
-                </div>
-                <div className="text-center mb-4">
-                  <div className="text-lg font-bold text-yellow-400">500g</div>
-                </div>
-                <button
-                  onClick={() => alert('Select a rare+ item from your inventory or equipment to reforge!')}
-                  className="w-full py-2 rounded font-semibold transition-colors bg-yellow-600 hover:bg-yellow-700 text-white"
-                >
-                  Reforge Item
-                </button>
-                <div className="text-xs text-gray-500 mt-2 text-center">
-                  Rare+ items only
-                </div>
-              </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
               {/* Storage Expansion */}
               <div className="bg-gray-700 rounded-lg p-6 border-2 border-gray-600">
@@ -391,6 +382,68 @@ export default function StorePage() {
             </div>
           </div>
 
+          {/* Hero Selection Modal for Gold Shop Items */}
+          {selectedGoldItem && heroes && heroes.length > 0 && (
+            <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+              <div className="bg-gray-900 rounded-lg max-w-2xl w-full border border-gray-700 p-6">
+                <h3 className="text-2xl font-bold text-white mb-4">Select Hero</h3>
+                <p className="text-gray-400 mb-6">
+                  Which hero should receive{' '}
+                  <span className="font-bold text-yellow-400">
+                    {GOLD_SHOP_ITEMS[selectedGoldItem.itemKey as keyof typeof GOLD_SHOP_ITEMS]?.name}
+                  </span>?
+                </p>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 max-h-96 overflow-y-auto">
+                  {heroes.map((h) => {
+                    const item = GOLD_SHOP_ITEMS[selectedGoldItem.itemKey as keyof typeof GOLD_SHOP_ITEMS];
+                    const canAfford = (h.gold || 0) >= (item?.cost || 0);
+                    
+                    return (
+                      <button
+                        key={h.id}
+                        onClick={() => {
+                          if (canAfford && h.id) {
+                            handleGoldPurchase(selectedGoldItem.itemKey, h.id);
+                          }
+                        }}
+                        disabled={!canAfford || purchasing || !h.id}
+                        className={`text-left p-4 rounded-lg border-2 transition-all ${
+                          canAfford && !purchasing && h.id
+                            ? 'border-yellow-500 hover:border-yellow-400 hover:bg-gray-800'
+                            : 'border-gray-600 bg-gray-800 opacity-50 cursor-not-allowed'
+                        }`}
+                      >
+                        <div className="font-bold text-white mb-1">{h.name}</div>
+                        <div className="text-sm text-gray-400 mb-2">Level {h.level} • {h.role}</div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm text-gray-300">
+                            Gold: <span className={canAfford ? 'text-yellow-400 font-semibold' : 'text-red-400'}>
+                              {h.gold || 0}g
+                            </span>
+                          </span>
+                          {!canAfford && (
+                            <span className="text-xs text-red-400">
+                              Need {item?.cost || 0}g
+                            </span>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <button
+                  onClick={() => setSelectedGoldItem(null)}
+                  disabled={purchasing}
+                  className="w-full bg-gray-700 hover:bg-gray-600 text-white py-3 rounded font-semibold transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Token Purchase Confirmation Modal */}
           {selectedTokenItem && (
             <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
@@ -408,7 +461,7 @@ export default function StorePage() {
                 <div className="bg-gray-800 rounded p-4 mb-6">
                   <div className="text-sm text-gray-300">
                     <div className="mb-2">✨ <strong>Guaranteed {selectedTokenItem.rarity} quality</strong></div>
-                    <div className="mb-2">📊 Stats scale with your level ({hero.level})</div>
+                    <div className="mb-2">📊 Stats scale with your level ({hero?.level || 0})</div>
                     <div className="mb-2">🎲 Random proc effects for rare+ gear</div>
                     <div>⚡ Instant delivery to inventory</div>
                   </div>

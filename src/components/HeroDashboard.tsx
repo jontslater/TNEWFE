@@ -1,9 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Hero } from '../types/Hero';
 import { formatNumber, getRarityColor, getRarityBg, getRoleBg, formatTime, getItemScore } from '../utils/format';
-import ItemTooltip from './ItemTooltip';
 import { useAuth } from '../hooks/useAuth';
 import { heroAPI, achievementAPI } from '../api/client';
+import { NAME_FRAMES, NameFrameType } from '../utils/nameFrames';
+import { getNameFrameStyles } from '../utils/nameFrames';
+import { getFounderTitleColor, getFounderTierFromTitle } from '../utils/founderTitle';
+import { AURA_EFFECTS, AuraEffectType, getAuraFilter } from '../utils/auraEffects';
+import { SPELL_EFFECTS, SpellEffectType } from '../utils/spellEffects';
+import { createExhaustEffect, shouldShowExhaustEffect } from '../utils/exhaustEffects';
+import HeroSpriteJS from './HeroSpriteJS';
 
 interface HeroDashboardProps {
   hero: Hero;
@@ -11,12 +17,30 @@ interface HeroDashboardProps {
   onHeroDelete?: () => void;
 }
 
+const FOUNDER_BADGES = [
+  { id: 'none', name: 'None', path: null },
+  { id: 'bronze', name: 'Bronze Founder', path: '/Badges/FoundersBronze.png' },
+  { id: 'silver', name: 'Silver Founder', path: '/Badges/FoundersSilver.png' },
+  { id: 'gold', name: 'Gold Founder', path: '/Badges/FoundersGold.png' },
+  { id: 'platinum', name: 'Platinum Founder', path: '/Badges/FoundersPlatinum.png' }
+];
+
 export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: HeroDashboardProps) {
   const { user } = useAuth();
+  const isAdmin = user?.twitchUsername?.toLowerCase() === 'theneverendingwar';
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [availableTitles, setAvailableTitles] = useState<string[]>([]);
   const [selectedTitle, setSelectedTitle] = useState<string | null>(null);
+  const [updatingBadge, setUpdatingBadge] = useState(false);
+  const [updatingNameColor, setUpdatingNameColor] = useState(false);
+  const [tempNameColor, setTempNameColor] = useState<string | null>(null);
+  const [updatingNameFrame, setUpdatingNameFrame] = useState(false);
+  const [updatingAuraEffect, setUpdatingAuraEffect] = useState(false);
+  const [updatingAuraColor, setUpdatingAuraColor] = useState(false);
+  const [tempAuraColor, setTempAuraColor] = useState<string | null>(null);
+  const [updatingSpellEffect, setUpdatingSpellEffect] = useState(false);
+  const spritePreviewRef = useRef<HTMLDivElement>(null);
   const hpPercent = (hero.hp / hero.maxHp) * 100;
   const xpPercent = (Math.floor(hero.xp) / Math.floor(hero.maxXp)) * 100;
   const itemScore = getItemScore(hero.equipment);
@@ -24,6 +48,11 @@ export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: Hero
   useEffect(() => {
     loadAchievementsData();
   }, [hero.id]);
+
+  // Initialize tempAuraColor from hero.auraColor
+  useEffect(() => {
+    setTempAuraColor(hero.auraColor || null);
+  }, [hero.auraColor]);
 
   const loadAchievementsData = async () => {
     try {
@@ -60,6 +89,125 @@ export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: Hero
       alert('Failed to set title');
     }
   };
+
+  const handleBadgeChange = async (badgePath: string | null) => {
+    if (updatingBadge || !hero?.id) return;
+    setUpdatingBadge(true);
+    try {
+      await heroAPI.updateHeroById(hero.id, { founderBadge: badgePath });
+      if (onHeroUpdate) {
+        onHeroUpdate({ ...hero, founderBadge: badgePath || undefined } as any);
+      }
+      // Refresh to show updated badge
+      window.location.reload();
+    } catch (error) {
+      console.error('Failed to update badge:', error);
+      alert('Failed to update badge. Please try again.');
+    } finally {
+      setUpdatingBadge(false);
+    }
+  };
+
+  const handleNameColorChange = async (color: string | null) => {
+    if (updatingNameColor || !hero?.id) return;
+    setUpdatingNameColor(true);
+    try {
+      await heroAPI.updateHeroById(hero.id, { nameColor: color });
+      if (onHeroUpdate) {
+        onHeroUpdate({ ...hero, nameColor: color || undefined } as any);
+      }
+      // Refresh to show updated color
+      window.location.reload();
+    } catch (error) {
+      console.error('Failed to update name color:', error);
+      alert('Failed to update name color. Please try again.');
+    } finally {
+      setUpdatingNameColor(false);
+    }
+  };
+
+  const handleNameFrameChange = async (frame: NameFrameType) => {
+    if (updatingNameFrame || !hero?.id) return;
+    setUpdatingNameFrame(true);
+    try {
+      await heroAPI.updateHeroById(hero.id, { nameFrame: frame });
+      if (onHeroUpdate) {
+        onHeroUpdate({ ...hero, nameFrame: frame || undefined } as any);
+      }
+      // Refresh to show updated frame
+      window.location.reload();
+    } catch (error) {
+      console.error('Failed to update name frame:', error);
+      alert('Failed to update name frame. Please try again.');
+    } finally {
+      setUpdatingNameFrame(false);
+    }
+  };
+
+  const handleAuraEffectChange = async (aura: AuraEffectType) => {
+    if (updatingAuraEffect || !hero?.id) return;
+    setUpdatingAuraEffect(true);
+    try {
+      await heroAPI.updateHeroById(hero.id, { auraEffect: aura });
+      if (onHeroUpdate) {
+        onHeroUpdate({ ...hero, auraEffect: aura || undefined } as any);
+      }
+      // Refresh to show updated aura
+      window.location.reload();
+    } catch (error) {
+      console.error('Failed to update aura effect:', error);
+      alert('Failed to update aura effect. Please try again.');
+    } finally {
+      setUpdatingAuraEffect(false);
+    }
+  };
+
+  const handleAuraColorChange = async (color: string | null) => {
+    if (updatingAuraColor || !hero?.id) return;
+    setUpdatingAuraColor(true);
+    try {
+      await heroAPI.updateHeroById(hero.id, { auraColor: color });
+      if (onHeroUpdate) {
+        onHeroUpdate({ ...hero, auraColor: color || undefined } as any);
+      }
+      // Refresh to show updated aura color
+      window.location.reload();
+    } catch (error) {
+      console.error('Failed to update aura color:', error);
+      alert('Failed to update aura color. Please try again.');
+    } finally {
+      setUpdatingAuraColor(false);
+    }
+  };
+
+  const handleSpellEffectChange = async (spellEffect: SpellEffectType) => {
+    if (updatingSpellEffect || !hero?.id) return;
+    setUpdatingSpellEffect(true);
+    try {
+      await heroAPI.updateHeroById(hero.id, { spellEffect: spellEffect });
+      if (onHeroUpdate) {
+        onHeroUpdate({ ...hero, spellEffect: spellEffect || undefined } as any);
+      }
+    } catch (error) {
+      console.error('Failed to update spell effect:', error);
+      alert('Failed to update spell effect. Please try again.');
+    } finally {
+      setUpdatingSpellEffect(false);
+    }
+  };
+
+  const handleTestCritEffect = () => {
+    if (!shouldShowExhaustEffect(hero.role, hero.spellEffect)) {
+      alert('Exhaust effects only work for tanks (Huge Knight) with Gold or Platinum spell effect!');
+      return;
+    }
+
+    if (!spritePreviewRef.current || !hero.spellEffect) return;
+
+    // Use exhaust01 for gold, exhaust02 for platinum
+    const exhaustType = hero.spellEffect === 'gold' ? 'exhaust01' : 'exhaust02';
+    createExhaustEffect(spritePreviewRef.current, hero.spellEffect as 'gold' | 'platinum', exhaustType);
+  };
   
   const handleDelete = async () => {
     try {
@@ -93,7 +241,7 @@ export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: Hero
               {hero.isDead ? '💀' : '⚔️'}
             </div>
             <div>
-              <h2 className="text-3xl font-bold text-white">{hero.name}</h2>
+              <h2 className="text-3xl font-bold" style={{ color: hero.nameColor || 'white' }}>{hero.name}</h2>
               <div className="flex items-center space-x-2 mt-1">
                 <span className={`px-3 py-1 rounded text-sm font-semibold ${getRoleBg(hero.role)} text-white`}>
                   {hero.role}
@@ -126,7 +274,344 @@ export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: Hero
                   </select>
                 </div>
               )}
+              {/* Badge Selection Dropdown */}
+              <div className="mt-3">
+                <label className="text-xs text-gray-400 block mb-1">
+                  ⭐ Founder Badge {isAdmin && <span className="text-yellow-400">(Admin: All Available)</span>}
+                </label>
+                <select
+                  value={hero.founderBadge || ''}
+                  onChange={(e) => handleBadgeChange(e.target.value || null)}
+                  disabled={updatingBadge}
+                  className="bg-gray-700 text-white px-3 py-1 rounded text-sm border border-gray-600 focus:outline-none focus:border-amber-400 disabled:opacity-50 disabled:cursor-not-allowed w-full"
+                >
+                  {FOUNDER_BADGES.map(badge => (
+                    <option key={badge.id} value={badge.path || ''}>
+                      {badge.name}
+                    </option>
+                  ))}
+                </select>
+                {updatingBadge && (
+                  <span className="text-xs text-gray-500 mt-1 block">Updating badge...</span>
+                )}
+              </div>
+              {/* Name Color Picker */}
+              <div className="mt-3">
+                <label className="text-xs text-gray-400 block mb-1">
+                  🎨 Name Color {isAdmin && <span className="text-yellow-400">(Admin: All Available)</span>}
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={tempNameColor !== null ? tempNameColor : (hero.nameColor || '#ffffff')}
+                    onChange={(e) => setTempNameColor(e.target.value)}
+                    disabled={updatingNameColor}
+                    className="w-12 h-8 rounded border border-gray-600 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Pick a color for your hero name"
+                  />
+                  <input
+                    type="text"
+                    value={tempNameColor !== null ? tempNameColor : (hero.nameColor || '#ffffff')}
+                    onChange={(e) => {
+                      const color = e.target.value;
+                      if (/^#[0-9A-Fa-f]{6}$/.test(color) || color === '') {
+                        setTempNameColor(color || null);
+                      }
+                    }}
+                    disabled={updatingNameColor}
+                    placeholder="#FFFFFF"
+                    className="flex-1 bg-gray-700 text-white px-3 py-1 rounded text-sm border border-gray-600 focus:outline-none focus:border-amber-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                    pattern="^#[0-9A-Fa-f]{6}$"
+                  />
+                  <button
+                    onClick={() => {
+                      if (tempNameColor === null) return;
+                      const currentColor = hero.nameColor || '#ffffff';
+                      // Only save if color actually changed
+                      if (tempNameColor !== currentColor) {
+                        handleNameColorChange(tempNameColor === '#ffffff' ? null : tempNameColor);
+                      }
+                      setTempNameColor(null);
+                    }}
+                    disabled={
+                      updatingNameColor || 
+                      tempNameColor === null || 
+                      tempNameColor === (hero.nameColor || '#ffffff')
+                    }
+                    className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Save color"
+                  >
+                    Save
+                  </button>
+                  {(hero.nameColor || tempNameColor) && (
+                    <button
+                      onClick={() => {
+                        handleNameColorChange(null);
+                        setTempNameColor(null);
+                      }}
+                      disabled={updatingNameColor}
+                      className="px-2 py-1 bg-gray-600 hover:bg-gray-500 text-white text-xs rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="Reset to default color"
+                    >
+                      Reset
+                    </button>
+                  )}
+                </div>
+                {updatingNameColor && (
+                  <span className="text-xs text-gray-500 mt-1 block">Updating color...</span>
+                )}
+                {tempNameColor !== null && tempNameColor !== (hero.nameColor || '#ffffff') && (
+                  <span className="text-xs text-amber-400 mt-1 block">💡 Color changed - click Save to apply</span>
+                )}
+              </div>
+              {/* Name Frame Selection */}
+              <div className="mt-3">
+                <label className="text-xs text-gray-400 block mb-1">
+                  🖼️ Name Frame {isAdmin && <span className="text-yellow-400">(Admin: All Available)</span>}
+                </label>
+                <select
+                  value={hero.nameFrame || 'none'}
+                  onChange={(e) => handleNameFrameChange(e.target.value === 'none' ? null : (e.target.value as NameFrameType))}
+                  disabled={updatingNameFrame}
+                  className="bg-gray-700 text-white px-3 py-1 rounded text-sm border border-gray-600 focus:outline-none focus:border-amber-400 disabled:opacity-50 disabled:cursor-not-allowed w-full"
+                >
+                  {NAME_FRAMES.map(frame => (
+                    <option key={frame.id} value={frame.value || 'none'}>
+                      {frame.name}
+                    </option>
+                  ))}
+                </select>
+                {updatingNameFrame && (
+                  <span className="text-xs text-gray-500 mt-1 block">Updating frame...</span>
+                )}
+              </div>
+              {/* Aura Effect Selection */}
+              <div className="mt-3">
+                <label className="text-xs text-gray-400 block mb-1">
+                  ✨ Aura Effect {isAdmin && <span className="text-yellow-400">(Admin: All Available)</span>}
+                </label>
+                <select
+                  value={hero.auraEffect || 'none'}
+                  onChange={(e) => handleAuraEffectChange(e.target.value === 'none' ? null : (e.target.value as AuraEffectType))}
+                  disabled={updatingAuraEffect}
+                  className="bg-gray-700 text-white px-3 py-1 rounded text-sm border border-gray-600 focus:outline-none focus:border-amber-400 disabled:opacity-50 disabled:cursor-not-allowed w-full"
+                >
+                  {AURA_EFFECTS.map(aura => (
+                    <option key={aura.id} value={aura.value || 'none'}>
+                      {aura.name}
+                    </option>
+                  ))}
+                </select>
+                {updatingAuraEffect && (
+                  <span className="text-xs text-gray-500 mt-1 block">Updating aura...</span>
+                )}
+              </div>
+              {/* Aura Color Picker - Only show if aura effect is selected */}
+              {hero.auraEffect && (
+                <div className="mt-3">
+                  <label className="text-xs text-gray-400 block mb-1">
+                    🎨 Aura Color (Customize your aura glow)
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={tempAuraColor !== null ? tempAuraColor : (hero.auraColor || (() => {
+                        // Default color based on tier
+                        switch (hero.auraEffect) {
+                          case 'bronze': return '#CD7F32';
+                          case 'silver': return '#C0C0C0';
+                          case 'gold': return '#FFD700';
+                          case 'platinum': return '#E5E4E2';
+                          default: return '#FFD700';
+                        }
+                      })())}
+                      onChange={(e) => setTempAuraColor(e.target.value)}
+                      disabled={updatingAuraColor}
+                      className="w-12 h-8 rounded border border-gray-600 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="Pick a custom color for your aura glow"
+                    />
+                    <input
+                      type="text"
+                      value={tempAuraColor !== null ? tempAuraColor : (hero.auraColor || (() => {
+                        // Default color based on tier
+                        switch (hero.auraEffect) {
+                          case 'bronze': return '#CD7F32';
+                          case 'silver': return '#C0C0C0';
+                          case 'gold': return '#FFD700';
+                          case 'platinum': return '#E5E4E2';
+                          default: return '#FFD700';
+                        }
+                      })())}
+                      onChange={(e) => {
+                        const color = e.target.value;
+                        if (/^#[0-9A-Fa-f]{6}$/.test(color) || color === '') {
+                          setTempAuraColor(color || null);
+                        }
+                      }}
+                      disabled={updatingAuraColor}
+                      placeholder="#FFD700"
+                      className="flex-1 bg-gray-700 text-white px-3 py-1 rounded text-sm border border-gray-600 focus:outline-none focus:border-amber-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                      pattern="^#[0-9A-Fa-f]{6}$"
+                    />
+                    <button
+                      onClick={() => handleAuraColorChange(tempAuraColor)}
+                      disabled={updatingAuraColor || tempAuraColor === (hero.auraColor || null)}
+                      className="bg-amber-600 hover:bg-amber-700 text-white px-3 py-1 rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      Save
+                    </button>
+                  </div>
+                  {updatingAuraColor && (
+                    <span className="text-xs text-gray-500 mt-1 block">Saving aura color...</span>
+                  )}
+                  <button
+                    onClick={() => {
+                      setTempAuraColor(null);
+                      handleAuraColorChange(null);
+                    }}
+                    disabled={updatingAuraColor || !hero.auraColor}
+                    className="text-xs text-gray-400 hover:text-gray-300 mt-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Reset to default tier color
+                  </button>
+                </div>
+              )}
+              {/* Spell Effect Selection */}
+              <div className="mt-3">
+                <label className="text-xs text-gray-400 block mb-1">
+                  ⚡ Spell Effect {isAdmin && <span className="text-yellow-400">(Admin: All Available)</span>}
+                </label>
+                <select
+                  value={hero.spellEffect || 'none'}
+                  onChange={(e) => handleSpellEffectChange(e.target.value === 'none' ? null : (e.target.value as SpellEffectType))}
+                  disabled={updatingSpellEffect}
+                  className="bg-gray-700 text-white px-3 py-1 rounded text-sm border border-gray-600 focus:outline-none focus:border-amber-400 disabled:opacity-50 disabled:cursor-not-allowed w-full"
+                >
+                  {SPELL_EFFECTS.map(effect => (
+                    <option key={effect.id} value={effect.value || 'none'}>
+                      {effect.name}
+                    </option>
+                  ))}
+                </select>
+                {updatingSpellEffect && (
+                  <span className="text-xs text-gray-500 mt-1 block">Updating spell effect...</span>
+                )}
+                <p className="text-xs text-gray-500 mt-1">
+                  Enhances projectiles and ranged attacks
+                </p>
+              </div>
             </div>
+          </div>
+          
+          {/* Hero Sprite Preview */}
+          <div className="flex flex-col items-center justify-center px-6" style={{ minWidth: '200px' }}>
+            <div className="relative" style={{ width: '150px', height: '200px' }}>
+              {/* Sprite Container */}
+              <div 
+                ref={spritePreviewRef}
+                className="absolute bottom-0 left-1/2 transform -translate-x-1/2"
+                style={{
+                  filter: (() => {
+                    const filters = [];
+                    // Aura effect with custom color
+                    if (hero.auraEffect) {
+                      const customColor = tempAuraColor !== null ? tempAuraColor : hero.auraColor;
+                      const auraFilter = getAuraFilter(hero.auraEffect as any, customColor);
+                      if (auraFilter) {
+                        filters.push(auraFilter);
+                      }
+                    }
+                    // Base drop shadow
+                    filters.push('drop-shadow(0 4px 8px rgba(0,0,0,0.5))');
+                    return filters.join(' ');
+                  })()
+                }}
+              >
+                <HeroSpriteJS
+                  heroId={hero.id}
+                  role={hero.role}
+                  scale={2.5}
+                  facing="right"
+                  style={{ filter: 'none' }}
+                />
+              </div>
+              
+              {/* Title (if active) */}
+              {(() => {
+                const displayTitle = selectedTitle || (hero as any).activeTitle;
+                if (!displayTitle) return null;
+                
+                const isFounder = displayTitle?.toLowerCase().includes('founder');
+                const founderTier = isFounder ? getFounderTierFromTitle(displayTitle) : null;
+                const titleColor = founderTier ? getFounderTitleColor(founderTier) : '#fbbf24';
+                const displayText = isFounder ? 'Founder' : displayTitle;
+                
+                return (
+                  <div style={{
+                    position: 'absolute',
+                    top: '0px',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    color: titleColor,
+                    fontSize: '12px',
+                    fontWeight: 'bold',
+                    fontStyle: 'italic',
+                    textShadow: `2px 2px 4px rgba(0,0,0,0.9), 0 0 8px ${titleColor}80`,
+                    whiteSpace: 'nowrap',
+                    zIndex: 10
+                  }}>
+                    {displayText}
+                  </div>
+                );
+              })()}
+              
+              {/* Hero Name with Badge and Frame */}
+              <div style={{
+                position: 'absolute',
+                top: (selectedTitle || (hero as any).activeTitle) ? '20px' : '10px',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                zIndex: 10
+              }}>
+                {hero.founderBadge && (
+                  <img
+                    src={hero.founderBadge}
+                    alt="Founder Badge"
+                    style={{
+                      width: '16px',
+                      height: '16px',
+                      objectFit: 'contain',
+                      filter: 'drop-shadow(1px 1px 2px rgba(0,0,0,0.9))'
+                    }}
+                  />
+                )}
+                <span style={{
+                  color: tempNameColor !== null ? tempNameColor : (hero.nameColor || 'white'),
+                  fontSize: '14px',
+                  fontWeight: 'bold',
+                  textShadow: '2px 2px 4px rgba(0,0,0,0.9)',
+                  padding: '2px 6px',
+                  borderRadius: '4px',
+                  ...(getNameFrameStyles(hero.nameFrame as any) || {})
+                }}>
+                  {hero.name}
+                </span>
+              </div>
+            </div>
+            <div className="text-xs text-gray-400 mt-2 text-center">Live Preview</div>
+            {/* Test Crit Effect Button - Only for tanks with gold/platinum spell effect */}
+            {shouldShowExhaustEffect(hero.role, hero.spellEffect) && (
+              <button
+                onClick={handleTestCritEffect}
+                className="mt-2 px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white text-xs rounded transition-colors"
+                title="Test exhaust effect (appears on crits for tanks with Gold/Platinum spell effect)"
+              >
+                ⚡ Test Crit Effect
+              </button>
+            )}
           </div>
           
           <div className="text-right space-y-2">
@@ -236,80 +721,6 @@ export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: Hero
         </div>
       </div>
 
-      {/* Equipment */}
-      <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-        <h3 className="text-xl font-bold text-white mb-4">Equipment</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {(() => {
-            // Define all equipment slots based on role
-            // Tanks: weapon, armor, accessory, shield, helm, cloak, gloves, ring1, ring2, boots (10 slots)
-            // Others: weapon, armor, accessory, helm, cloak, gloves, ring1, ring2, boots (9 slots)
-            const tankRoles = ['guardian', 'paladin', 'warden', 'bloodknight', 'vanguard', 'brewmaster'];
-            const isTank = tankRoles.includes(hero.role.toLowerCase());
-            
-            // Base slots for all roles
-            const allSlots: Array<{ key: keyof typeof hero.equipment; label: string }> = [
-              { key: 'weapon', label: 'Weapon' },
-              { key: 'armor', label: 'Armor' },
-              { key: 'accessory', label: 'Accessory' },
-              ...(isTank ? [{ key: 'shield' as keyof typeof hero.equipment, label: 'Shield' }] : []),
-              { key: 'helm', label: 'Helm' },
-              { key: 'cloak', label: 'Cloak' },
-              { key: 'gloves', label: 'Gloves' },
-              { key: 'ring1', label: 'Ring 1' },
-              { key: 'ring2', label: 'Ring 2' },
-              { key: 'boots', label: 'Boots' }
-            ];
-            
-            return allSlots.map(({ key, label }) => {
-              const item = hero.equipment[key];
-              return (
-                <div key={key} className="bg-gray-700 rounded-lg p-4 border-2 border-gray-600 hover:border-purple-500 hover:shadow-lg transition-all">
-                  <div className="text-sm text-gray-400 mb-2">{label}</div>
-                  {item ? (
-                    <ItemTooltip item={item} position="above">
-                      <div className="hover:bg-gray-600/30 rounded p-1 -m-1 transition-colors">
-                        <div className={`font-semibold ${getRarityColor(item.rarity)}`}>
-                          {item.name}
-                        </div>
-                        <div className="mt-2 space-y-1 text-sm">
-                          {item.attack > 0 && <div className="text-red-400">+{item.attack} ATK</div>}
-                          {item.defense > 0 && <div className="text-blue-400">+{item.defense} DEF</div>}
-                          {item.hp > 0 && <div className="text-green-400">+{item.hp} HP</div>}
-                        </div>
-                        
-                        {/* Applied Upgrades/Enchantments */}
-                        {(item as any).appliedUpgrades && (item as any).appliedUpgrades.length > 0 && (
-                          <div className="mt-3 pt-2 border-t border-gray-600">
-                            <div className="text-xs text-purple-400 font-semibold mb-1">Enhancements:</div>
-                            <div className="space-y-1">
-                              {(item as any).appliedUpgrades.map((upgrade: any, idx: number) => {
-                                const isEnchantment = upgrade.recipeKey?.includes('fiery') || 
-                                                     upgrade.recipeKey?.includes('vampiric') || 
-                                                     upgrade.recipeKey?.includes('arcane');
-                                const type = isEnchantment ? 'Enchantment' : 'Upgrade';
-                                const name = upgrade.recipeKey?.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase());
-                                
-                                return (
-                                  <div key={idx} className="text-xs text-white">
-                                    • {name} ({type})
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </ItemTooltip>
-                  ) : (
-                    <div className="text-gray-500 italic text-sm">Empty</div>
-                  )}
-                </div>
-              );
-            });
-          })()}
-        </div>
-      </div>
 
       {/* Active Buffs */}
       {Object.keys(hero.activeBuffs).length > 0 && (

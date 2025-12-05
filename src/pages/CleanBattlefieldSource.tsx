@@ -23,6 +23,11 @@ import { useWebSocket } from '../hooks/useWebSocket';
 import { DEBUFFS, SHOP_ITEMS } from '../utils/fullCombatEngine';
 import { generateLoot, isItemBetter, calculateItemPower } from '../utils/lootGeneration';
 import { calculateSetBonuses } from '../utils/setBonuses';
+import { getNameFrameStyles } from '../utils/nameFrames';
+import { getFounderTitleColor, getFounderTitleDisplay, getFounderTierFromTitle } from '../utils/founderTitle';
+import { getAuraFilter } from '../utils/auraEffects';
+import { createProjectile } from '../utils/projectiles';
+import { createExhaustEffect, shouldShowExhaustEffect } from '../utils/exhaustEffects';
 
 // Hero type (with full gear support)
 interface Hero {
@@ -101,6 +106,14 @@ interface Hero {
   hpRegen?: number;
   damageReduction?: number;
   critChance?: number;
+  // Cosmetic fields
+  activeTitle?: string;
+  founderBadge?: string;
+  nameColor?: string;
+  nameFrame?: string;
+  auraEffect?: string;
+  auraColor?: string;
+  spellEffect?: string;
 }
 
 // Enemy type (minimal for now)
@@ -708,6 +721,13 @@ export default function CleanBattlefieldSource() {
                 profession: data.profession || null,
                 quests: data.quests || {},
                 twitchUserId: data.twitchUserId || data.twitchId,
+                activeTitle: data.activeTitle || null,
+                founderBadge: data.founderBadge || data.activeBadge || null,
+                nameColor: data.nameColor || null,
+                nameFrame: data.nameFrame || null,
+                auraEffect: data.auraEffect || null,
+                auraColor: data.auraColor || null,
+                spellEffect: data.spellEffect || null,
                 equipment: data.equipment || {},
                 skills: data.skills || {},
                 enchantedItems: data.enchantedItems || []
@@ -1093,6 +1113,17 @@ export default function CleanBattlefieldSource() {
           twitchUserId: data.twitchUserId || data.twitchId,
           // Include active title for display
           activeTitle: data.activeTitle || null,
+          // Include founder badge for display
+          founderBadge: data.founderBadge || data.activeBadge || null,
+          // Include custom name color
+          nameColor: data.nameColor || null,
+          // Include name frame
+          nameFrame: data.nameFrame || null,
+          // Include aura effect
+          auraEffect: data.auraEffect || null,
+          auraColor: data.auraColor || null,
+          // Include spell effect
+          spellEffect: data.spellEffect || null,
           // Store raw equipment for stat calculation (ALL slots)
           equipment: {
             weapon: data.equipment?.weapon || null,
@@ -2197,7 +2228,9 @@ export default function CleanBattlefieldSource() {
         
         // Log threat targeting for tanks (to verify it's working)
         if (isTankRole(target.role)) {
-          console.log(`[Combat] ${enemy.name} targeting tank ${target.name} (20x threat)`);
+          const hpPercent = target.hp > 0 && target.maxHp > 0 ? (target.hp / target.maxHp) * 100 : 100;
+          const threatMultiplier = hpPercent < 50 ? 100 : 20; // 5x base threat if below 50% HP
+          console.log(`[Combat] ${enemy.name} targeting tank ${target.name} (${threatMultiplier}x threat, ${Math.floor(hpPercent)}% HP)`);
         }
 
         // RAID/DUNGEON DIFFICULTY: 30% chance for DOUBLE ATTACK!
@@ -2501,6 +2534,11 @@ export default function CleanBattlefieldSource() {
       const isCasterRole = ['mage', 'warlock', 'elementalist', 'necromancer', 'sorcerer', 'pyromancer'].includes(hero.role);
       const isTank = isTankRole(hero.role);
       
+      // Check if hero uses projectiles (all ranged heroes + healers)
+      const spellcasters = ['mage', 'warlock', 'necromancer', 'firemage', 'frostmage', 'dragonsorcerer', 'ranger', 'shadowpriest', 'mooncaller', 'stormcaller'];
+      const healers = ['cleric', 'atoner', 'druid', 'lightbringer', 'shaman', 'mistweaver', 'chronomancer', 'bard'];
+      const usesProjectile = spellcasters.includes(hero.role.toLowerCase()) || healers.includes(hero.role.toLowerCase());
+      
       // Apply stat scaling based on role
       if (isMeleeRole) {
         const cappedStr = Math.min(hero.strength || 0, 100);
@@ -2672,7 +2710,85 @@ export default function CleanBattlefieldSource() {
       const heroRef = getHeroSpriteRef(action.actorId);
       if (heroRef.current) {
         console.log(`[Animation] ${action.actorName} → attack`);
-        heroRef.current.playAnimation('attack');
+        // Play ranged attack animation for heroes that use projectiles
+        if (usesProjectile && healers.includes(hero.role.toLowerCase())) {
+          heroRef.current.playAnimation('rangedAttack');
+        } else {
+          heroRef.current.playAnimation('attack');
+        }
+      }
+
+      // Create exhaust effect for tanks on crit (Gold/Platinum only)
+      if (isCrit && shouldShowExhaustEffect(hero.role, hero.spellEffect)) {
+        setTimeout(() => {
+          const heroElement = document.querySelector(`[data-hero-id="${hero.id}"]`) as HTMLElement;
+          const targetEnemy = enemiesRef.current.find(e => e.id === action.targetId);
+          
+          if (heroElement && hero.spellEffect) {
+            // Find enemy element to travel towards
+            let enemyElement: HTMLElement | null = null;
+            if (targetEnemy) {
+              enemyElement = document.querySelector(`[data-enemy-id="${action.targetId}"]`) as HTMLElement;
+              
+              // If not found, try to find by enemy sprite ref
+              if (!enemyElement) {
+                const enemyRef = getEnemySpriteRef(action.targetId);
+                if (enemyRef.current) {
+                  enemyElement = enemyRef.current.getRef?.() || null;
+                }
+              }
+            }
+            
+            // Use exhaust01 for gold, exhaust02 for platinum
+            const exhaustType = hero.spellEffect === 'gold' ? 'exhaust01' : 'exhaust02';
+            createExhaustEffect(heroElement, hero.spellEffect as 'gold' | 'platinum', exhaustType, enemyElement);
+          }
+        }, 200); // Small delay to sync with attack animation
+      }
+
+      // Create projectile for ranged heroes
+      if (usesProjectile) {
+        setTimeout(() => {
+          const heroElement = document.querySelector(`[data-hero-id="${hero.id}"]`) as HTMLElement;
+          const targetEnemy = enemiesRef.current.find(e => e.id === action.targetId);
+          
+          if (heroElement && targetEnemy) {
+            // Find enemy element - try multiple selectors
+            let enemyElement = document.querySelector(`[data-enemy-id="${action.targetId}"]`) as HTMLElement;
+            
+            // If not found, try to find by enemy sprite ref
+            if (!enemyElement) {
+              const enemyRef = getEnemySpriteRef(action.targetId);
+              if (enemyRef.current) {
+                enemyElement = enemyRef.current.getRef?.() || null;
+              }
+            }
+            
+            if (heroElement && enemyElement) {
+              // Determine element type for mage projectiles
+              let elementType: 'fire' | 'frost' | 'arcane' | undefined = undefined;
+              if (hero.role.toLowerCase() === 'mage' && (hero as any).classAbilityState?.elementRotation !== undefined) {
+                const rotation = (hero as any).classAbilityState.elementRotation;
+                if (rotation === 0) elementType = 'fire';
+                else if (rotation === 1) elementType = 'frost';
+                else elementType = 'arcane';
+              }
+              
+              createProjectile(
+                heroElement,
+                enemyElement,
+                hero.role,
+                undefined, // projectileType - auto-detected
+                () => {
+                  // On projectile hit - enemy hurt animation is handled by damage application
+                },
+                true, // isHero: true
+                elementType, // elementType for mage projectiles
+                (hero as any).spellEffect as any // spellEffect for founder pack tiers
+              );
+            }
+          }
+        }, 300); // Delay to sync with attack animation
       }
 
       // Track if debuff was applied (for SCT outside setState)
@@ -3339,8 +3455,16 @@ export default function CleanBattlefieldSource() {
         console.log(`[Defense Buff] ⚡ ${targetHeroRef.name} gets +10% defense from buff!`);
       }
       
-      const damageAfterDefense = baseDamage / (1 + defense / 250);
-      const minDamage = Math.max(1, baseDamage * 0.25);
+      const isTank = isTankRole(targetHeroRef.role);
+      
+      // Improved defense scaling: Tanks get better mitigation (1/200 divisor instead of 1/250)
+      // This means tanks reach 50% DR at 200 defense vs 250 for others
+      const defenseDivisor = isTank ? 200 : 250;
+      const damageAfterDefense = baseDamage / (1 + defense / defenseDivisor);
+      
+      // Reduced minimum damage: 10% for tanks, 15% for others (was 25% for all)
+      const minDamagePercent = isTank ? 0.10 : 0.15; // Tanks take less minimum damage
+      const minDamage = Math.max(1, baseDamage * minDamagePercent);
       let actualDamage = Math.max(minDamage, Math.floor(damageAfterDefense));
       
       // Check for VULNERABLE debuff (+40% damage taken)
@@ -4554,6 +4678,16 @@ export default function CleanBattlefieldSource() {
     if (isTankRole(hero.role)) baseThreat = 20; // Tanks high threat
     if (isHealerRole(hero.role)) baseThreat = 0.3; // Healers low threat
     
+    // Tanks below 50% HP get MASSIVE threat boost (enemies prioritize protecting them)
+    if (isTankRole(hero.role) && hero.hp > 0 && hero.maxHp > 0) {
+      const hpPercent = hero.hp / hero.maxHp;
+      if (hpPercent < 0.50) {
+        // Emergency: Tank below 50% HP - 5x threat multiplier to draw aggro
+        baseThreat *= 5;
+        console.log(`[Threat] 🛡️ ${hero.name} is below 50% HP (${Math.floor(hpPercent * 100)}%) - ENEMIES PRIORITIZE TANK!`);
+      }
+    }
+    
     // Taunt multiplier (10x threat)
     if (hero.tauntExpiry && hero.tauntExpiry > now) {
       return baseThreat * 10; // MASSIVE threat increase
@@ -4705,11 +4839,41 @@ export default function CleanBattlefieldSource() {
       };
     }
 
-    // Start with base stats (from level)
+    // Determine role category for stat scaling
+    const role = hero.role?.toLowerCase() || '';
+    const isTank = isTankRole(role);
+    const isHealer = isHealerRole(role);
+    const isDps = isDpsRole(role);
+    
+    // Base stats that all heroes get (scaled by role)
+    // All heroes have ALL stats - they just scale differently by role
+    let baseAttack = 10 + hero.level * 3;
+    let baseDefense = 5 + hero.level * 2;
+    let baseHp = 100 + hero.level * 20;
+    
+    // Apply role-based multipliers (all heroes have all stats, just different values)
+    if (isTank) {
+      // Tanks: Higher defense and HP, moderate attack
+      baseAttack = Math.floor(baseAttack * 0.8);  // 80% of base attack
+      baseDefense = Math.floor(baseDefense * 1.5); // 150% of base defense
+      baseHp = Math.floor(baseHp * 1.3);          // 130% of base HP
+    } else if (isHealer) {
+      // Healers: Balanced stats, slightly higher HP
+      baseAttack = Math.floor(baseAttack * 0.9);  // 90% of base attack
+      baseDefense = Math.floor(baseDefense * 1.1); // 110% of base defense
+      baseHp = Math.floor(baseHp * 1.15);         // 115% of base HP
+    } else {
+      // DPS: Higher attack, standard defense and HP
+      baseAttack = Math.floor(baseAttack * 1.2);  // 120% of base attack
+      baseDefense = Math.floor(baseDefense * 0.9); // 90% of base defense
+      baseHp = Math.floor(baseHp * 1.0);          // 100% of base HP
+    }
+    
+    // Start with base stats (from level, scaled by role)
     let stats = {
-      attack: 10 + hero.level * 3,
-      defense: 5 + hero.level * 2,
-      maxHp: 100 + hero.level * 20,
+      attack: baseAttack,
+      defense: baseDefense,
+      maxHp: baseHp,
       intellect: 0,
       strength: 0,
       dexterity: 0,
@@ -4726,7 +4890,7 @@ export default function CleanBattlefieldSource() {
       defenseMultiplier: 0
     };
 
-    // Add equipment bonuses
+    // Add equipment bonuses (first pass - base stats only, no upgrades)
     const equipment = hero.equipment || {};
     Object.values(equipment).forEach((item: any) => {
       if (!item) return;
@@ -4752,6 +4916,65 @@ export default function CleanBattlefieldSource() {
         stats.damageReduction += item.secondaryStats.damageReduction || 0;
         stats.critChance += item.secondaryStats.critChance || 0;
       }
+    });
+    
+    // Store pre-upgrade totals for upgrade calculations
+    // Upgrades are percentages of the hero's TOTAL accumulated stats (base + equipment)
+    const preUpgradeStats = {
+      attack: stats.attack,
+      defense: stats.defense,
+      maxHp: stats.maxHp,
+      critChance: stats.critChance,
+      healingPower: stats.healingPower,
+      spellDamage: stats.spellDamage
+    };
+    
+    // Apply upgrade bonuses (custom stat selection system)
+    // Upgrades are percentages of the hero's TOTAL stats, not the item's base stats
+    Object.values(equipment).forEach((item: any) => {
+      if (!item || !item.upgradeStats || !Array.isArray(item.upgradeStats)) return;
+      
+      item.upgradeStats.forEach((upgrade: any) => {
+        if (upgrade.selectedStats && Array.isArray(upgrade.selectedStats)) {
+          upgrade.selectedStats.forEach((selectedStat: any) => {
+            const statType = selectedStat.type;
+            const statValue = selectedStat.value || 0; // Percentage value
+            
+            switch (statType) {
+              case 'attack':
+                // Percentage of hero's total attack (base + all equipment)
+                stats.attack += Math.floor(preUpgradeStats.attack * statValue / 100);
+                break;
+              case 'defense':
+                // Percentage of hero's total defense (base + all equipment)
+                stats.defense += Math.floor(preUpgradeStats.defense * statValue / 100);
+                break;
+              case 'hp':
+                // Percentage of hero's total HP (base + all equipment)
+                stats.maxHp += Math.floor(preUpgradeStats.maxHp * statValue / 100);
+                break;
+              case 'critChance':
+                // Crit chance is in percentage points (flat bonus, not percentage of base)
+                stats.critChance += statValue / 100; // Convert percentage to decimal
+                break;
+              case 'critDamage':
+                // Crit damage is percentage points (flat bonus)
+                // Could add to a separate critDamageMultiplier stat later
+                // For now, treat as flat attack bonus (smaller since it's conditional)
+                stats.attack += Math.floor(preUpgradeStats.attack * statValue / 200);
+                break;
+              case 'healingPower':
+                // Percentage of hero's total healing power
+                stats.healingPower += Math.floor(preUpgradeStats.healingPower * statValue / 100);
+                break;
+              case 'spellDamage':
+                // Percentage of hero's total spell damage
+                stats.spellDamage += Math.floor(preUpgradeStats.spellDamage * statValue / 100);
+                break;
+            }
+          });
+        }
+      });
     });
 
     // Calculate and apply skill bonuses
@@ -5180,20 +5403,28 @@ export default function CleanBattlefieldSource() {
               }}
             >
               {/* Active Title - ABOVE hero name */}
-              {(hero as any).activeTitle && (
-                <div style={{
-                  color: '#fbbf24',
-                  fontSize: '14px',
-                  fontWeight: 'bold',
-                  fontStyle: 'italic',
-                  textShadow: '2px 2px 4px rgba(0,0,0,0.9), 0 0 10px rgba(251,191,36,0.5)',
-                  backgroundColor: 'transparent',
-                  marginBottom: '4px',
-                  transform: 'translateY(-40px)'
-                }}>
-                  {(hero as any).activeTitle}
-                </div>
-              )}
+              {(hero as any).activeTitle && (() => {
+                const title = (hero as any).activeTitle as string;
+                const isFounder = title?.toLowerCase().includes('founder');
+                const founderTier = isFounder ? getFounderTierFromTitle(title) : null;
+                const titleColor = founderTier ? getFounderTitleColor(founderTier) : '#fbbf24';
+                const displayText = isFounder ? 'Founder' : title;
+                
+                return (
+                  <div style={{
+                    color: titleColor,
+                    fontSize: '14px',
+                    fontWeight: 'bold',
+                    fontStyle: 'italic',
+                    textShadow: `2px 2px 4px rgba(0,0,0,0.9), 0 0 10px ${titleColor}80`,
+                    backgroundColor: 'transparent',
+                    marginBottom: '4px',
+                    transform: 'translateY(-40px)'
+                  }}>
+                    {displayText}
+                  </div>
+                );
+              })()}
               
               {/* Hero Name - HIGH ABOVE sprite (same as idle) */}
               <div style={{
@@ -5205,9 +5436,10 @@ export default function CleanBattlefieldSource() {
                 backgroundColor: 'transparent',
                 padding: '2px 8px',
                 borderRadius: '4px',
-                transform: 'translateY(-40px)'
+                transform: 'translateY(-40px)',
+                ...(getNameFrameStyles(hero.nameFrame as any) || {})
               }}>
-                {hero.name} <span style={{ color: '#fbbf24' }}>{hero.level}</span>
+                <span style={{ color: hero.nameColor || (hero.isDead ? '#ef4444' : 'white') }}>{hero.name}</span> <span style={{ color: '#fbbf24' }}>{hero.level}</span>
                 {hero.isDead && ' 💀'}
               </div>
               
@@ -5246,16 +5478,27 @@ export default function CleanBattlefieldSource() {
               <div 
                 style={{
                   display: 'inline-block',
-                  // Combine filters if both shield and enrage are active!
+                  // Combine filters: aura + shield + enrage
                   filter: (() => {
                     const isEnraged = hero.enrageExpiry && hero.enrageExpiry > Date.now();
                     const filters = [];
                     
+                    // Aura effect (founder pack) - base layer
+                    if (hero.auraEffect) {
+                      const auraFilters = getAuraFilter(hero.auraEffect as any, hero.auraColor);
+                      if (auraFilters) {
+                        filters.push(auraFilters);
+                      }
+                    }
+                    
+                    // Shield effect (blue glow) - middle layer
                     if (hasShield) {
                       filters.push('drop-shadow(0 0 12px rgba(59, 130, 246, 1))');
                       filters.push('drop-shadow(0 0 24px rgba(59, 130, 246, 0.7))');
                       filters.push('drop-shadow(0 0 36px rgba(59, 130, 246, 0.4))');
                     }
+                    
+                    // Enrage effect (red glow) - top layer
                     if (isEnraged) {
                       filters.push('drop-shadow(0 0 12px rgba(239, 68, 68, 1))');
                       filters.push('drop-shadow(0 0 24px rgba(239, 68, 68, 0.8))');
@@ -5277,6 +5520,7 @@ export default function CleanBattlefieldSource() {
                   facing={getFacingDirection(hero.role, 'right')}
                   scale={3.0} // Same scale as idle
                   shield={0}
+                  auraEffect={hero.auraEffect as any}
                 />
               </div>
             </div>
@@ -5477,35 +5721,61 @@ export default function CleanBattlefieldSource() {
             }}
           >
             {/* Active Title - ABOVE hero name */}
-            {(hero as any).activeTitle && (
-              <div style={{
-                color: '#fbbf24',
-                fontSize: '14px',
-                fontWeight: 'bold',
-                fontStyle: 'italic',
-                textShadow: '2px 2px 4px rgba(0,0,0,0.9), 0 0 10px rgba(251,191,36,0.5)',
-                backgroundColor: 'transparent',
-                marginBottom: '4px',
-                transform: 'translateY(-40px)'
-              }}>
-                {(hero as any).activeTitle}
-              </div>
-            )}
+            {(hero as any).activeTitle && (() => {
+              const title = (hero as any).activeTitle as string;
+              const isFounder = title?.toLowerCase().includes('founder');
+              const founderTier = isFounder ? getFounderTierFromTitle(title) : null;
+              const titleColor = founderTier ? getFounderTitleColor(founderTier) : '#fbbf24';
+              const displayText = isFounder ? 'Founder' : title;
+              
+              return (
+                <div style={{
+                  color: titleColor,
+                  fontSize: '14px',
+                  fontWeight: 'bold',
+                  fontStyle: 'italic',
+                  textShadow: `2px 2px 4px rgba(0,0,0,0.9), 0 0 10px ${titleColor}80`,
+                  backgroundColor: 'transparent',
+                  marginBottom: '4px',
+                  transform: 'translateY(-40px)'
+                }}>
+                  {displayText}
+                </div>
+              );
+            })()}
             
             {/* Hero Name - HIGH ABOVE sprite */}
             <div style={{
               color: hero.isDead ? '#ef4444' : 'white',
               fontSize: '18px',
               fontWeight: 'bold',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
               marginBottom: '6px',
               textShadow: '2px 2px 4px rgba(0,0,0,0.9)',
               backgroundColor: 'transparent',
               padding: '2px 8px',
               borderRadius: '4px',
-              transform: 'translateY(-40px)' // Move UP by 40px
+              transform: 'translateY(-40px)', // Move UP by 40px
+              ...(getNameFrameStyles(hero.nameFrame as any) || {})
             }}>
-              {hero.name} <span style={{ color: '#fbbf24' }}>{hero.level}</span>
-              {hero.isDead && ' 💀'}
+              {hero.founderBadge && (
+                <img
+                  src={hero.founderBadge}
+                  alt="Founder Badge"
+                  style={{
+                    width: '24px',
+                    height: '24px',
+                    objectFit: 'contain',
+                    filter: 'drop-shadow(2px 2px 4px rgba(0,0,0,0.9))'
+                  }}
+                />
+              )}
+              <span>
+                <span style={{ color: hero.nameColor || (hero.isDead ? '#ef4444' : 'white') }}>{hero.name}</span> <span style={{ color: '#fbbf24' }}>{hero.level}</span>
+                {hero.isDead && ' 💀'}
+              </span>
             </div>
 
             {/* Resurrection Timer (if dead) - ABOVE sprite */}
@@ -5560,8 +5830,28 @@ export default function CleanBattlefieldSource() {
               </div>
             </div>
 
-            {/* Hero Sprite - Wrap in div for shield glow and enrage effect */}
-            <div className={`${hasShield ? 'has-shield' : ''} ${hero.enrageExpiry && hero.enrageExpiry > Date.now() ? 'is-enraged' : ''}`}>
+            {/* Hero Sprite - Wrap in div for aura, shield glow and enrage effect */}
+            <div 
+              className={`${hasShield ? 'has-shield' : ''} ${hero.enrageExpiry && hero.enrageExpiry > Date.now() ? 'is-enraged' : ''}`}
+              style={{
+                // Combine filters: aura + shield + enrage (same as raid mode)
+                filter: (() => {
+                  const isEnraged = hero.enrageExpiry && hero.enrageExpiry > Date.now();
+                  const filters = [];
+                  
+                  // Aura effect (founder pack) - base layer
+                  if (hero.auraEffect) {
+                    const auraFilters = getAuraFilter(hero.auraEffect as any, hero.auraColor);
+                    if (auraFilters) {
+                      filters.push(auraFilters);
+                    }
+                  }
+                  
+                  // Shield and enrage handled by CSS classes, but we can add aura filter on top
+                  return filters.length > 0 ? filters.join(' ') : 'none';
+                })(),
+              }}
+            >
               <HeroSpriteJS
                 key={spriteKey}
                 ref={getHeroSpriteRef(hero.id)}

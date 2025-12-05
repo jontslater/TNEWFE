@@ -1,0 +1,68 @@
+# Git Commands for Commit
+
+## Step 1: Add all source code files (modified and new)
+
+# Add all modified source files
+git add src/App.tsx
+git add src/api/client.ts
+git add src/components/AchievementsPanel.tsx
+git add src/components/HeroDashboard.tsx
+git add src/components/HeroSpriteJS.tsx
+git add src/components/InventoryManager.tsx
+git add src/components/ItemTooltip.tsx
+git add src/components/Navigation.tsx
+git add src/index.css
+git add src/pages/AnimationTestPage.tsx
+git add src/pages/CleanBattlefieldSource.tsx
+git add src/pages/PlayerPortal.tsx
+git add src/pages/RaidBrowserSourcePage.tsx
+git add src/pages/StorePage.tsx
+git add src/types/Hero.ts
+git add src/utils/projectiles.ts
+git add src/utils/spriteAnimationData.ts
+
+# Add new source files
+git add src/components/UpgradeModal.tsx
+git add src/pages/FoundersPackPage.tsx
+git add src/utils/auraEffects.ts
+git add src/utils/exhaustEffects.ts
+git add src/utils/founderTitle.ts
+git add src/utils/nameFrames.ts
+git add src/utils/spellEffects.ts
+git add src/utils/upgradeStatOptions.ts
+
+# Add sprite assets
+git add "public/Sprites/Heroes/HeroSprites/Huge Knight 2D Pixel Art/exhaust02_preview.gif"
+git add "public/Sprites/Heroes/HeroSprites/Huge Knight 2D Pixel Art/exhaust_01_preview.gif"
+
+# Add updated execution plan
+git add FINAL_EXECUTION_PLAN.md
+
+# Add commit summary
+git add COMMIT_SUMMARY.md
+
+## Step 2: Commit with descriptive message
+
+git commit -m "feat: Complete Phase 1.3 cosmetics, Phase 2.1 upgrades, and combat balance fixes
+
+- Phase 1.3 Cosmetics: Name colors, frames, auras, spell effects, founder titles
+- Phase 2.1 Upgrade System: Custom stat selection, WoW-style percentage upgrades
+- Combat Balance: Reduced min damage (10% tanks, 15% others), improved threat system, better defense scaling
+- Store: Multi-hero purchase support for XP boosts
+- Quest tracking in browser source
+- Hero-specific badge/title updates using document ID
+
+Fixes tank survivability at high difficulty levels. All cosmetic features fully functional with live preview."
+
+## Step 3: Push to remote
+
+git push origin main
+
+## Alternative: Single command to add all at once (if you prefer)
+
+# This adds all source files at once:
+git add src/ FINAL_EXECUTION_PLAN.md COMMIT_SUMMARY.md "public/Sprites/Heroes/HeroSprites/Huge Knight 2D Pixel Art/"
+
+# Then commit and push:
+git commit -m "feat: Complete Phase 1.3 cosmetics, Phase 2.1 upgrades, and combat balance fixes"
+git push origin main
