@@ -254,7 +254,9 @@
 
 ### **THEN CREATE DEFAULT SPRITES:**
 - ✅ Use token purchase revenue to hire artist/create sprites
-- ✅ Complete default sprites for all 8 classes
+- ✅ Complete default sprites for all 28 classes (phased approach)
+- ✅ Phase 1: 14 priority classes (Tanks + Top DPS/Healers)
+- ✅ Phase 2: Remaining 14 classes
 - ✅ Unlocks skin system implementation
 
 ### **THEN IMPLEMENT SKIN SYSTEM:**
