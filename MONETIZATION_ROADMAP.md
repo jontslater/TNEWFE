@@ -276,16 +276,26 @@
 - **Total: $250-1,500** → Funds sprite development
 
 ### **Month 2-3:**
-- Sprite Development: Ongoing (using Month 1 revenue)
+- Sprite Development Phase 1: Starting Priority Classes (14 classes, ~$1,050)
 - Token Purchases: $100-750
 - Founder Packs: $150-600
 - **Total: $250-1,350**
+- **Note:** Sprite cost higher than initially estimated (28 classes vs. 8 classes)
 
-### **Month 4-6:**
-- Skins Available: $300-1,500/month
+### **Month 4-5:**
+- Partial Sprites Deployed: 14 classes (50% coverage)
+- Skins Available (Partial): $300-1,200/month
 - Token Purchases: $200-1,000/month
 - Founder Packs: $100-600/month
-- **Total: $600-3,100/month**
+- **Total: $600-2,800/month**
+- Sprite Development Phase 2: Remaining 14 classes (~$1,050)
+
+### **Month 6:**
+- Complete Sprites Deployed: All 28 classes
+- Skins Available (Full): $750-2,500/month
+- Token Purchases: $300-1,500/month
+- Founder Packs: $150-600/month
+- **Total: $1,200-4,600/month**
 
 ### **Month 7-12:**
 - Battle Pass Added: $1,200-3,000/month
@@ -305,4 +315,3 @@
 5. **Month 6-7:** Implement battle pass system
 
 **Result:** Steady revenue growth from $250-1,500/month → $2,600-8,100/month over 12 months.
-
