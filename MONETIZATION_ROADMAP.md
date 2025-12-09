@@ -119,10 +119,10 @@
 - Skins: $300-1,500/month
 - **Total: $600-3,100/month**
 
-#### **Month 7-12 (Full Feature Set):**
+#### **Month 7-12 (Full Feature Set + Battle Pass):**
 - Founder Packs: $150-600/month
 - Token Purchases: $500-2,000/month
-- Skins: $750-2,500/month
+- Skins (Full): $750-2,500/month
 - Battle Pass: $1,200-3,000/month
 - **Total: $2,600-8,100/month**
 
@@ -139,12 +139,14 @@
    - Small/Medium/Large packs
    - **Expected Revenue:** $50-500/month immediately
 
-### **Phase 2: Sprite Development (Weeks 2-6)**
+### **Phase 2: Sprite Development (Weeks 2-10)**
 **Goal:** Create default sprites (funded by token sales)
 
-1. ⚠️ **Hire Artist / Create Default Sprites** (2-4 weeks)
-   - 8 classes × multiple animations
-   - **Cost:** $500-2,000 (funded by Phase 1 revenue)
+1. ⚠️ **Hire Artist / Create Default Sprites** (9 weeks total, phased)
+   - **Phase 2A (Weeks 2-7):** Priority classes (14 classes: Tanks + Top 5 DPS + Top 3 Healers)
+   - **Phase 2B (Weeks 8-10):** Remaining classes (14 classes)
+   - **Total: 28 classes** × 4-5 animations each
+   - **Cost:** $2,100-4,200 (funded by Phase 1 revenue)
    - **Blocks:** Skin system implementation
 
 ### **Phase 3: Skin System (Weeks 7-10)**
