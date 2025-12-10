@@ -1251,25 +1251,35 @@ These features are promised in the founders pack tiers. See `FOUNDERS_PACK_FEATU
 
 ---
 
-### **Step 8.4: Token & Gold Packs** ⚠️ DEFERRED
+### **Step 8.4: Token & Gold Packs** ⭐⭐⭐ HIGH PRIORITY
 **Status:** ❌ Not Implemented  
-**Priority:** LOW - Deferred until other gaps are closed
+**Priority:** HIGH - Immediate revenue generation for sprite development
 
-**Goal:** Direct currency purchase packs (real money)
+**Goal:** Direct currency purchase packs (real money) - Standard gacha pricing model
 
-**Status:** Documented as option, **NOT executing until:**
-- Founder Pack Earning Boosts implemented
-- Hero Slot Expansion implemented
-- Inventory Expansion Token Option implemented
-- Other monetization gaps closed
+**Pricing Strategy:**
+- **Impulse Buy Pack:** 100 tokens + 1,000g = $0.99 (low barrier, high conversion)
+- **Starter Pack:** 500 tokens + 5,000g = $4.99 (standard entry point)
+- **Value Pack:** 1,500 tokens + 15,000g = $9.99 (better value per token)
+- **Premium Pack:** 5,000 tokens + 50,000g = $24.99 (best value, whales)
 
-**If Implemented Later:**
-- Small Pack: 500 tokens + 5,000g = $4.99
-- Medium Pack: 1,500 tokens + 15,000g = $9.99
-- Large Pack: 5,000 tokens + 50,000g = $24.99
+**Token Value:** ~$0.01 per token (consistent across all packs)
+**Gold Bonus:** Included as value-add (not primary currency)
 
-**Estimated Time:** 1 day (if implemented)  
-**Revenue Potential:** MEDIUM (but deferred)
+**Why This Pricing:**
+- $0.99 removes purchase friction (impulse buy territory)
+- $4.99 is standard gacha entry point (proven conversion)
+- Tiered pricing encourages upsell to higher packs
+- Consistent token value maintains economy balance
+
+**Implementation:**
+- Add token purchase packs to Store page
+- Connect Stripe payment processing
+- Backend endpoint: `POST /api/purchases/token-pack`
+- Grant tokens and gold to selected hero
+
+**Estimated Time:** 1-2 days  
+**Revenue Potential:** HIGH - Immediate revenue, funds sprite development
 
 ---
 

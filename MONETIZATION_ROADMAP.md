@@ -33,10 +33,12 @@
 
 **Implementation:**
 - Add token purchase packs to Store page
-- Small: 500 tokens = $4.99
-- Medium: 1,500 tokens = $9.99
-- Large: 5,000 tokens = $24.99
+- **Impulse Pack:** 100 tokens + 1,000g = $0.99 (impulse buy, low friction)
+- **Starter Pack:** 500 tokens + 5,000g = $4.99 (standard gacha entry point)
+- **Value Pack:** 1,500 tokens + 15,000g = $9.99 (better value)
+- **Premium Pack:** 5,000 tokens + 50,000g = $24.99 (best value, whales)
 - Connect Stripe payment processing
+- **Token Value:** ~$0.01 per token (consistent across all packs)
 
 **Revenue Impact:**
 - Immediate: $50-500/month (depending on player count)
