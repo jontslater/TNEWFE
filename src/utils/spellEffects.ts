@@ -79,3 +79,4 @@ export const SPELL_EFFECTS = [
   { id: 'gold', name: 'Gold Spell Effect', value: 'gold' as SpellEffectType },
   { id: 'platinum', name: 'Platinum Spell Effect', value: 'platinum' as SpellEffectType },
 ];
+

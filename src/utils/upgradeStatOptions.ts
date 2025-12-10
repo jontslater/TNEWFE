@@ -124,3 +124,4 @@ export function getStatIcon(statType: UpgradeStatType): string {
   };
   return icons[statType] || '⭐';
 }
+

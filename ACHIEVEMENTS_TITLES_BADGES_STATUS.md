@@ -76,3 +76,4 @@ git checkout HEAD -- src/components/AchievementsPanel.tsx
 ```
 
 This will restore the file from the last commit.
+

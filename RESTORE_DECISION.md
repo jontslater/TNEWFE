@@ -40,3 +40,4 @@ This shows total changes (how many lines added/removed).
 ---
 
 **Do you need WebSocket integration? If yes, restore the file. If no, you're all set!**
+

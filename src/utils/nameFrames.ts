@@ -67,3 +67,4 @@ export const NAME_FRAMES = [
   { id: 'gold', name: 'Gold Frame', value: 'gold' as NameFrameType },
   { id: 'platinum', name: 'Platinum Frame', value: 'platinum' as NameFrameType },
 ];
+

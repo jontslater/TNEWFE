@@ -73,3 +73,4 @@
 - ✅ Enemy projectiles remain unchanged
 - ✅ Effects layer properly with element filters
 - ✅ Scales and animations work correctly
+

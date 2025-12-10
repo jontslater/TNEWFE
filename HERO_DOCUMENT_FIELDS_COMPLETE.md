@@ -53,3 +53,4 @@ Heroes are loaded from Firebase with:
 ---
 
 **Everything is connected! Badges and titles from the hero document now show up in the browser source automatically!** 🎉
+

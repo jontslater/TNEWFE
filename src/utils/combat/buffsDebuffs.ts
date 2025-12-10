@@ -63,6 +63,12 @@ export function processDebuffs(
             
             if (shieldResult.absorbed > 0) {
               callbacks.log('combat', `💙 ${hero.username}'s shield absorbs ${Math.floor(shieldResult.absorbed)} DoT damage!`);
+              
+              // Track damage blocked by shields
+              if (!hero.stats) {
+                hero.stats = { totalDamage: 0, totalHealing: 0, damageBlocked: 0 };
+              }
+              hero.stats.damageBlocked += shieldResult.absorbed;
             }
             
             hero.hp = Math.max(0, hero.hp - remainingDotDamage);
@@ -195,6 +201,12 @@ export function processDebuffs(
         
         if (shieldResult.absorbed > 0) {
           callbacks.log('combat', `💙 ${hero.username}'s shield absorbs ${Math.floor(shieldResult.absorbed)} Stagger damage!`);
+          
+          // Track damage blocked by shields
+          if (!hero.stats) {
+            hero.stats = { totalDamage: 0, totalHealing: 0, damageBlocked: 0 };
+          }
+          hero.stats.damageBlocked += shieldResult.absorbed;
         }
         
         hero.hp = Math.max(0, hero.hp - remainingStaggerDamage);

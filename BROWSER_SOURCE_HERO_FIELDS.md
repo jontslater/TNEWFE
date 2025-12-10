@@ -56,3 +56,4 @@ When heroes are loaded from Firebase, they now include:
 ---
 
 **Status:** ✅ Complete - Badge and title fields now load from Firebase and display in browser source!
+

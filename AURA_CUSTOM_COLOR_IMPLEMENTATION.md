@@ -65,3 +65,4 @@ To test:
 - ✅ Color picker matches name color picker UI/UX
 - ✅ Custom colors work in browser source
 - ✅ Preview shows custom color in real-time
+

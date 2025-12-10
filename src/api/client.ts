@@ -150,15 +150,17 @@ export const heroAPI = {
     return response.data;
   },
   
-  async deleteHero(heroId: string, userId: string): Promise<{ message: string }> {
+  async deleteHero(heroId: string, userId?: string): Promise<{ message?: string; success?: boolean }> {
     if (USE_MOCK) {
       return new Promise((resolve) => {
-        setTimeout(() => resolve({ message: 'Hero deleted successfully' }), 300);
+        setTimeout(() => resolve({ message: 'Hero deleted successfully', success: true }), 300);
       });
     }
     
-    const response = await apiClient.delete(`/api/heroes/${heroId}`, { data: { userId } });
-    return response.data;
+    const response = await apiClient.delete(`/api/heroes/${heroId}`, { 
+      data: userId ? { userId } : {} 
+    });
+    return response.data || { success: true, message: 'Hero deleted successfully' };
   },
   
   async getHeroCreationCostInfo(twitchUserId?: string, tiktokUserId?: string): Promise<{
@@ -190,6 +192,65 @@ export const heroAPI = {
     return response.data;
   },
 
+  async getSlotInfo(userId: string, twitchUserId?: string, tiktokUserId?: string): Promise<{
+    slotsUnlocked: number;
+    heroCount: number;
+    nextSlot: number;
+    nextSlotCost: number | null;
+    totalTokens: number;
+    maxHeroes: number;
+    canUnlock: boolean;
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          slotsUnlocked: 3,
+          heroCount: 2,
+          nextSlot: 4,
+          nextSlotCost: 500,
+          totalTokens: 1000,
+          maxHeroes: 20,
+          canUnlock: true
+        }), 300);
+      });
+    }
+
+    const params = new URLSearchParams();
+    if (twitchUserId) params.append('twitchUserId', twitchUserId);
+    if (tiktokUserId) params.append('tiktokUserId', tiktokUserId);
+
+    const response = await apiClient.get(`/api/heroes/${userId}/slots?${params.toString()}`);
+    return response.data;
+  },
+
+  async unlockHeroSlot(userId: string, twitchUserId?: string, tiktokUserId?: string): Promise<{
+    success: boolean;
+    slotsUnlocked: number;
+    tokensSpent: number;
+    remainingTokens: number;
+    nextSlotCost: number | null;
+    maxHeroes: number;
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          success: true,
+          slotsUnlocked: 4,
+          tokensSpent: 500,
+          remainingTokens: 500,
+          nextSlotCost: 500,
+          maxHeroes: 20
+        }), 300);
+      });
+    }
+
+    const response = await apiClient.post(`/api/heroes/${userId}/unlock-slot`, {
+      twitchUserId,
+      tiktokUserId
+    });
+    return response.data;
+  },
+
   async createHero(classKey: string, twitchUserId?: string, tiktokUserId?: string, paymentMethod?: 'tokens' | 'payment'): Promise<Hero & { heroCount: number; maxHeroes: number }> {
     if (USE_MOCK) {
       return new Promise((resolve) => {
@@ -208,17 +269,6 @@ export const heroAPI = {
       paymentMethod
     });
     return response.data;
-  },
-  
-  async deleteHero(heroId: string): Promise<{ success: boolean }> {
-    if (USE_MOCK) {
-      return new Promise((resolve) => {
-        setTimeout(() => resolve({ success: true }), 300);
-      });
-    }
-
-    await apiClient.delete(`/api/heroes/${heroId}`);
-    return { success: true };
   },
   
   async craftElixir(userId: string, recipeKey: string, cost: any, tier: number = 1, quantity: number = 1): Promise<{success: boolean, message: string}> {
@@ -240,7 +290,7 @@ export const heroAPI = {
     return response.data;
   },
   
-  async useElixir(userId: string, itemKey: string): Promise<{success: boolean, message: string}> {
+  async useElixir(userId: string, itemKeyOrId: string): Promise<{success: boolean, message: string}> {
     if (USE_MOCK) {
       return new Promise((resolve) => {
         setTimeout(() => resolve({
@@ -250,7 +300,8 @@ export const heroAPI = {
       });
     }
     
-    const response = await apiClient.post(`/api/professions/${userId}/use`, { itemKey });
+    // Support both itemKey and itemId - backend will figure it out
+    const response = await apiClient.post(`/api/professions/${userId}/use`, { itemKey: itemKeyOrId, itemId: itemKeyOrId });
     return response.data;
   },
   
@@ -298,29 +349,88 @@ export const heroAPI = {
     return response.data;
   },
 
-  async purchaseGoldItem(userId: string, itemKey: string): Promise<{success: boolean, message: string}> {
+  async gather(userId: string) {
     if (USE_MOCK) {
       return new Promise((resolve) => {
-        setTimeout(() => resolve({ success: true, message: 'Item purchased!' }), 300);
+        setTimeout(() => resolve({ success: true, message: 'Materials gathered!', gathered: {} }), 300);
       });
     }
     
-    const response = await apiClient.post(`/api/heroes/${userId}/purchase/gold`, { itemKey });
+    const response = await apiClient.post(`/api/professions/${userId}/gather`);
     return response.data;
   },
 
-  async purchaseTokenGear(userId: string, rarity: string, slot: string): Promise<{success: boolean, message: string, item: any}> {
+  async applySocket(userId: string, heroId: string, itemId: string, socketItemId: string, slot?: string): Promise<{success: boolean, message: string, item: any}> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({ success: true, message: 'Socket applied!', item: {} }), 300);
+      });
+    }
+    
+    const response = await apiClient.post(`/api/professions/${userId}/apply-socket`, {
+      heroId,
+      itemId,
+      socketItemId,
+      slot
+    });
+    return response.data;
+  },
+
+  async insertGem(userId: string, heroId: string, itemId: string, socketId: string, gemId: string): Promise<{success: boolean, message: string, item: any}> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({ success: true, message: 'Gem inserted!', item: {} }), 300);
+      });
+    }
+    
+    const response = await apiClient.post(`/api/professions/${userId}/gem`, {
+      heroId,
+      itemId,
+      socketId,
+      gemId
+    });
+    return response.data;
+  },
+
+  async removeGem(userId: string, heroId: string, itemId: string, socketId: string): Promise<{success: boolean, message: string, item: any}> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({ success: true, message: 'Gem removed!', item: {} }), 300);
+      });
+    }
+    
+    const response = await apiClient.post(`/api/professions/${userId}/remove-gem`, {
+      heroId,
+      itemId,
+      socketId
+    });
+    return response.data;
+  },
+
+  async purchaseGoldItem(userId: string, itemKey: string, quantity: number = 1): Promise<{success: boolean, message: string, quantity?: number, itemsAdded?: number}> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({ success: true, message: 'Item purchased!', quantity, itemsAdded: quantity }), 300);
+      });
+    }
+    
+    const response = await apiClient.post(`/api/heroes/${userId}/purchase/gold`, { itemKey, quantity });
+    return response.data;
+  },
+
+  async purchaseTokenGear(userId: string, rarity: string, slot: string, quantity: number = 1): Promise<{success: boolean, message: string, items?: any[], quantity?: number}> {
     if (USE_MOCK) {
       return new Promise((resolve) => {
         setTimeout(() => resolve({ 
           success: true, 
           message: 'Gear purchased!',
-          item: { name: `${rarity} ${slot}`, rarity, slot }
+          items: [{ name: `${rarity} ${slot}`, rarity, slot }],
+          quantity
         }), 300);
       });
     }
     
-    const response = await apiClient.post(`/api/heroes/${userId}/purchase/tokens`, { rarity, slot });
+    const response = await apiClient.post(`/api/heroes/${userId}/purchase/tokens`, { rarity, slot, quantity });
     return response.data;
   },
 
@@ -356,19 +466,20 @@ export const heroAPI = {
     return response.data;
   },
 
-  async expandStorage(userId: string, slots: number = 10): Promise<{success: boolean, message: string, newBankSize: number, newGold: number}> {
+  async expandStorage(userId: string, slots: number = 15, currency: 'gold' | 'tokens' = 'gold'): Promise<{success: boolean, message: string, newBankSize: number, newGold?: number, newTokens?: number}> {
     if (USE_MOCK) {
       return new Promise((resolve) => {
         setTimeout(() => resolve({ 
           success: true, 
           message: 'Storage expanded!',
           newBankSize: 50,
-          newGold: 0
+          newGold: currency === 'gold' ? 0 : undefined,
+          newTokens: currency === 'tokens' ? 0 : undefined
         }), 300);
       });
     }
     
-    const response = await apiClient.post(`/api/heroes/${userId}/expand-storage`, { slots });
+    const response = await apiClient.post(`/api/heroes/${userId}/expand-storage`, { slots, currency });
     return response.data;
   }
 };
@@ -836,14 +947,16 @@ export const auctionAPI = {
     return response.data;
   },
   
-  async createListing(sellerId: string, sellerUsername: string, item: any, startingPrice: number, buyoutPrice?: number, currency: 'gold' | 'tokens' = 'gold') {
+  async createListing(sellerId: string, sellerUsername: string, item: any, startingPrice: number, buyoutPrice?: number, currency: 'gold' | 'tokens' = 'gold', quantity: number = 1, duration: '12' | '24' | '48' = '24') {
     const response = await apiClient.post('/api/auction/list', {
       sellerId,
       sellerUsername,
       item,
       startingPrice,
       buyoutPrice,
-      currency
+      currency,
+      quantity,
+      duration
     });
     return response.data;
   },
@@ -1105,6 +1218,70 @@ export const enchantingAPI = {
 };
 
 // Founders Pack API
+export const tokenPackAPI = {
+  /**
+   * Initiate a token pack purchase
+   * @param userId - User's Twitch ID
+   * @param packType - Pack type: 'impulse', 'starter', 'value', 'premium'
+   * @param heroId - Hero document ID to receive tokens/gold
+   * @returns Purchase session data including purchase ID
+   */
+  async initiatePurchase(userId: string, packType: 'impulse' | 'starter' | 'value' | 'premium', heroId: string): Promise<{
+    success: boolean;
+    purchaseId: string;
+    sessionId: string | null;
+    message: string;
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          success: true,
+          purchaseId: `mock-${Date.now()}`,
+          sessionId: null,
+          message: 'Purchase initiated (mock)'
+        }), 300);
+      });
+    }
+
+    const response = await apiClient.post('/api/purchases/token-pack', {
+      userId,
+      packType,
+      heroId
+    });
+
+    return response.data;
+  },
+
+  /**
+   * Complete token pack purchase after payment processing
+   * @param purchaseId - Purchase ID from initiatePurchase
+   * @returns Purchase completion details
+   */
+  async completePurchase(purchaseId: string): Promise<{
+    success: boolean;
+    message: string;
+    tokensGranted: number;
+    goldGranted: number;
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          success: true,
+          message: 'Purchase completed (mock)',
+          tokensGranted: 100,
+          goldGranted: 1000
+        }), 300);
+      });
+    }
+
+    const response = await apiClient.post('/api/purchases/complete-token-pack', {
+      purchaseId
+    });
+
+    return response.data;
+  }
+};
+
 export const foundersPackAPI = {
   /**
    * Initiate a founders pack purchase
@@ -1184,6 +1361,829 @@ export const foundersPackAPI = {
     }
 
     const response = await apiClient.post(`/api/purchases/complete/${purchaseId}`);
+    return response.data;
+  },
+
+  /**
+   * Get all Platinum founders for Founders Hall
+   * @returns List of all Platinum tier founders
+   */
+  async getFounders(): Promise<{
+    success: boolean;
+    founders: Array<{
+      userId: string;
+      username: string;
+      heroName?: string;
+      heroRole?: string;
+      tier: string;
+      purchaseDate: number;
+      purchaseId: string;
+    }>;
+    debug?: any;
+  }> {
+    if (USE_MOCK) {
+      console.log('[FoundersPackAPI] Using MOCK data');
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          success: true,
+          founders: [
+            { userId: 'mock1', username: 'Founder1', tier: 'platinum', purchaseDate: Date.now(), purchaseId: 'mock1' },
+            { userId: 'mock2', username: 'Founder2', tier: 'platinum', purchaseDate: Date.now() - 86400000, purchaseId: 'mock2' }
+          ]
+        }), 300);
+      });
+    }
+
+    const url = `${API_URL}/api/purchases/founders`;
+    console.log('[FoundersPackAPI] Calling GET', url);
+    console.log('[FoundersPackAPI] API_URL:', API_URL);
+    console.log('[FoundersPackAPI] USE_MOCK:', USE_MOCK);
+    
+    try {
+      const response = await apiClient.get('/api/purchases/founders');
+      console.log('[FoundersPackAPI] Response received:', response);
+      console.log('[FoundersPackAPI] Response data:', response.data);
+      return response.data;
+    } catch (error: any) {
+      console.error('[FoundersPackAPI] Error calling API:', error);
+      console.error('[FoundersPackAPI] Error details:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        url: error.config?.url,
+        baseURL: error.config?.baseURL
+      });
+      throw error;
+    }
+  }
+};
+
+// Party API
+export const partyAPI = {
+  /**
+   * Create a new party
+   */
+  async createParty(leaderId: string, leaderName: string, heroId: string, heroName: string, heroRole: string, heroLevel: number): Promise<{
+    success: boolean;
+    partyId: string;
+    party: any;
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          success: true,
+          partyId: 'mock-party-1',
+          party: {
+            id: 'mock-party-1',
+            leaderId,
+            members: [leaderId],
+            memberData: [{ userId: leaderId, username: leaderName, heroId, heroName, heroRole, heroLevel }],
+            status: 'forming',
+            createdAt: Date.now()
+          }
+        }), 300);
+      });
+    }
+
+    const response = await apiClient.post('/api/parties/create', {
+      leaderId,
+      leaderName,
+      heroId,
+      heroName,
+      heroRole,
+      heroLevel
+    });
+    return response.data;
+  },
+
+  /**
+   * Get user's current party
+   */
+  async getParty(userId: string): Promise<{
+    success: boolean;
+    party: any | null;
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          success: true,
+          party: null
+        }), 300);
+      });
+    }
+
+    const response = await apiClient.get(`/api/parties/${userId}`);
+    return response.data;
+  },
+
+  /**
+   * Invite player to party
+   */
+  async invitePlayer(partyId: string, inviterId: string, inviteeId: string, inviteeName: string, heroId: string, heroName: string, heroRole: string, heroLevel: number): Promise<{
+    success: boolean;
+    inviteId: string;
+    message: string;
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          success: true,
+          inviteId: 'mock-invite-1',
+          message: 'Invite sent successfully'
+        }), 300);
+      });
+    }
+
+    const response = await apiClient.post(`/api/parties/${partyId}/invite`, {
+      inviterId,
+      inviteeId,
+      inviteeName,
+      heroId,
+      heroName,
+      heroRole,
+      heroLevel
+    });
+    return response.data;
+  },
+
+  /**
+   * Accept party invite
+   */
+  async acceptInvite(inviteId: string, userId: string): Promise<{
+    success: boolean;
+    partyId: string;
+    message: string;
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          success: true,
+          partyId: 'mock-party-1',
+          message: 'Joined party successfully'
+        }), 300);
+      });
+    }
+
+    const response = await apiClient.post(`/api/parties/invites/${inviteId}/accept`, { userId });
+    return response.data;
+  },
+
+  /**
+   * Decline party invite
+   */
+  async declineInvite(inviteId: string, userId: string): Promise<{
+    success: boolean;
+    message: string;
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          success: true,
+          message: 'Invite declined'
+        }), 300);
+      });
+    }
+
+    const response = await apiClient.post(`/api/parties/invites/${inviteId}/decline`, { userId });
+    return response.data;
+  },
+
+  /**
+   * Leave party
+   */
+  async leaveParty(partyId: string, userId: string): Promise<{
+    success: boolean;
+    message: string;
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          success: true,
+          message: 'Left party successfully'
+        }), 300);
+      });
+    }
+
+    const response = await apiClient.post(`/api/parties/${partyId}/leave`, { userId });
+    return response.data;
+  },
+
+  /**
+   * Kick member from party (leader only)
+   */
+  async kickMember(partyId: string, leaderId: string, memberId: string): Promise<{
+    success: boolean;
+    message: string;
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          success: true,
+          message: 'Member kicked successfully'
+        }), 300);
+      });
+    }
+
+    const response = await apiClient.post(`/api/parties/${partyId}/kick`, { leaderId, memberId });
+    return response.data;
+  },
+
+  /**
+   * Transfer leadership
+   */
+  async transferLeadership(partyId: string, currentLeaderId: string, newLeaderId: string): Promise<{
+    success: boolean;
+    message: string;
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          success: true,
+          message: 'Leadership transferred successfully'
+        }), 300);
+      });
+    }
+
+    const response = await apiClient.post(`/api/parties/${partyId}/transfer`, { currentLeaderId, newLeaderId });
+    return response.data;
+  },
+
+  /**
+   * Search for users by Twitch username
+   */
+  async searchUsers(username: string): Promise<{
+    success: boolean;
+    matches: Array<{
+      userId: string;
+      twitchUserId?: string; // Explicit twitchUserId field for whispers
+      username: string;
+      heroId: string;
+      heroName: string;
+      heroRole: string;
+      heroLevel: number;
+    }>;
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          success: true,
+          matches: []
+        }), 300);
+      });
+    }
+
+    const response = await apiClient.get('/api/parties/search', {
+      params: { username }
+    });
+    return response.data;
+  },
+
+  /**
+   * Queue entire party for dungeon or raid
+   */
+  async queueParty(partyId: string, queueType: 'dungeon' | 'raid', raidId?: string, dungeonType?: string): Promise<{
+    success: boolean;
+    queued: number;
+    total: number;
+    errors?: Array<{ userId: string; error: string }>;
+    message: string;
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          success: true,
+          queued: 5,
+          total: 5,
+          message: 'Successfully queued all party members'
+        }), 300);
+      });
+    }
+
+    const response = await apiClient.post(`/api/parties/${partyId}/queue`, {
+      queueType,
+      raidId,
+      dungeonType
+    });
+    return response.data;
+  },
+
+  /**
+   * Cancel party queue
+   */
+  async cancelQueue(partyId: string, userId: string): Promise<{
+    success: boolean;
+    message: string;
+    removed?: number;
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          success: true,
+          message: 'Queue cancelled successfully',
+          removed: 5
+        }), 300);
+      });
+    }
+
+    const response = await apiClient.post(`/api/parties/${partyId}/cancel-queue`, { userId });
+    return response.data;
+  },
+
+  /**
+   * Get pending invites for a user
+   */
+  async getInvites(userId: string): Promise<{
+    success: boolean;
+    invites: Array<{
+      id: string;
+      partyId: string;
+      inviterId: string;
+      inviterName?: string;
+      inviteeId: string;
+      inviteeName: string;
+      heroId: string;
+      heroName: string;
+      heroRole: string;
+      heroLevel: number;
+      status: string;
+      createdAt: number;
+      expiresAt: number | null;
+    }>;
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          success: true,
+          invites: []
+        }), 300);
+      });
+    }
+
+    const response = await apiClient.get(`/api/parties/invites/${userId}`);
+    return response.data;
+  }
+};
+
+/**
+ * Web Chat API
+ */
+export const webChatAPI = {
+  /**
+   * Send a chat message
+   */
+  async sendMessage(
+    userId: string,
+    heroId: string,
+    channel: 'party' | 'world' | 'whisper',
+    message: string,
+    partyId?: string,
+    recipientId?: string
+  ): Promise<{
+    success: boolean;
+    messageId?: string;
+    message?: any;
+    error?: string;
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          success: true,
+          messageId: 'mock-msg-1',
+          message: {
+            id: 'mock-msg-1',
+            channel,
+            userId,
+            heroId,
+            message,
+            timestamp: Date.now()
+          }
+        }), 300);
+      });
+    }
+
+    const response = await apiClient.post('/api/web-chat/send', {
+      userId,
+      heroId,
+      channel,
+      message,
+      partyId,
+      recipientId
+    });
+    return response.data;
+  },
+
+  /**
+   * Get chat history
+   */
+  async getHistory(
+    channel: 'party' | 'world' | 'whisper',
+    partyId?: string,
+    recipientId?: string,
+    heroId?: string,
+    limit: number = 50
+  ): Promise<{
+    success: boolean;
+    messages: Array<{
+      id: string;
+      channel: 'party' | 'world' | 'whisper';
+      userId: string;
+      username: string;
+      heroId: string;
+      heroName: string;
+      heroRole: string;
+      message: string;
+      timestamp: number;
+      partyId?: string;
+      recipientId?: string;
+      recipientHeroId?: string;
+      recipientHeroName?: string;
+    }>;
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          success: true,
+          messages: []
+        }), 300);
+      });
+    }
+
+    const params: any = { channel, limit };
+    if (partyId) params.partyId = partyId;
+    if (recipientId) params.recipientId = recipientId;
+    if (heroId) params.heroId = heroId;
+
+    const response = await apiClient.get('/api/web-chat/history', { params });
+    return response.data;
+  },
+
+  /**
+   * Block a user
+   */
+  async blockUser(userId: string, blockedUserId: string): Promise<{
+    success: boolean;
+    message: string;
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          success: true,
+          message: 'User blocked'
+        }), 300);
+      });
+    }
+
+    const response = await apiClient.post('/api/web-chat/block', {
+      userId,
+      blockedUserId
+    });
+    return response.data;
+  },
+
+  /**
+   * Unblock a user
+   */
+  async unblockUser(userId: string, blockedUserId: string): Promise<{
+    success: boolean;
+    message: string;
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          success: true,
+          message: 'User unblocked'
+        }), 300);
+      });
+    }
+
+    const response = await apiClient.delete('/api/web-chat/block', {
+      data: { userId, blockedUserId }
+    });
+    return response.data;
+  },
+
+  /**
+   * Get blocked users list
+   */
+  async getBlockedUsers(userId: string): Promise<{
+    success: boolean;
+    blockedUserIds: string[];
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          success: true,
+          blockedUserIds: []
+        }), 300);
+      });
+    }
+
+    const response = await apiClient.get(`/api/web-chat/blocks/${userId}`);
+    return response.data;
+  },
+
+  /**
+   * Report a user or message
+   */
+  async reportUser(
+    reporterId: string,
+    reportedUserId: string,
+    reason: 'spam' | 'harassment' | 'inappropriate' | 'other',
+    reportedMessageId?: string
+  ): Promise<{
+    success: boolean;
+    message: string;
+    reportId: string;
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          success: true,
+          message: 'Report submitted',
+          reportId: 'mock-report-id'
+        }), 300);
+      });
+    }
+
+    const response = await apiClient.post('/api/web-chat/report', {
+      reporterId,
+      reportedUserId,
+      reportedMessageId,
+      reason
+    });
+    return response.data;
+  },
+
+  /**
+   * Delete any message (admin only)
+   */
+  async deleteMessageAdmin(messageId: string, adminId: string): Promise<{
+    success: boolean;
+    message: string;
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          success: true,
+          message: 'Message deleted by admin'
+        }), 300);
+      });
+    }
+
+    const response = await apiClient.delete(`/api/web-chat/admin/message/${messageId}`, {
+      data: { userId: adminId }
+    });
+    return response.data;
+  },
+
+  /**
+   * Ban user from chat (admin only)
+   */
+  async banUser(
+    adminId: string,
+    bannedUserId: string,
+    duration?: number
+  ): Promise<{
+    success: boolean;
+    message: string;
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          success: true,
+          message: duration ? `User banned for ${duration} hours` : 'User permanently banned'
+        }), 300);
+      });
+    }
+
+    const response = await apiClient.post('/api/web-chat/admin/ban', {
+      adminId,
+      bannedUserId,
+      duration
+    });
+    return response.data;
+  },
+
+  /**
+   * Unban user from chat (admin only)
+   */
+  async unbanUser(adminId: string, bannedUserId: string): Promise<{
+    success: boolean;
+    message: string;
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          success: true,
+          message: 'User unbanned'
+        }), 300);
+      });
+    }
+
+    const response = await apiClient.delete(`/api/web-chat/admin/ban/${bannedUserId}`, {
+      data: { adminId }
+    });
+    return response.data;
+  },
+
+  /**
+   * Delete own message
+   */
+  async deleteMessage(messageId: string, userId: string): Promise<{
+    success: boolean;
+    message?: string;
+    error?: string;
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          success: true,
+          message: 'Message deleted'
+        }), 300);
+      });
+    }
+
+    const response = await apiClient.delete(`/api/web-chat/message/${messageId}`, {
+      data: { userId }
+    });
+    return response.data;
+  }
+};
+
+// Mail API
+export interface MailItem {
+  id: string;
+  itemId: string;
+  quantity?: number;
+}
+
+export interface Mail {
+  id: string;
+  senderId: string;
+  senderHeroId: string;
+  senderName: string;
+  recipientId: string;
+  subject: string;
+  message: string;
+  items?: Array<any>;
+  gold?: number;
+  tokens?: number;
+  codAmount?: number;
+  read: boolean;
+  claimed: boolean;
+  createdAt: number;
+  expiresAt?: number | null;
+  isExpired?: boolean;
+  daysUntilExpiry?: number;
+}
+
+export const mailAPI = {
+  /**
+   * Send mail to another player
+   */
+  async sendMail(
+    senderId: string,
+    senderHeroId: string,
+    recipientId: string,
+    subject: string,
+    message: string,
+    items?: MailItem[],
+    gold?: number,
+    tokens?: number,
+    codAmount?: number
+  ): Promise<{
+    success: boolean;
+    messageId: string;
+    message: string;
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          success: true,
+          messageId: 'mock-mail-id',
+          message: 'Mail sent successfully'
+        }), 300);
+      });
+    }
+
+    const response = await apiClient.post('/api/mail/send', {
+      senderId,
+      senderHeroId,
+      recipientId,
+      subject,
+      message,
+      items,
+      gold,
+      tokens,
+      codAmount: codAmount || 0
+    });
+    return response.data;
+  },
+
+  /**
+   * Get all mail for a user
+   */
+  async getMail(
+    userId: string,
+    unreadOnly?: boolean
+  ): Promise<{
+    success: boolean;
+    mails: Mail[];
+    unreadCount: number;
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          success: true,
+          mails: [],
+          unreadCount: 0
+        }), 300);
+      });
+    }
+
+    const response = await apiClient.get(`/api/mail/${userId}`, {
+      params: { unreadOnly }
+    });
+    return response.data;
+  },
+
+  /**
+   * Mark mail as read
+   */
+  async markAsRead(
+    mailId: string,
+    userId: string
+  ): Promise<{
+    success: boolean;
+    message: string;
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          success: true,
+          message: 'Mail marked as read'
+        }), 300);
+      });
+    }
+
+    const response = await apiClient.post(`/api/mail/${mailId}/read`, {
+      userId
+    });
+    return response.data;
+  },
+
+  /**
+   * Claim items/gold from mail (with COD payment if required)
+   */
+  async claimMail(
+    mailId: string,
+    userId: string,
+    heroId: string
+  ): Promise<{
+    success: boolean;
+    message: string;
+    codPaid: number;
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          success: true,
+          message: 'Mail claimed successfully',
+          codPaid: 0
+        }), 300);
+      });
+    }
+
+    const response = await apiClient.post(`/api/mail/${mailId}/claim`, {
+      userId,
+      heroId
+    });
+    return response.data;
+  },
+
+  /**
+   * Delete mail
+   */
+  async deleteMail(
+    mailId: string,
+    userId: string
+  ): Promise<{
+    success: boolean;
+    message: string;
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          success: true,
+          message: 'Mail deleted'
+        }), 300);
+      });
+    }
+
+    const response = await apiClient.delete(`/api/mail/${mailId}`, {
+      data: { userId }
+    });
     return response.data;
   }
 };

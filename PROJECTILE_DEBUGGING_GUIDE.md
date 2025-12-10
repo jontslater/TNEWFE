@@ -116,3 +116,4 @@ Look for:
 - `src/utils/projectiles.ts` - Projectile creation logic
 - `src/utils/spellEffects.ts` - Spell effect filters
 - `src/index.css` - CSS animations for gold/platinum
+

@@ -400,6 +400,17 @@ export const MINING_RECIPES = {
     effect: 'attackBonus',
     value: 0.20,
     applicableSlots: CRAFTED_ITEM_SLOTS.weapon
+  },
+  
+  // Socket Creation
+  gem_socket: {
+    name: 'Gem Socket',
+    tier: 3,
+    minProfessionLevel: 50,
+    cost: { ore: { mithril: 5, adamantite: 2 } },
+    description: 'Adds a socket to gear (requires 500g)',
+    effect: 'Adds socket to equipment',
+    applicableSlots: [] // Transferable item, not applied to gear directly
   }
 };
 

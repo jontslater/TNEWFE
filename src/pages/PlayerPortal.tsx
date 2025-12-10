@@ -23,6 +23,9 @@ import { getItemScore } from '../utils/format';
 import { CLASS_DATA } from '../data/classData';
 import { generateBrowserSourceUrl } from '../utils/browserSource';
 import BrowserSourceTab from '../components/BrowserSourceTab';
+import AuctionHousePage from './AuctionHousePage';
+import QuestsPage from './QuestsPage';
+import SocialSidebar from '../components/SocialSidebar';
 
 export default function PlayerPortal() {
   const navigate = useNavigate();
@@ -36,7 +39,7 @@ export default function PlayerPortal() {
   const { guild, loading: guildLoading, refetch: refetchGuild } = useGuild(hero?.id || null);
   const [raids, setRaids] = useState<Raid[]>([]);
   const [worldBoss, setWorldBoss] = useState<WorldBoss | null>(null);
-  const [activeTab, setActiveTab] = useState<'hero' | 'inventory' | 'profession' | 'guild' | 'raids' | 'skills' | 'dungeon' | 'browserSource' | 'achievements' | 'allHeroes'>('hero');
+  const [activeTab, setActiveTab] = useState<'hero' | 'inventory' | 'profession' | 'guild' | 'raids' | 'skills' | 'dungeon' | 'browserSource' | 'achievements' | 'allHeroes' | 'auction' | 'quests'>('hero');
   const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
   const [adminSelectedHero, setAdminSelectedHero] = useState<Hero | null>(null);
   const [showLoginReward, setShowLoginReward] = useState(false);
@@ -52,7 +55,7 @@ export default function PlayerPortal() {
     // Also check URL query params
     const params = new URLSearchParams(location.search);
     const tabParam = params.get('tab');
-    if (tabParam && ['hero', 'inventory', 'profession', 'guild', 'raids', 'skills', 'dungeon', 'browserSource', 'achievements', 'allHeroes'].includes(tabParam)) {
+    if (tabParam && ['hero', 'inventory', 'profession', 'guild', 'raids', 'skills', 'dungeon', 'browserSource', 'achievements', 'allHeroes', 'auction', 'quests'].includes(tabParam)) {
       setActiveTab(tabParam as any);
     }
   }, [location.state, location.search]);
@@ -370,6 +373,26 @@ export default function PlayerPortal() {
             >
               Browser Source
             </button>
+            <button
+              onClick={() => setActiveTab('auction')}
+              className={`px-6 py-4 font-semibold transition-colors border-b-2 ${
+                activeTab === 'auction'
+                  ? 'text-emerald-400 border-emerald-400'
+                  : 'text-gray-400 border-transparent hover:text-gray-300'
+              }`}
+            >
+              Auction House
+            </button>
+            <button
+              onClick={() => setActiveTab('quests')}
+              className={`px-6 py-4 font-semibold transition-colors border-b-2 relative ${
+                activeTab === 'quests'
+                  ? 'text-orange-400 border-orange-400'
+                  : 'text-gray-400 border-transparent hover:text-gray-300'
+              }`}
+            >
+              Quests
+            </button>
             {isAdmin && (
               <button
                 onClick={() => setActiveTab('allHeroes')}
@@ -389,25 +412,36 @@ export default function PlayerPortal() {
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Hero List Sidebar */}
-          {heroes && heroes.length > 0 && (
-            <div className="lg:col-span-3 space-y-4">
-              <div className="bg-gray-800 rounded-lg p-4 border border-gray-700 sticky top-4">
+          {/* Social Sidebar (Party & Chat) - Right side, always visible except on auction/quests */}
+          {activeTab !== 'auction' && activeTab !== 'quests' && (
+            <div className="lg:col-span-3 order-3 lg:order-3">
+              <SocialSidebar 
+                hero={hero}
+                onPartyUpdate={() => {
+                  // Refresh party data if needed
+                }}
+              />
+            </div>
+          )}
+          {/* Hero List Sidebar - Left side, hidden on auction and quests tabs */}
+          {heroes && heroes.length > 0 && activeTab !== 'auction' && activeTab !== 'quests' && (
+            <div className="lg:col-span-3 space-y-4 order-1 lg:order-1">
+              <div className="bg-gray-800 rounded-lg p-5 border border-gray-700 sticky top-4">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-xl font-bold text-white">Your Heroes</h2>
-                  <span className="text-sm text-gray-400">
+                  <span className="text-sm text-gray-400 font-semibold">
                     {heroes.length}/20
                   </span>
                 </div>
                 {heroes.length < 20 && (
                   <button
                     onClick={() => navigate('/create-hero')}
-                    className="w-full mb-4 px-4 py-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-semibold rounded-lg transition-all transform hover:scale-105"
+                    className="w-full mb-4 px-4 py-2.5 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-semibold rounded-lg transition-all transform hover:scale-105"
                   >
                     + Create Hero
                   </button>
                 )}
-                <div className="space-y-3 max-h-[calc(100vh-200px)] overflow-y-auto">
+                <div className="space-y-3 max-h-[calc(100vh-220px)] overflow-y-auto">
                   {heroes.map((h, idx) => {
                     const isSelected = h.id === hero.id;
                     const key = `${h.id}-${(h as any).characterId || h.role || idx}`;
@@ -442,31 +476,40 @@ export default function PlayerPortal() {
                           </div>
                         )}
                         <div className="flex items-center justify-between mb-2">
-                          <div className="text-lg font-semibold text-white">{h.name}</div>
-                          <span className="text-gray-400 text-sm">Lv {h.level}</span>
+                          <div className="text-base font-semibold text-white truncate pr-2">{h.name}</div>
+                          <span className="text-gray-400 text-sm font-semibold whitespace-nowrap">Lv {h.level}</span>
                         </div>
-                        <div className="flex items-center space-x-2 text-sm mb-2 flex-wrap gap-1">
+                        <div className="flex items-center gap-2 mb-2 flex-wrap">
                           <span className={`px-2 py-1 rounded text-xs font-semibold ${categoryColors[category as keyof typeof categoryColors]}`}>
                             {categoryLabels[category as keyof typeof categoryLabels]}
                           </span>
-                          <span className="px-2 py-1 rounded bg-gray-700 text-gray-200 text-xs">
+                          <span className="px-2 py-1 rounded bg-gray-700 text-gray-200 text-xs font-medium">
                             {h.role}
                           </span>
                         </div>
-                        <div className="flex items-center space-x-3 text-xs text-gray-400 mb-2">
-                          <span className="text-yellow-400">
-                            {Math.round(h.maxHp)} HP
-                          </span>
-                          <span className="text-blue-400">
-                            {h.attack} ATK
-                          </span>
-                          <span className="text-green-400">
-                            {h.defense} DEF
-                          </span>
+                        <div className="grid grid-cols-3 gap-2 text-xs mb-2">
+                          <div className="text-center">
+                            <div className="text-yellow-400 font-semibold">
+                              {Math.round(h.maxHp).toLocaleString()}
+                            </div>
+                            <div className="text-gray-500 text-[10px]">HP</div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-blue-400 font-semibold">
+                              {h.attack.toLocaleString()}
+                            </div>
+                            <div className="text-gray-500 text-[10px]">ATK</div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-green-400 font-semibold">
+                              {h.defense.toLocaleString()}
+                            </div>
+                            <div className="text-gray-500 text-[10px]">DEF</div>
+                          </div>
                         </div>
                         <div className="flex items-center justify-between text-xs mb-2 pt-2 border-t border-gray-700">
                           <span className="text-gray-400">Gear Score:</span>
-                          <span className="text-yellow-400 font-semibold">⚡ {gearScore}</span>
+                          <span className="text-yellow-400 font-semibold">⚡ {gearScore.toLocaleString()}</span>
                         </div>
                         {isSelected && (
                           <div className="mt-2 pt-2 border-t border-gray-700">
@@ -514,7 +557,13 @@ export default function PlayerPortal() {
           )}
           
           {/* Main Content Area */}
-          <div className={`space-y-6 ${heroes && heroes.length > 0 ? 'lg:col-span-9' : 'lg:col-span-12'}`}>
+          <div className={`space-y-6 order-2 lg:order-2 ${
+            (heroes && heroes.length > 0 && activeTab !== 'auction' && activeTab !== 'quests') 
+              ? 'lg:col-span-6' 
+              : activeTab === 'auction' || activeTab === 'quests'
+              ? 'lg:col-span-12'
+              : 'lg:col-span-9'
+          }`}>
             {activeTab === 'hero' && (
               <HeroDashboard 
                 hero={hero} 
@@ -561,16 +610,6 @@ export default function PlayerPortal() {
                 refetchHero();
               } catch (error: any) {
                 alert(error.response?.data?.error || 'Failed to apply upgrade');
-              }
-            }}
-            onUseConsumable={async (itemId) => {
-              const heroId = hero?.id || user?.id;
-              if (!heroId) return;
-              try {
-                await heroAPI.useElixir(heroId, itemId);
-                refetchHero();
-              } catch (error: any) {
-                alert(error.response?.data?.error || 'Failed to use item');
               }
             }}
             onUpgradeItem={async (itemId, selectedStats) => {
@@ -648,6 +687,45 @@ export default function PlayerPortal() {
                 userId={user?.twitchId || user?.id} 
                 token={localStorage.getItem('auth_token')}
               />
+            )}
+            {activeTab === 'quests' && (
+              <QuestsPage />
+            )}
+            {activeTab === 'auction' && (
+              <div className="space-y-4">
+                {/* Compact Hero Selector for Auction House */}
+                {heroes && heroes.length > 0 ? (
+                  <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+                    <label className="block text-gray-400 mb-2 text-sm font-semibold">
+                      {heroes.length > 1 ? 'Select Hero' : 'Current Hero'}
+                    </label>
+                    <select
+                      value={hero?.id || ''}
+                      onChange={(e) => selectHero(e.target.value)}
+                      disabled={heroes.length === 1}
+                      className="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {heroes.map((h) => (
+                        <option key={h.id} value={h.id}>
+                          {h.name} (Level {h.level || 1}) {h.role ? `- ${h.role}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    {hero && (
+                      <div className="mt-2 text-xs text-gray-500">
+                        Viewing inventory for: <span className="text-blue-400">{hero.name}</span>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+                    <div className="text-gray-400 text-sm">No heroes available. Create a hero to use the auction house.</div>
+                  </div>
+                )}
+                {hero && (
+                  <AuctionHousePage heroId={hero.id} />
+                )}
+              </div>
             )}
 
             {activeTab === 'allHeroes' && isAdmin && (
@@ -778,11 +856,6 @@ export default function PlayerPortal() {
                 )}
               </div>
             )}
-          </div>
-
-          {/* Sidebar - Quest Tracker */}
-          <div className="lg:col-span-1">
-            <QuestTracker />
           </div>
         </div>
       </main>
@@ -1009,12 +1082,34 @@ function DungeonFinderTab({ hero, userId, onQueueChange }: any) {
                 <div>Queue Time: <span className="text-white font-semibold">{Math.floor((Date.now() - (queueStatus?.queueTime || Date.now())) / 1000)}s</span></div>
                 {queueStatus?.roleCounts && (
                   <div className="mt-3 pt-3 border-t border-orange-700">
-                    <div className="font-semibold text-orange-300 mb-2">Queue Status:</div>
+                    <div className="font-semibold text-orange-300 mb-2">Queue Status (Need: 1 Tank, 1 Healer, 3 DPS):</div>
                     <div className="grid grid-cols-3 gap-2 text-xs">
-                      <div>Tanks: <span className="text-white">{queueStatus.roleCounts.tank || 0}</span></div>
-                      <div>Healers: <span className="text-white">{queueStatus.roleCounts.healer || 0}</span></div>
-                      <div>DPS: <span className="text-white">{queueStatus.roleCounts.dps || 0}</span></div>
+                      <div className="flex items-center justify-between">
+                        <span>🛡️ Tanks:</span>
+                        <span className={`font-bold ${(queueStatus.roleCounts.tank || 0) >= 1 ? 'text-green-400' : 'text-red-400'}`}>
+                          {queueStatus.roleCounts.tank || 0}/1
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span>💚 Healers:</span>
+                        <span className={`font-bold ${(queueStatus.roleCounts.healer || 0) >= 1 ? 'text-green-400' : 'text-red-400'}`}>
+                          {queueStatus.roleCounts.healer || 0}/1
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span>⚔️ DPS:</span>
+                        <span className={`font-bold ${(queueStatus.roleCounts.dps || 0) >= 3 ? 'text-green-400' : 'text-red-400'}`}>
+                          {queueStatus.roleCounts.dps || 0}/3
+                        </span>
+                      </div>
                     </div>
+                    {(queueStatus.roleCounts.tank || 0) >= 1 && 
+                     (queueStatus.roleCounts.healer || 0) >= 1 && 
+                     (queueStatus.roleCounts.dps || 0) >= 3 && (
+                      <div className="mt-3 p-2 bg-green-900/50 border border-green-600 rounded text-green-300 text-center text-xs font-semibold animate-pulse">
+                        ✅ Group Ready! Matchmaking will form group now...
+                      </div>
+                    )}
                   </div>
                 )}
                 {queueStatus?.estimatedWait && (

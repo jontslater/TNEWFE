@@ -43,3 +43,4 @@ The console shows `message: 'Item upgraded to level 54!'` which is wrong. The ba
 - `Item upgraded to +2!`
 
 This suggests the backend might be using a different endpoint or there's a version mismatch. However, the upgrade should still work if `result.item` contains the correct `upgradeLevel` and `upgradeStats`.
+

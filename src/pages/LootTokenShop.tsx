@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { apiClient } from '../api/client';
+import { getRarityHexColor } from '../utils/format';
 
 interface LootTokenBalance {
   userId: string;
@@ -146,9 +147,10 @@ export default function LootTokenShop() {
       common: '#9e9e9e',
       rare: '#2196f3',
       epic: '#9c27b0',
-      legendary: '#ff9800'
+      legendary: '#ff9800',
+      mythic: '#ef4444' // Red for mythic
     };
-    return colors[rarity] || '#ffffff';
+    return colors[rarity] || getRarityHexColor(rarity);
   };
 
   return (
@@ -185,7 +187,7 @@ export default function LootTokenShop() {
               key={item.id}
               className="bg-gray-800 rounded-lg p-6 border-2"
               style={{
-                borderColor: getRarityColor(item.rarity),
+                borderColor: item.color || getRarityHexColor(item.rarity),
                 opacity: canAfford ? 1 : 0.6
               }}
             >
@@ -227,6 +229,3 @@ export default function LootTokenShop() {
     </div>
   );
 }
-
-
-

@@ -53,3 +53,4 @@ Each hero is a separate document with its own ID!
 ---
 
 **Next:** Fix badge update to use `hero.id` instead of user ID
+

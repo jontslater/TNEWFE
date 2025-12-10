@@ -42,11 +42,48 @@ export function useWebSocket(twitchId: string | null, onMessage?: (message: WebS
           setConnected(true);
           reconnectAttempts.current = 0;
           wsRef.current = ws;
+          
+          // Set up client-side ping to keep connection alive (every 25 seconds)
+          // This is in addition to server-side keepalive
+          const pingInterval = setInterval(() => {
+            if (ws.readyState === WebSocket.OPEN) {
+              try {
+                ws.send(JSON.stringify({ type: 'ping' }));
+              } catch (error) {
+                console.error('[useWebSocket] Error sending ping:', error);
+                clearInterval(pingInterval);
+              }
+            } else {
+              clearInterval(pingInterval);
+            }
+          }, 25000); // 25 seconds (slightly less than server's 30s keepalive)
+          
+          // Store interval ID on the WebSocket for cleanup
+          (ws as any).pingInterval = pingInterval;
         };
 
         ws.onmessage = (event) => {
           try {
+            // Handle binary ping frames (browser WebSocket auto-responds, but log for debugging)
+            if (event.data instanceof Blob || event.data instanceof ArrayBuffer) {
+              console.log('[useWebSocket] Received binary frame (ping/pong)');
+              return;
+            }
+            
             const message = JSON.parse(event.data);
+            
+            // Handle JSON ping/pong messages
+            if (message.type === 'ping') {
+              console.log('[useWebSocket] Received ping, sending pong');
+              ws.send(JSON.stringify({ type: 'pong' }));
+              return;
+            }
+            
+            if (message.type === 'pong') {
+              console.log('[useWebSocket] Received pong');
+              return;
+            }
+            
             console.log('📨 WebSocket message received:', message);
             if (onMessageRef.current) {
               onMessageRef.current(message);
@@ -60,10 +97,22 @@ export function useWebSocket(twitchId: string | null, onMessage?: (message: WebS
           console.error('❌ WebSocket error:', error);
         };
 
-        ws.onclose = () => {
-          console.log('🔌 WebSocket disconnected');
+        ws.onclose = (event) => {
+          console.log(`🔌 WebSocket disconnected (code: ${event.code}, reason: ${event.reason || 'none'}, wasClean: ${event.wasClean})`);
           setConnected(false);
+          
+          // Clear ping interval if it exists
+          if ((ws as any).pingInterval) {
+            clearInterval((ws as any).pingInterval);
+          }
+          
           wsRef.current = null;
+
+          // Don't reconnect if it was a clean close (user-initiated or intentional)
+          if (event.code === 1000 || event.code === 1001) {
+            console.log('[useWebSocket] Clean close, not reconnecting');
+            return;
+          }
 
           // Attempt to reconnect with exponential backoff
           if (reconnectAttempts.current < 5) {

@@ -65,3 +65,4 @@ Now when you upgrade with "+10% Attack":
 - **After:** 10% of hero's total attack (e.g., 100) = +10 attack bonus
 
 Upgrades now always provide meaningful bonuses based on the hero's total stats!
+

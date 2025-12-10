@@ -228,29 +228,6 @@ export default function LeaderboardsPage() {
           </div>
         </div>
       )}
-
-      {/* Category Cards */}
-      <div className="mt-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {categories.map(cat => (
-          <button
-            key={cat.id}
-            onClick={() => setCategory(cat.id as any)}
-            className={`p-4 rounded-lg border-2 transition-all ${
-              category === cat.id
-                ? 'bg-blue-900/30 border-blue-600'
-                : 'bg-gray-800 border-gray-700 hover:border-gray-600'
-            }`}
-          >
-            <div className="text-2xl mb-2">{cat.icon}</div>
-            <div className="text-white font-semibold">{cat.name}</div>
-            {userRankings[cat.id] && (
-              <div className="text-sm text-gray-400 mt-1">
-                Rank #{userRankings[cat.id].rank}
-              </div>
-            )}
-          </button>
-        ))}
-      </div>
     </div>
   );
 }

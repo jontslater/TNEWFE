@@ -65,3 +65,4 @@ Each hero is completely independent!
 ---
 
 **The 404 error should now be resolved! The backend will receive the correct hero document ID.**
+

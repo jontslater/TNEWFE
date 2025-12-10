@@ -27,7 +27,59 @@ const FOUNDER_BADGES = [
 
 export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: HeroDashboardProps) {
   const { user } = useAuth();
-  const isAdmin = user?.twitchUsername?.toLowerCase() === 'theneverendingwar';
+  
+  // STRICT ADMIN CHECK - Only 'theneverendingwar' gets admin access
+  const twitchUsername = user?.twitchUsername?.toLowerCase()?.trim();
+  const isAdmin = twitchUsername === 'theneverendingwar';
+  
+  // Founder pack tier access control
+  const heroTier = (hero as any).founderPackTier || null;
+  const tierOrder = { bronze: 1, silver: 2, gold: 3, platinum: 4 };
+  const heroTierLevel = heroTier ? tierOrder[heroTier as keyof typeof tierOrder] : 0;
+  
+  // Feature access checks (based on tier requirements)
+  const hasNameColorAccess = isAdmin || heroTierLevel >= 1; // Bronze+
+  const hasNameFrameAccess = isAdmin || heroTierLevel >= 2; // Silver+
+  const hasAuraAccess = isAdmin || heroTierLevel >= 3; // Gold+
+  const hasSpellEffectAccess = isAdmin || heroTierLevel >= 3; // Gold+
+  
+  // Filter available options based on tier
+  const availableBadges = isAdmin 
+    ? FOUNDER_BADGES 
+    : FOUNDER_BADGES.filter(badge => {
+        if (badge.id === 'none') return true;
+        const badgeTier = badge.id as keyof typeof tierOrder;
+        const badgeTierLevel = tierOrder[badgeTier] || 0;
+        return heroTierLevel >= badgeTierLevel;
+      });
+  
+  const availableNameFrames = isAdmin
+    ? NAME_FRAMES
+    : NAME_FRAMES.filter(frame => {
+        if (frame.value === null || frame.value === 'none') return true;
+        const frameTier = frame.value as keyof typeof tierOrder;
+        const frameTierLevel = tierOrder[frameTier] || 0;
+        return heroTierLevel >= frameTierLevel;
+      });
+  
+  const availableAuras = isAdmin
+    ? AURA_EFFECTS
+    : AURA_EFFECTS.filter(aura => {
+        if (aura.value === null || aura.value === 'none') return true;
+        const auraTier = aura.value as keyof typeof tierOrder;
+        const auraTierLevel = tierOrder[auraTier] || 0;
+        return heroTierLevel >= auraTierLevel;
+      });
+  
+  const availableSpellEffects = isAdmin
+    ? SPELL_EFFECTS
+    : SPELL_EFFECTS.filter(effect => {
+        if (effect.value === null || effect.value === 'none') return true;
+        const effectTier = effect.value as keyof typeof tierOrder;
+        const effectTierLevel = tierOrder[effectTier] || 0;
+        return heroTierLevel >= effectTierLevel;
+      });
+  
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [availableTitles, setAvailableTitles] = useState<string[]>([]);
@@ -44,6 +96,23 @@ export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: Hero
   const hpPercent = (hero.hp / hero.maxHp) * 100;
   const xpPercent = (Math.floor(hero.xp) / Math.floor(hero.maxXp)) * 100;
   const itemScore = getItemScore(hero.equipment);
+  
+  // Warn if hero has founder features but no founderPackTier
+  useEffect(() => {
+    if (!isAdmin && heroTier === null && (hero.founderBadge || hero.nameColor || hero.nameFrame || hero.auraEffect || hero.spellEffect)) {
+      console.warn('[HeroDashboard] ⚠️ SECURITY WARNING: Hero has founder features but no founderPackTier purchase:', {
+        heroName: hero.name,
+        heroId: hero.id,
+        twitchUsername,
+        founderBadge: hero.founderBadge,
+        nameColor: hero.nameColor,
+        nameFrame: hero.nameFrame,
+        auraEffect: hero.auraEffect,
+        spellEffect: hero.spellEffect,
+        founderPackTier: heroTier
+      });
+    }
+  }, [hero, heroTier, isAdmin, twitchUsername]);
 
   useEffect(() => {
     loadAchievementsData();
@@ -92,6 +161,20 @@ export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: Hero
 
   const handleBadgeChange = async (badgePath: string | null) => {
     if (updatingBadge || !hero?.id) return;
+    
+    // Check access before allowing change
+    if (badgePath) {
+      const selectedBadge = FOUNDER_BADGES.find(b => b.path === badgePath);
+      if (selectedBadge && selectedBadge.id !== 'none') {
+        const badgeTier = selectedBadge.id as keyof typeof tierOrder;
+        const badgeTierLevel = tierOrder[badgeTier] || 0;
+        if (!isAdmin && (heroTier === null || heroTierLevel < badgeTierLevel)) {
+          alert(`This badge requires a ${selectedBadge.name} or higher tier founder pack purchase.\n\nYou must purchase a Founder Pack to unlock badges.`);
+          return;
+        }
+      }
+    }
+    
     setUpdatingBadge(true);
     try {
       await heroAPI.updateHeroById(hero.id, { founderBadge: badgePath });
@@ -110,6 +193,13 @@ export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: Hero
 
   const handleNameColorChange = async (color: string | null) => {
     if (updatingNameColor || !hero?.id) return;
+    
+    // Check access before allowing change
+    if (color && !hasNameColorAccess) {
+      alert('Name Color customization requires a Bronze Founder Pack or higher.\n\nPurchase a Founder Pack to unlock this feature.');
+      return;
+    }
+    
     setUpdatingNameColor(true);
     try {
       await heroAPI.updateHeroById(hero.id, { nameColor: color });
@@ -128,6 +218,13 @@ export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: Hero
 
   const handleNameFrameChange = async (frame: NameFrameType) => {
     if (updatingNameFrame || !hero?.id) return;
+    
+    // Check access before allowing change
+    if (frame && !hasNameFrameAccess) {
+      alert('Name Frame customization requires a Silver Founder Pack or higher.\n\nPurchase a Founder Pack to unlock this feature.');
+      return;
+    }
+    
     setUpdatingNameFrame(true);
     try {
       await heroAPI.updateHeroById(hero.id, { nameFrame: frame });
@@ -146,6 +243,13 @@ export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: Hero
 
   const handleAuraEffectChange = async (aura: AuraEffectType) => {
     if (updatingAuraEffect || !hero?.id) return;
+    
+    // Check access before allowing change
+    if (aura && !hasAuraAccess) {
+      alert('Aura Effect requires a Gold Founder Pack or higher.\n\nPurchase a Founder Pack to unlock this feature.');
+      return;
+    }
+    
     setUpdatingAuraEffect(true);
     try {
       await heroAPI.updateHeroById(hero.id, { auraEffect: aura });
@@ -232,21 +336,40 @@ export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: Hero
 
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 overflow-x-hidden max-w-full">
       {/* Hero Header */}
       <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-lg p-6 shadow-lg border border-gray-700">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-4">
           <div className="flex items-center space-x-4">
             <div className="w-20 h-20 bg-gray-700 rounded-full flex items-center justify-center text-4xl">
               {hero.isDead ? '💀' : '⚔️'}
             </div>
             <div>
               <h2 className="text-3xl font-bold" style={{ color: hero.nameColor || 'white' }}>{hero.name}</h2>
-              <div className="flex items-center space-x-2 mt-1">
+              <div className="flex items-center space-x-2 mt-1 flex-wrap gap-2">
                 <span className={`px-3 py-1 rounded text-sm font-semibold ${getRoleBg(hero.role)} text-white`}>
                   {hero.role}
                 </span>
                 <span className="text-gray-400">Level {hero.level}</span>
+                {user?.twitchUsername && (
+                  <>
+                    <span className="text-gray-400">•</span>
+                    <div className="flex items-center gap-1 group">
+                      <span className="text-gray-400 text-sm">Twitch:</span>
+                      <span 
+                        className="text-blue-400 text-sm font-mono cursor-pointer hover:text-blue-300"
+                        onClick={() => {
+                          navigator.clipboard.writeText(user.twitchUsername || '');
+                          alert('Twitch username copied!');
+                        }}
+                        title="Click to copy"
+                      >
+                        {user.twitchUsername}
+                      </span>
+                      <span className="text-gray-500 text-xs opacity-0 group-hover:opacity-100 transition-opacity">📋</span>
+                    </div>
+                  </>
+                )}
                 {hero.profession && (
                   <>
                     <span className="text-gray-400">•</span>
@@ -278,14 +401,17 @@ export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: Hero
               <div className="mt-3">
                 <label className="text-xs text-gray-400 block mb-1">
                   ⭐ Founder Badge {isAdmin && <span className="text-yellow-400">(Admin: All Available)</span>}
+                  {!isAdmin && !heroTier && <span className="text-red-400 text-xs ml-2">(Requires Founder Pack)</span>}
                 </label>
                 <select
                   value={hero.founderBadge || ''}
                   onChange={(e) => handleBadgeChange(e.target.value || null)}
-                  disabled={updatingBadge}
-                  className="bg-gray-700 text-white px-3 py-1 rounded text-sm border border-gray-600 focus:outline-none focus:border-amber-400 disabled:opacity-50 disabled:cursor-not-allowed w-full"
+                  disabled={updatingBadge || (!isAdmin && !heroTier)}
+                  className={`bg-gray-700 text-white px-3 py-1 rounded text-sm border border-gray-600 focus:outline-none focus:border-amber-400 disabled:opacity-50 disabled:cursor-not-allowed w-full ${
+                    !isAdmin && !heroTier ? 'cursor-not-allowed' : ''
+                  }`}
                 >
-                  {FOUNDER_BADGES.map(badge => (
+                  {availableBadges.map(badge => (
                     <option key={badge.id} value={badge.path || ''}>
                       {badge.name}
                     </option>
@@ -294,20 +420,25 @@ export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: Hero
                 {updatingBadge && (
                   <span className="text-xs text-gray-500 mt-1 block">Updating badge...</span>
                 )}
+                {!isAdmin && !heroTier && (
+                  <span className="text-xs text-gray-500 mt-1 block">Purchase a Founder Pack to unlock badges</span>
+                )}
               </div>
               {/* Name Color Picker */}
               <div className="mt-3">
                 <label className="text-xs text-gray-400 block mb-1">
-                  🎨 Name Color {isAdmin && <span className="text-yellow-400">(Admin: All Available)</span>}
+                  🎨 Name Color 
+                  {isAdmin && <span className="text-yellow-400"> (Admin: All Available)</span>}
+                  {!hasNameColorAccess && <span className="text-red-400 text-xs ml-2">(Requires Bronze+ Founder Pack)</span>}
                 </label>
                 <div className="flex items-center gap-2">
                   <input
                     type="color"
                     value={tempNameColor !== null ? tempNameColor : (hero.nameColor || '#ffffff')}
                     onChange={(e) => setTempNameColor(e.target.value)}
-                    disabled={updatingNameColor}
+                    disabled={updatingNameColor || !hasNameColorAccess}
                     className="w-12 h-8 rounded border border-gray-600 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="Pick a color for your hero name"
+                    title={hasNameColorAccess ? "Pick a color for your hero name" : "Requires Bronze+ Founder Pack"}
                   />
                   <input
                     type="text"
@@ -318,7 +449,7 @@ export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: Hero
                         setTempNameColor(color || null);
                       }
                     }}
-                    disabled={updatingNameColor}
+                    disabled={updatingNameColor || !hasNameColorAccess}
                     placeholder="#FFFFFF"
                     className="flex-1 bg-gray-700 text-white px-3 py-1 rounded text-sm border border-gray-600 focus:outline-none focus:border-amber-400 disabled:opacity-50 disabled:cursor-not-allowed"
                     pattern="^#[0-9A-Fa-f]{6}$"
@@ -335,6 +466,7 @@ export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: Hero
                     }}
                     disabled={
                       updatingNameColor || 
+                      !hasNameColorAccess ||
                       tempNameColor === null || 
                       tempNameColor === (hero.nameColor || '#ffffff')
                     }
@@ -343,7 +475,7 @@ export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: Hero
                   >
                     Save
                   </button>
-                  {(hero.nameColor || tempNameColor) && (
+                  {(hero.nameColor || tempNameColor) && hasNameColorAccess && (
                     <button
                       onClick={() => {
                         handleNameColorChange(null);
@@ -367,15 +499,17 @@ export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: Hero
               {/* Name Frame Selection */}
               <div className="mt-3">
                 <label className="text-xs text-gray-400 block mb-1">
-                  🖼️ Name Frame {isAdmin && <span className="text-yellow-400">(Admin: All Available)</span>}
+                  🖼️ Name Frame 
+                  {isAdmin && <span className="text-yellow-400"> (Admin: All Available)</span>}
+                  {!hasNameFrameAccess && <span className="text-red-400 text-xs ml-2">(Requires Silver+ Founder Pack)</span>}
                 </label>
                 <select
                   value={hero.nameFrame || 'none'}
                   onChange={(e) => handleNameFrameChange(e.target.value === 'none' ? null : (e.target.value as NameFrameType))}
-                  disabled={updatingNameFrame}
+                  disabled={updatingNameFrame || !hasNameFrameAccess}
                   className="bg-gray-700 text-white px-3 py-1 rounded text-sm border border-gray-600 focus:outline-none focus:border-amber-400 disabled:opacity-50 disabled:cursor-not-allowed w-full"
                 >
-                  {NAME_FRAMES.map(frame => (
+                  {availableNameFrames.map(frame => (
                     <option key={frame.id} value={frame.value || 'none'}>
                       {frame.name}
                     </option>
@@ -384,19 +518,24 @@ export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: Hero
                 {updatingNameFrame && (
                   <span className="text-xs text-gray-500 mt-1 block">Updating frame...</span>
                 )}
+                {!hasNameFrameAccess && (
+                  <span className="text-xs text-gray-500 mt-1 block">Purchase a Silver+ Founder Pack to unlock name frames</span>
+                )}
               </div>
               {/* Aura Effect Selection */}
               <div className="mt-3">
                 <label className="text-xs text-gray-400 block mb-1">
-                  ✨ Aura Effect {isAdmin && <span className="text-yellow-400">(Admin: All Available)</span>}
+                  ✨ Aura Effect 
+                  {isAdmin && <span className="text-yellow-400"> (Admin: All Available)</span>}
+                  {!hasAuraAccess && <span className="text-red-400 text-xs ml-2">(Requires Gold+ Founder Pack)</span>}
                 </label>
                 <select
                   value={hero.auraEffect || 'none'}
                   onChange={(e) => handleAuraEffectChange(e.target.value === 'none' ? null : (e.target.value as AuraEffectType))}
-                  disabled={updatingAuraEffect}
+                  disabled={updatingAuraEffect || !hasAuraAccess}
                   className="bg-gray-700 text-white px-3 py-1 rounded text-sm border border-gray-600 focus:outline-none focus:border-amber-400 disabled:opacity-50 disabled:cursor-not-allowed w-full"
                 >
-                  {AURA_EFFECTS.map(aura => (
+                  {availableAuras.map(aura => (
                     <option key={aura.id} value={aura.value || 'none'}>
                       {aura.name}
                     </option>
@@ -404,6 +543,9 @@ export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: Hero
                 </select>
                 {updatingAuraEffect && (
                   <span className="text-xs text-gray-500 mt-1 block">Updating aura...</span>
+                )}
+                {!hasAuraAccess && (
+                  <span className="text-xs text-gray-500 mt-1 block">Purchase a Gold+ Founder Pack to unlock aura effects</span>
                 )}
               </div>
               {/* Aura Color Picker - Only show if aura effect is selected */}
@@ -426,9 +568,9 @@ export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: Hero
                         }
                       })())}
                       onChange={(e) => setTempAuraColor(e.target.value)}
-                      disabled={updatingAuraColor}
+                      disabled={updatingAuraColor || !hasAuraAccess}
                       className="w-12 h-8 rounded border border-gray-600 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                      title="Pick a custom color for your aura glow"
+                      title={hasAuraAccess ? "Pick a custom color for your aura glow" : "Requires Gold+ Founder Pack"}
                     />
                     <input
                       type="text"
@@ -448,14 +590,14 @@ export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: Hero
                           setTempAuraColor(color || null);
                         }
                       }}
-                      disabled={updatingAuraColor}
+                      disabled={updatingAuraColor || !hasAuraAccess}
                       placeholder="#FFD700"
                       className="flex-1 bg-gray-700 text-white px-3 py-1 rounded text-sm border border-gray-600 focus:outline-none focus:border-amber-400 disabled:opacity-50 disabled:cursor-not-allowed"
                       pattern="^#[0-9A-Fa-f]{6}$"
                     />
                     <button
                       onClick={() => handleAuraColorChange(tempAuraColor)}
-                      disabled={updatingAuraColor || tempAuraColor === (hero.auraColor || null)}
+                      disabled={updatingAuraColor || !hasAuraAccess || tempAuraColor === (hero.auraColor || null)}
                       className="bg-amber-600 hover:bg-amber-700 text-white px-3 py-1 rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
                       Save
@@ -464,30 +606,34 @@ export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: Hero
                   {updatingAuraColor && (
                     <span className="text-xs text-gray-500 mt-1 block">Saving aura color...</span>
                   )}
-                  <button
-                    onClick={() => {
-                      setTempAuraColor(null);
-                      handleAuraColorChange(null);
-                    }}
-                    disabled={updatingAuraColor || !hero.auraColor}
-                    className="text-xs text-gray-400 hover:text-gray-300 mt-1 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Reset to default tier color
-                  </button>
+                  {hasAuraAccess && (
+                    <button
+                      onClick={() => {
+                        setTempAuraColor(null);
+                        handleAuraColorChange(null);
+                      }}
+                      disabled={updatingAuraColor || !hero.auraColor}
+                      className="text-xs text-gray-400 hover:text-gray-300 mt-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Reset to default tier color
+                    </button>
+                  )}
                 </div>
               )}
               {/* Spell Effect Selection */}
               <div className="mt-3">
                 <label className="text-xs text-gray-400 block mb-1">
-                  ⚡ Spell Effect {isAdmin && <span className="text-yellow-400">(Admin: All Available)</span>}
+                  ⚡ Spell Effect 
+                  {isAdmin && <span className="text-yellow-400"> (Admin: All Available)</span>}
+                  {!hasSpellEffectAccess && <span className="text-red-400 text-xs ml-2">(Requires Gold+ Founder Pack)</span>}
                 </label>
                 <select
                   value={hero.spellEffect || 'none'}
                   onChange={(e) => handleSpellEffectChange(e.target.value === 'none' ? null : (e.target.value as SpellEffectType))}
-                  disabled={updatingSpellEffect}
+                  disabled={updatingSpellEffect || !hasSpellEffectAccess}
                   className="bg-gray-700 text-white px-3 py-1 rounded text-sm border border-gray-600 focus:outline-none focus:border-amber-400 disabled:opacity-50 disabled:cursor-not-allowed w-full"
                 >
-                  {SPELL_EFFECTS.map(effect => (
+                  {availableSpellEffects.map(effect => (
                     <option key={effect.id} value={effect.value || 'none'}>
                       {effect.name}
                     </option>
@@ -496,15 +642,20 @@ export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: Hero
                 {updatingSpellEffect && (
                   <span className="text-xs text-gray-500 mt-1 block">Updating spell effect...</span>
                 )}
-                <p className="text-xs text-gray-500 mt-1">
-                  Enhances projectiles and ranged attacks
-                </p>
+                {!hasSpellEffectAccess && (
+                  <span className="text-xs text-gray-500 mt-1 block">Purchase a Gold+ Founder Pack to unlock spell effects</span>
+                )}
+                {hasSpellEffectAccess && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Enhances projectiles and ranged attacks
+                  </p>
+                )}
               </div>
             </div>
           </div>
           
           {/* Hero Sprite Preview */}
-          <div className="flex flex-col items-center justify-center px-6" style={{ minWidth: '200px' }}>
+          <div className="flex flex-col items-center justify-center px-6" style={{ minWidth: '200px', maxWidth: '100%' }}>
             <div className="relative" style={{ width: '150px', height: '200px' }}>
               {/* Sprite Container */}
               <div 
@@ -625,6 +776,38 @@ export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: Hero
                 <div className="text-xs text-gray-400">Tokens</div>
               </div>
             </div>
+            {/* Founder Pack Earning Boosts */}
+            {heroTier && (
+              <div className="mt-2 p-2 bg-amber-900/30 border border-amber-700/50 rounded text-left">
+                <div className="text-xs font-semibold text-amber-400 mb-1">⭐ Founder Pack Benefits</div>
+                <div className="text-xs text-gray-300 space-y-0.5">
+                  {heroTier === 'bronze' && (
+                    <>
+                      <div>💰 +10% Gold from kills</div>
+                      <div>💎 +0.5 tokens/hour</div>
+                    </>
+                  )}
+                  {heroTier === 'silver' && (
+                    <>
+                      <div>💰 +20% Gold from kills</div>
+                      <div>💎 +1.0 tokens/hour</div>
+                    </>
+                  )}
+                  {heroTier === 'gold' && (
+                    <>
+                      <div>💰 +30% Gold from kills</div>
+                      <div>💎 +1.5 tokens/hour</div>
+                    </>
+                  )}
+                  {heroTier === 'platinum' && (
+                    <>
+                      <div>💰 +50% Gold from kills</div>
+                      <div>💎 +2.0 tokens/hour</div>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
             <div className="flex items-center space-x-2 mt-2">
               {!showDeleteConfirm ? (
                 <button

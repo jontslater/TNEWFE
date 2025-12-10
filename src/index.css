@@ -77,11 +77,16 @@ code {
   background: transparent !important;
 }
 
+/* Dark mode for clean battlefield page */
+body.dark-mode-battlefield .clean-battlefield-page,
+html.dark-mode-battlefield .clean-battlefield-page {
+  background-color: #1a1a1a !important;
+  background: #1a1a1a !important;
+}
+
 /* Override global body/html background for browser source route */
 body:has(.browser-source-page),
 html:has(.browser-source-page),
-body:has(.clean-battlefield-page),
-html:has(.clean-battlefield-page),
 body.browser-source-body,
 html.browser-source-html {
   background-color: transparent !important;
@@ -90,10 +95,35 @@ html.browser-source-html {
   padding: 0 !important;
 }
 
-/* Force transparent for #root as well */
-#root:has(.clean-battlefield-page) {
+/* Clean battlefield - transparent by default */
+body:has(.clean-battlefield-page):not(.dark-mode-battlefield),
+html:has(.clean-battlefield-page):not(.dark-mode-battlefield) {
   background-color: transparent !important;
   background: transparent !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Dark mode for body/html when dark mode class is active */
+body.dark-mode-battlefield:has(.clean-battlefield-page),
+html.dark-mode-battlefield:has(.clean-battlefield-page) {
+  background-color: #1a1a1a !important;
+  background: #1a1a1a !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Force transparent for #root as well by default */
+#root:has(.clean-battlefield-page):not(.dark-mode-battlefield) {
+  background-color: transparent !important;
+  background: transparent !important;
+}
+
+/* Dark mode for #root */
+#root.dark-mode-battlefield:has(.clean-battlefield-page),
+.dark-mode-battlefield #root:has(.clean-battlefield-page) {
+  background-color: #1a1a1a !important;
+  background: #1a1a1a !important;
 }
 
 /* Loading spinner animation for OBS page */

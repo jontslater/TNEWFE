@@ -59,3 +59,4 @@
 - Gold cost shown was informational - we could add reroll cost later if desired
 - Hero selection modal only shows if user has 2+ heroes
 - Single hero users: purchase works directly (no modal)
+

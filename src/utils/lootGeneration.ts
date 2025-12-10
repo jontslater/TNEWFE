@@ -12,7 +12,8 @@ const LOOT_RARITIES = {
   uncommon: { dropChance: 0.25, statMultiplier: 1.3, color: '#10b981' },
   rare: { dropChance: 0.10, statMultiplier: 1.6, color: '#3b82f6' },
   epic: { dropChance: 0.04, statMultiplier: 2.0, color: '#a855f7' },
-  legendary: { dropChance: 0.01, statMultiplier: 2.5, color: '#f59e0b' }
+  legendary: { dropChance: 0.01, statMultiplier: 2.5, color: '#f59e0b' },
+  mythic: { dropChance: 0.001, statMultiplier: 4.0, color: '#ef4444' } // Red color for mythic
 };
 
 // Equipment slots by category
@@ -137,6 +138,8 @@ export interface GenerateLootOptions {
   waveCount?: number;
   isBoss?: boolean;
   forceSetPiece?: boolean;
+  viewerLootBonus?: number; // Viewer bonus multiplier (0-0.3, max 30%)
+  isRaidOrDungeon?: boolean; // If true, use stronger mythic (4.0x) instead of token shop mythic (3.5x)
 }
 
 /**
@@ -146,7 +149,7 @@ export function generateLoot(
   role: string,
   options: GenerateLootOptions = {}
 ): Item | null {
-  const { enemyLevel = 1, waveCount = 0, isBoss = false, forceSetPiece = false } = options;
+  const { enemyLevel = 1, waveCount = 0, isBoss = false, forceSetPiece = false, viewerLootBonus = 0, isRaidOrDungeon = false } = options;
   
   // Get category (tank, healer, meleeDps, casterDps)
   const category = getHeroCategory(role);
@@ -159,7 +162,9 @@ export function generateLoot(
   // Boss bonus: +20% better loot quality
   const bossBonus = isBoss ? 0.2 : 0;
   const waveBoost = Math.min(0.3, waveCount / 100); // Up to 30% boost
-  const totalBonus = bossBonus + waveBoost;
+  // Viewer bonus: +0.2% per chatter, max 30% (from viewer bonus calculation)
+  const viewerBonus = Math.min(0.3, viewerLootBonus || 0);
+  const totalBonus = bossBonus + waveBoost + viewerBonus;
   
   // Adjust rarity chances with bonuses
   const adjustedRarities: Record<string, number> = {};
@@ -168,7 +173,9 @@ export function generateLoot(
   }
   
   if (totalBonus > 0) {
-    adjustedRarities.legendary += totalBonus * 0.3;
+    // Mythic can drop from raids/dungeons with high bonuses
+    adjustedRarities.mythic += totalBonus * 0.05; // Small chance for mythic
+    adjustedRarities.legendary += totalBonus * 0.25;
     adjustedRarities.epic += totalBonus * 0.3;
     adjustedRarities.rare += totalBonus * 0.2;
     adjustedRarities.uncommon += totalBonus * 0.1;
@@ -205,7 +212,13 @@ export function generateLoot(
   if (!template) return null;
   
   // Calculate stats with rarity multiplier and level scaling
-  const rarityData = LOOT_RARITIES[rarity];
+  let rarityData = LOOT_RARITIES[rarity];
+  
+  // Mythic from raids/dungeons is stronger (4.0x) than token shop mythic (3.5x)
+  if (rarity === 'mythic' && isRaidOrDungeon) {
+    rarityData = { ...rarityData, statMultiplier: 4.0 }; // Stronger raid/dungeon mythic
+  }
+  
   const levelMultiplier = 1 + (enemyLevel * 0.08);
   const totalMultiplier = levelMultiplier * rarityData.statMultiplier;
   

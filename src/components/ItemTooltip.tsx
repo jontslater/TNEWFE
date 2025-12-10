@@ -1,5 +1,5 @@
-import { Item } from '../types/Hero';
-import { getRarityColor } from '../utils/format';
+import { Item, Socket } from '../types/Hero';
+import { getRarityColor, getMaxSockets, getGemColor } from '../utils/format';
 
 interface ItemTooltipProps {
   item: Item;
@@ -197,6 +197,106 @@ export default function ItemTooltip({ item, children, position = 'below' }: Item
               })}
             </div>
           )}
+
+          {/* Sockets (only show for gear items with slots) */}
+          {item.slot && (() => {
+            const maxSockets = item.maxSockets !== undefined ? item.maxSockets : getMaxSockets(item.rarity || 'common', item.slot);
+            const sockets = item.sockets || [];
+            const socketCount = sockets.length;
+            
+            if (maxSockets > 0 || socketCount > 0) {
+              return (
+                <div className="border-t border-gray-700 pt-3 mt-3">
+                  <div className="text-xs font-semibold text-cyan-400 mb-2">
+                    💎 Sockets: {socketCount}/{maxSockets}
+                  </div>
+                  {sockets.length > 0 ? (
+                    <div className="space-y-2">
+                      {sockets.map((socket: Socket, idx: number) => (
+                        <div key={socket.id || idx} className="flex items-center gap-2">
+                          <div className="flex items-center gap-1">
+                            {socket.gem ? (
+                              <>
+                                <div 
+                                  className="w-4 h-4 rounded-full border-2 border-gray-600"
+                                  style={{ backgroundColor: getGemColor(socket.gem.type) }}
+                                  title={`${socket.gem.type.charAt(0).toUpperCase() + socket.gem.type.slice(1)} (${socket.gem.rarity})`}
+                                />
+                                <span className="text-xs text-white">
+                                  {socket.gem.type.charAt(0).toUpperCase() + socket.gem.type.slice(1)} ({socket.gem.rarity})
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                <div className="w-4 h-4 rounded-full border-2 border-gray-500 bg-gray-700" />
+                                <span className="text-xs text-gray-400">Empty Socket</span>
+                              </>
+                            )}
+                          </div>
+                          {socket.gem && socket.gem.stats && (
+                            <div className="text-xs text-gray-400 ml-2">
+                              {Object.entries(socket.gem.stats).map(([stat, value]: [string, any]) => {
+                                if (value === 0 || value === undefined) return null;
+                                const statLabels: Record<string, string> = {
+                                  attack: 'ATK',
+                                  defense: 'DEF',
+                                  critChance: 'Crit',
+                                  critDamage: 'Crit Dmg',
+                                  damageReduction: 'DR',
+                                  maxHp: 'HP',
+                                  allStats: 'All Stats',
+                                  xpGain: 'XP',
+                                  goldGain: 'Gold',
+                                  tokenGain: 'Tokens'
+                                };
+                                const isPercentage = ['critChance', 'critDamage', 'damageReduction', 'xpGain', 'goldGain', 'tokenGain', 'allStats'].includes(stat);
+                                return (
+                                  <span key={stat} className="mr-2">
+                                    +{value}{isPercentage ? '%' : ''} {statLabels[stat] || stat}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-xs text-gray-400">
+                      No sockets added yet. Craft a Gem Socket item to add sockets.
+                    </div>
+                  )}
+                  
+                  {/* Socket Bonuses */}
+                  {(item as any).socketBonuses && Object.keys((item as any).socketBonuses).length > 0 && (
+                    <div className="mt-3 pt-2 border-t border-gray-600">
+                      <div className="text-xs font-semibold text-yellow-400 mb-1">⚡ Socket Bonus:</div>
+                      <div className="text-xs text-yellow-200">
+                        {Object.entries((item as any).socketBonuses).map(([stat, value]: [string, any]) => {
+                          if (value === 0 || value === undefined) return null;
+                          const statLabels: Record<string, string> = {
+                            attack: '+% Attack',
+                            defense: '+% Defense',
+                            allStats: '+% All Stats',
+                            xpGain: '+% XP Gain',
+                            goldGain: '+% Gold Gain',
+                            critChance: '+% Crit Chance',
+                            damageReduction: '+% Damage Reduction'
+                          };
+                          return (
+                            <div key={stat}>
+                              {statLabels[stat]?.replace('+%', `+${value}%`) || `+${value}% ${stat}`}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            }
+            return null;
+          })()}
 
           {/* Tooltip Arrow */}
           <div className={`absolute left-1/2 -translate-x-1/2 ${arrowClasses}`}></div>

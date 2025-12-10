@@ -28,9 +28,22 @@ export function getRarityColor(rarity: string): string {
     uncommon: 'text-green-500',
     rare: 'text-blue-500',
     epic: 'text-purple-500',
-    legendary: 'text-yellow-500'
+    legendary: 'text-yellow-500',
+    mythic: 'text-red-500'
   };
   return colors[rarity as keyof typeof colors] || 'text-gray-400';
+}
+
+export function getRarityHexColor(rarity: string): string {
+  const colors = {
+    common: '#9ca3af',
+    uncommon: '#10b981',
+    rare: '#3b82f6',
+    epic: '#a855f7',
+    legendary: '#f59e0b',
+    mythic: '#ef4444' // Red for mythic
+  };
+  return colors[rarity as keyof typeof colors] || '#9ca3af';
 }
 
 export function getRarityBg(rarity: string): string {
@@ -39,7 +52,8 @@ export function getRarityBg(rarity: string): string {
     uncommon: 'bg-green-600',
     rare: 'bg-blue-600',
     epic: 'bg-purple-600',
-    legendary: 'bg-yellow-600'
+    legendary: 'bg-yellow-600',
+    mythic: 'bg-red-600'
   };
   return colors[rarity as keyof typeof colors] || 'bg-gray-600';
 }
@@ -84,4 +98,69 @@ export function getItemScore(equipment: any): number {
   });
   
   return Math.floor(score);
+}
+
+/**
+ * Calculate max sockets for an item based on rarity and slot
+ * Matches backend logic in professions.js
+ */
+export function getMaxSockets(rarity: string, slot: string): number {
+  const socketRules: Record<string, Record<string, number>> = {
+    weapon: {
+      common: 0,
+      uncommon: 0,
+      rare: 1,
+      epic: 2,
+      legendary: 2,
+      mythic: 3
+    },
+    armor: {
+      common: 0,
+      uncommon: 0,
+      rare: 1,
+      epic: 2,
+      legendary: 2,
+      mythic: 3
+    },
+    accessory: {
+      common: 0,
+      uncommon: 0,
+      rare: 1,
+      epic: 1,
+      legendary: 2,
+      mythic: 2
+    },
+    shield: {
+      common: 0,
+      uncommon: 0,
+      rare: 1,
+      epic: 1,
+      legendary: 2,
+      mythic: 2
+    },
+    default: {
+      common: 0,
+      uncommon: 0,
+      rare: 0,
+      epic: 1,
+      legendary: 1,
+      mythic: 2
+    }
+  };
+  
+  const slotCategory = socketRules[slot] || socketRules.default;
+  return slotCategory[rarity] || 0;
+}
+
+/**
+ * Get gem color for display
+ */
+export function getGemColor(gemType: string): string {
+  const colors: Record<string, string> = {
+    ruby: '#ef4444',
+    sapphire: '#3b82f6',
+    emerald: '#10b981',
+    diamond: '#fbbf24'
+  };
+  return colors[gemType] || '#9ca3af';
 }

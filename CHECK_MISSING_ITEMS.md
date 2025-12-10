@@ -40,3 +40,4 @@ find . -type f -name "*.md" | xargs grep -l "12/05\|12-05\|founder.*pack\|founde
 ```bash
 grep -r -i "founder" --include="*.md" --include="*.tsx" --include="*.ts" . | head -20
 ```
+

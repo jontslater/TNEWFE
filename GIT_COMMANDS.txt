@@ -66,3 +66,4 @@ git add src/ FINAL_EXECUTION_PLAN.md COMMIT_SUMMARY.md "public/Sprites/Heroes/He
 # Then commit and push:
 git commit -m "feat: Complete Phase 1.3 cosmetics, Phase 2.1 upgrades, and combat balance fixes"
 git push origin main
+

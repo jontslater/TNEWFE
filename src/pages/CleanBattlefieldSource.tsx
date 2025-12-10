@@ -11,9 +11,10 @@
 
 import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { collection, query, where, onSnapshot, doc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, getDocs } from 'firebase/firestore';
 import { db } from '../utils/firebase';
 import { generateEnemiesForCombat } from '../utils/enemyGeneration';
+import { generateDungeonEnemies } from '../utils/dungeonEnemyGeneration';
 import HeroSpriteJS from '../components/HeroSpriteJS';
 import EnemySpriteJS from '../components/EnemySpriteJS';
 import { battlefieldAPI, heroAPI, questAPI } from '../api/client';
@@ -109,6 +110,7 @@ interface Hero {
   // Cosmetic fields
   activeTitle?: string;
   founderBadge?: string;
+  founderPackTier?: string; // 'bronze', 'silver', 'gold', 'platinum'
   nameColor?: string;
   nameFrame?: string;
   auraEffect?: string;
@@ -120,6 +122,7 @@ interface Hero {
 interface Enemy {
   id: string;
   name: string;
+  enemyType?: string; // Sprite type for animation lookup (e.g., "Skeleton Mage" instead of "Skeleton 1")
   level: number;
   hp: number;
   maxHp: number;
@@ -149,6 +152,11 @@ interface CombatAction {
 }
 
 export default function CleanBattlefieldSource() {
+  const [searchParams] = useSearchParams();
+  
+  // Dark mode support - check URL parameter
+  const darkMode = searchParams.get('darkMode') === 'true' || searchParams.get('dark') === '1';
+  
   // Inject CSS animation for SCT floating text
   useEffect(() => {
     const styleId = 'sct-float-animation';
@@ -190,31 +198,50 @@ export default function CleanBattlefieldSource() {
     }
   }, []);
   
-  // Force transparent background for OBS Browser Source
+  // Background handling - transparent for OBS, dark for browser viewing
   useEffect(() => {
-    // Set body and html background to transparent
-    document.body.style.backgroundColor = 'transparent';
-    document.documentElement.style.backgroundColor = 'transparent';
+    const bgColor = darkMode ? '#1a1a1a' : 'transparent';
     
-    // Also ensure #root is transparent
-    const root = document.getElementById('root');
-    if (root) {
-      root.style.backgroundColor = 'transparent';
+    // Add/remove dark mode class for CSS targeting
+    if (darkMode) {
+      document.body.classList.add('dark-mode-battlefield');
+      document.documentElement.classList.add('dark-mode-battlefield');
+    } else {
+      document.body.classList.remove('dark-mode-battlefield');
+      document.documentElement.classList.remove('dark-mode-battlefield');
     }
     
-    console.log('[OBS] ✅ Forced transparent background');
+    // Set body and html background with !important via setProperty
+    document.body.style.setProperty('background-color', bgColor, 'important');
+    document.body.style.setProperty('background', bgColor, 'important');
+    document.documentElement.style.setProperty('background-color', bgColor, 'important');
+    document.documentElement.style.setProperty('background', bgColor, 'important');
+    
+    // Also ensure #root has correct background
+    const root = document.getElementById('root');
+    if (root) {
+      root.style.setProperty('background-color', bgColor, 'important');
+      root.style.setProperty('background', bgColor, 'important');
+    }
+    
+    console.log(`[Background] ✅ Set to ${darkMode ? 'dark mode' : 'transparent'} (for ${darkMode ? 'browser' : 'OBS'})`);
     
     // Cleanup on unmount (restore original background)
     return () => {
-      document.body.style.backgroundColor = '';
-      document.documentElement.style.backgroundColor = '';
+      document.body.classList.remove('dark-mode-battlefield');
+      document.documentElement.classList.remove('dark-mode-battlefield');
+      document.body.style.removeProperty('background-color');
+      document.body.style.removeProperty('background');
+      document.documentElement.style.removeProperty('background-color');
+      document.documentElement.style.removeProperty('background');
       if (root) {
-        root.style.backgroundColor = '';
+        root.classList.remove('dark-mode-battlefield');
+        root.style.removeProperty('background-color');
+        root.style.removeProperty('background');
       }
     };
-  }, []);
+  }, [darkMode]);
   
-  const [searchParams] = useSearchParams();
   const { user } = useAuth();
   const [heroes, setHeroes] = useState<Hero[]>([]); // Combat heroes (idle: all on battlefield, raid: participants only)
   const [loadedHeroes, setLoadedHeroes] = useState<Hero[]>([]); // ALL heroes loaded from Firebase (used to populate raid parties)
@@ -233,6 +260,14 @@ export default function CleanBattlefieldSource() {
   const [isTraveling, setIsTraveling] = useState(false);
   const [viewerCount, setViewerCount] = useState(0);
   const [activeChatterCount, setActiveChatterCount] = useState(0); // Active chatters in last hour
+  
+  // Queue status tracking
+  const [queueStatus, setQueueStatus] = useState<{
+    inQueue: boolean;
+    totalInQueue: number;
+    roleCounts: { tank: number; healer: number; dps: number };
+    userRole?: string;
+  } | null>(null);
   
   // Rested XP tracking
   const heroBattlefieldJoinTime = useRef<Map<string, number>>(new Map());
@@ -364,8 +399,109 @@ export default function CleanBattlefieldSource() {
   const [fadeOpacity, setFadeOpacity] = useState(1);
   const [showWaveAnnouncement, setShowWaveAnnouncement] = useState(false);
   
+  // Determine twitchId for instance listener: prefer authenticated user, fallback to battlefieldId
+  // This allows browser sources to work without authentication by using the battlefieldId parameter
+  const twitchIdForListener = user?.twitchId || twitchId;
+  
   // Listen for active instances (dungeons/raids)
-  const { activeInstance, loading: instanceLoading } = useActiveInstanceListener(user?.twitchId || null);
+  // Works for both authenticated users and browser sources (using battlefieldId)
+  const { activeInstance, loading: instanceLoading } = useActiveInstanceListener(twitchIdForListener);
+  
+  // Listen for queue status if user's hero is in queue
+  useEffect(() => {
+    if (!twitchIdForListener || gameMode !== 'idle') {
+      setQueueStatus(null);
+      return;
+    }
+    
+    let heroIdRef: string | null = null;
+    
+    // First, find the user's hero ID
+    const findHeroAndListen = async () => {
+      try {
+        // Find hero document for current user (use twitchId from battlefieldId or authenticated user)
+        const heroesSnapshot = await db.collection('heroes')
+          .where('twitchUserId', '==', twitchIdForListener)
+          .limit(1)
+          .get();
+        
+        if (heroesSnapshot.empty) {
+          setQueueStatus(null);
+          return;
+        }
+        
+        heroIdRef = heroesSnapshot.docs[0].id;
+        
+        // Now listen to queue for this hero and all queue entries
+        const queueQuery = collection(db, 'dungeonQueue');
+        
+        const unsubscribe = onSnapshot(
+          queueQuery,
+          (snapshot) => {
+            // Find if this hero is in queue
+            const userQueueEntry = snapshot.docs.find(
+              doc => doc.data().heroId === heroIdRef
+            );
+            
+            if (!userQueueEntry) {
+              setQueueStatus(null);
+              return;
+            }
+            
+            // Calculate role counts from all queue entries (normalize roles)
+            const allQueue = snapshot.docs.map(doc => doc.data());
+            
+            // Normalize role helper
+            const normalizeRole = (role: string) => {
+              if (!role) return 'dps';
+              const roleLower = role.toLowerCase();
+              const tankRoles = ['guardian', 'paladin', 'warden', 'bloodknight', 'vanguard', 'brewmaster'];
+              const healerRoles = ['cleric', 'atoner', 'druid', 'lightbringer', 'shaman', 'mistweaver', 'chronomancer', 'bard'];
+              if (tankRoles.includes(roleLower) || roleLower === 'tank') return 'tank';
+              if (healerRoles.includes(roleLower) || roleLower === 'healer') return 'healer';
+              return 'dps';
+            };
+            
+            const roleCounts = {
+              tank: allQueue.filter(q => normalizeRole(q.role) === 'tank').length,
+              healer: allQueue.filter(q => normalizeRole(q.role) === 'healer').length,
+              dps: allQueue.filter(q => normalizeRole(q.role) === 'dps').length
+            };
+            
+            const totalInQueue = allQueue.length;
+            const queueEntryData = userQueueEntry.data();
+            
+            setQueueStatus({
+              inQueue: true,
+              totalInQueue,
+              roleCounts,
+              userRole: normalizeRole(queueEntryData.role) // Normalize user's role for display
+            });
+          },
+          (error) => {
+            console.error('[Queue Status] Queue listener error:', error);
+            setQueueStatus(null);
+          }
+        );
+        
+        return unsubscribe;
+      } catch (error) {
+        console.error('[Queue Status] Error setting up listener:', error);
+        setQueueStatus(null);
+        return () => {}; // Return empty unsubscribe function
+      }
+    };
+    
+    let unsubscribeFn: (() => void) | null = null;
+    
+    findHeroAndListen().then((unsub) => {
+      if (unsub) unsubscribeFn = unsub;
+    });
+    
+        return () => {
+          if (unsubscribeFn) unsubscribeFn();
+        };
+      }, [twitchIdForListener, gameMode]);
   
   // Track scheduled raid auto-start timeouts
   const scheduledRaidTimeouts = useRef<Map<string, NodeJS.Timeout>>(new Map());
@@ -375,8 +511,8 @@ export default function CleanBattlefieldSource() {
     if (!battlefieldId || gameMode !== 'idle') return;
     
     // Extract twitch ID from battlefieldId (format: "twitch:1087777297")
-    const twitchId = battlefieldId.split(':')[1];
-    if (!twitchId) return;
+    const battlefieldTwitchId = battlefieldId.split(':')[1];
+    if (!battlefieldTwitchId) return;
     
     console.log('[Scheduled Raids] 🔍 Monitoring for auto-start...');
     
@@ -593,9 +729,10 @@ export default function CleanBattlefieldSource() {
         enemiesRef.current = []; // Clear ref too
         setInCombat(false); // Stop combat
         
-        // CRITICAL: Don't clear heroes! They will reload from Firebase listener
-        // The Firebase listener will pick up heroes when their currentBattlefieldId is set back
-        console.log('[Mode] 🔄 Heroes will reload from Firebase when they rejoin battlefield');
+        // CRITICAL: Don't clear heroes! They will be preserved by the hero listener
+        // The hero listener in idle mode will merge Firebase heroes with current heroes,
+        // preserving heroes from dungeon/raid that might not have currentBattlefieldId set yet
+        console.log('[Mode] 🔄 Heroes will be merged with Firebase heroes (preserving dungeon participants)');
         // Adventure loop will auto-start and generate new enemies
       } else if (instanceId) {
         setCurrentInstanceId(instanceId);
@@ -919,9 +1056,202 @@ export default function CleanBattlefieldSource() {
     });
   }, [gameMode, instanceData?.currentWave, instanceData?.id]); // Don't need loadedHeroes.length anymore!
 
+  // ============================================================================
+  // DUNGEON COMBAT SYSTEM - Uses SAME combat engine as idle adventure!
+  // ============================================================================
+  
+  // In dungeon mode, populate heroes and enemies from instance data (similar to raids)
+  useEffect(() => {
+    if (gameMode !== 'dungeon' || !instanceData) return;
+    
+    console.log('[Dungeon Mode] ⚠️ DUNGEON SETUP RUNNING - This should only run on room change!');
+    console.log('[Dungeon Mode] Trigger:', {
+      gameMode,
+      currentRoom: instanceData?.currentRoom,
+      instanceId: instanceData?.id,
+      dungeonId: instanceData?.dungeonId,
+      status: instanceData?.status
+    });
+    
+    // Fetch dungeon participants' hero data from Firebase (same as raid)
+    const fetchDungeonHeroes = async () => {
+      const dungeonHeroes: Hero[] = [];
+      
+      for (const p of (instanceData.participants || [])) {
+        console.log(`[Dungeon Setup] Fetching hero:`, {
+          heroId: p.heroId,
+          userId: p.userId,
+          username: p.username
+        });
+        
+        // First, try loadedHeroes (already in memory)
+        let actualHero = loadedHeroes.find(h => 
+          h.id === p.heroId || 
+          (h as any).twitchUserId === p.userId ||
+          h.name === p.username
+        );
+        
+        // If not found, fetch directly from Firebase by hero ID
+        if (!actualHero && p.heroId) {
+          console.log(`[Dungeon Setup] Hero not in loadedHeroes, fetching from Firebase: ${p.heroId}`);
+          try {
+            const heroDoc = await import('firebase/firestore').then(({ doc, getDoc }) => 
+              getDoc(doc(db, 'heroes', p.heroId))
+            );
+            
+            if (heroDoc.exists()) {
+              const data = heroDoc.data();
+              actualHero = calculateHeroStats({
+                id: heroDoc.id,
+                name: data.name || data.username,
+                role: data.role || 'berserker',
+                level: data.level || 1,
+                hp: data.hp || 100,
+                maxHp: data.maxHp || 100,
+                xp: data.xp || 0,
+                maxXp: data.maxXp || 100,
+                attack: data.attack || 0,
+                defense: data.defense || 0,
+                currentBattlefieldId: data.currentBattlefieldId,
+                autoBuy: data.autoBuy || false,
+                gold: data.gold || 0,
+                profession: data.profession || null,
+                quests: data.quests || {},
+                twitchUserId: data.twitchUserId || data.twitchId,
+                activeTitle: data.activeTitle || null,
+                founderBadge: data.founderBadge || data.activeBadge || null,
+                nameColor: data.nameColor || null,
+                nameFrame: data.nameFrame || null,
+                auraEffect: data.auraEffect || null,
+                auraColor: data.auraColor || null,
+                spellEffect: data.spellEffect || null,
+                equipment: data.equipment || {},
+                skills: data.skills || {},
+                enchantedItems: data.enchantedItems || [],
+                inventory: data.inventory || []
+              } as Hero);
+              console.log(`[Dungeon Setup] ✅ Fetched hero from Firebase: ${actualHero.name}`);
+            }
+          } catch (err) {
+            console.error(`[Dungeon Setup] ❌ Failed to fetch hero ${p.heroId}:`, err);
+          }
+        }
+        
+        if (actualHero) {
+          console.log(`[Dungeon Setup] ✅ Found actual hero for ${p.username}: ${actualHero.name} (${actualHero.role})`);
+          dungeonHeroes.push(actualHero);
+          continue;
+        }
+        
+        // Fallback if hero not found
+        console.log(`[Dungeon Setup] ⚠️ Using fallback data for ${p.username}`);
+        const fallbackHero = {
+          id: p.heroId || p.userId || `fallback-${dungeonHeroes.length}`,
+          name: p.username || p.heroName || 'Hero',
+          role: p.class || p.role || 'berserker',
+          level: p.level || 1,
+          hp: p.hp || p.maxHp || 100,
+          maxHp: p.maxHp || 100,
+          attack: p.attack || (p.level || 1) * 5,
+          defense: p.defense || (p.level || 1) * 2,
+          isDead: false,
+          shield: 0,
+          xp: 0,
+          maxXp: 100,
+          gold: 0,
+          equipment: {},
+          inventory: [],
+          skills: {},
+          activeBuffs: {},
+          activeDebuffs: {},
+          potions: { health: 0, mana: 0 }
+        } as Hero;
+        dungeonHeroes.push(fallbackHero);
+      }
+      
+      console.log(`[Dungeon Setup] ✅ Total dungeon heroes created: ${dungeonHeroes.length}`);
+    
+      // Generate enemies for current room from dungeon definition
+      const currentRoom = instanceData.currentRoom || 0;
+      const dungeonId = instanceData.dungeonId || 'goblin_cave';
+      const roomEnemies: Enemy[] = [];
+      
+      console.log(`[Dungeon] ====================================`);
+      console.log(`[Dungeon] Current room: ${currentRoom}`);
+      console.log(`[Dungeon] Dungeon ID: ${dungeonId}`);
+      console.log(`[Dungeon] Instance room data:`, instanceData.rooms?.[currentRoom]);
+      console.log(`[Dungeon] ====================================`);
+      
+      // Get room definition from instance data
+      const roomData = instanceData.rooms?.[currentRoom];
+      
+      if (roomData && roomData.enemies) {
+        // Use room data from instance
+        console.log(`[Dungeon] Using room data from instance`);
+        const generated = generateDungeonEnemies(
+          roomData.enemies,
+          dungeonHeroes,
+          difficultyModifier
+        );
+        roomEnemies.push(...generated);
+      } else {
+        // Fallback: Use default room enemies if not in instance data
+        console.log(`[Dungeon] Room data not in instance, using default enemies...`);
+        const defaultRoom = {
+          enemies: [
+            { type: 'Goblin', count: 3, level: dungeonHeroes[0]?.level || 10 }
+          ]
+        };
+        const generated = generateDungeonEnemies(
+          defaultRoom.enemies,
+          dungeonHeroes,
+          difficultyModifier
+        );
+        roomEnemies.push(...generated);
+      }
+      
+      console.log(`[Dungeon] ✅ Total enemies generated: ${roomEnemies.length}`, roomEnemies.map(e => e.name));
+      
+      if (roomEnemies.length === 0) {
+        console.error('[Dungeon] ❌ NO ENEMIES GENERATED!');
+        return;
+      }
+      
+      // Update heroes and enemies state (this triggers combat!)
+      console.log(`[Dungeon Mode] 🎮 Setting ${dungeonHeroes.length} heroes, ${roomEnemies.length} enemies`);
+      console.log('[Dungeon Mode] Heroes:', dungeonHeroes.map(h => `${h.name} (${h.role})`));
+      console.log('[Dungeon Mode] Enemies:', roomEnemies.map(e => `${e.name} (HP: ${e.hp})`));
+      
+      // Update refs first
+      heroesRef.current = dungeonHeroes;
+      enemiesRef.current = roomEnemies;
+      
+      // Then set state (this will trigger combat useEffect)
+      setHeroes(dungeonHeroes);
+      setEnemies(roomEnemies);
+      
+      // Delay combat start to let sprites render
+      if (roomEnemies.length > 0) {
+        console.log('[Dungeon Mode] ⏳ Waiting 1s for sprites to render...');
+        setTimeout(() => {
+          console.log('[Dungeon Mode] ⚔️ Starting combat NOW!');
+          setInCombat(true);
+        }, 1000);
+      }
+    };
+    
+    fetchDungeonHeroes().catch(err => {
+      console.error('[Dungeon Mode] ❌ Failed to setup dungeon:', err);
+    });
+  }, [gameMode, instanceData?.currentRoom, instanceData?.id, instanceData?.dungeonId, instanceData?.rooms]);
+
   // Quest tracking state (accumulate progress, batch sync to backend)
   const questProgressRef = useRef<Map<string, Map<string, number>>>(new Map()); // heroId -> trackingKey -> count
   const lastQuestSyncRef = useRef<number>(Date.now());
+  
+  // Auto-purchase tracking state (accumulate purchases, batch sync to backend)
+  const pendingPurchasesRef = useRef<Map<string, Array<{ itemKey: string; quantity: number }>>>(new Map()); // heroId -> array of purchases
+  const lastPurchaseSyncRef = useRef<number>(Date.now());
 
   // SCT (Scrolling Combat Text) state
   type SCTType = 'damage' | 'crit' | 'heal' | 'heal-hot' | 'dot' | 'loot' | 'levelup' | 'questcomplete' | 'xp' | 'miss' | 'gather' | 'profession-xp';
@@ -1138,7 +1468,11 @@ export default function CleanBattlefieldSource() {
             boots: data.equipment?.boots || null
           },
           skills: data.skills || {},
-          enchantedItems: data.enchantedItems || []
+          enchantedItems: data.enchantedItems || [],
+          shield: data.shield || 0,
+          shopBuffs: data.shopBuffs || {},
+          inventory: data.inventory || [],
+          potions: data.potions || { health: 0 }
         } as Hero;
       });
 
@@ -1172,10 +1506,64 @@ export default function CleanBattlefieldSource() {
       // Only set combat heroes in IDLE mode (raid mode populates heroes from participants)
       // CRITICAL: Don't update heroes during raid combat! (would reset raid party)
       if (gameMode === 'idle') {
-        setHeroes(uniqueHeroes);
-        heroesRef.current = uniqueHeroes; // Keep ref in sync
+        setHeroes(current => {
+          // Start with heroes from Firebase (have currentBattlefieldId set)
+          const heroMap = new Map<string, Hero>();
+          
+          // Add all heroes from Firebase
+          uniqueHeroes.forEach(firebaseHero => {
+            const existingHero = current.find(h => h.id === firebaseHero.id);
+            if (existingHero) {
+              // Preserve combat-specific state but update HP, inventory, shield, shopBuffs from Firebase
+              heroMap.set(firebaseHero.id, {
+                ...existingHero,
+                hp: firebaseHero.hp,
+                maxHp: firebaseHero.maxHp,
+                shield: firebaseHero.shield || 0,
+                shopBuffs: firebaseHero.shopBuffs || {},
+                inventory: firebaseHero.inventory || [],
+                gold: firebaseHero.gold,
+                level: firebaseHero.level,
+                xp: firebaseHero.xp
+              });
+            } else {
+              heroMap.set(firebaseHero.id, firebaseHero);
+            }
+          });
+          
+          // CRITICAL: Preserve heroes from current state that might have been in dungeon/raid
+          // These heroes might not have currentBattlefieldId set yet but should still appear
+          current.forEach(hero => {
+            // Only keep if not already in map (Firebase takes priority) and if hero looks valid
+            if (!heroMap.has(hero.id) && hero.id && hero.name) {
+              // Check if hero was recently in an instance (preserve for transition)
+              // Keep heroes that might have been from dungeon/raid queue
+              heroMap.set(hero.id, hero);
+            }
+          });
+          
+          const finalHeroes = Array.from(heroMap.values());
+          heroesRef.current = finalHeroes; // Keep ref in sync with state
+          return finalHeroes;
+        });
       } else if (gameMode === 'raid' || gameMode === 'dungeon') {
-        console.log('[CleanBattlefield] ⏭️ Skipping hero state update - raid/dungeon in progress');
+        // In raid/dungeon, update HP/shield/inventory without resetting combat state
+        setHeroes(current => {
+          return current.map(combatHero => {
+            const firebaseHero = uniqueHeroes.find(h => h.id === combatHero.id);
+            if (firebaseHero) {
+              return {
+                ...combatHero,
+                hp: firebaseHero.hp,
+                maxHp: firebaseHero.maxHp,
+                shield: firebaseHero.shield || combatHero.shield || 0,
+                shopBuffs: firebaseHero.shopBuffs || combatHero.shopBuffs || {},
+                inventory: firebaseHero.inventory || combatHero.inventory || []
+              };
+            }
+            return combatHero;
+          });
+        });
       }
       
       setLoading(false);
@@ -1471,7 +1859,6 @@ export default function CleanBattlefieldSource() {
           if (hero.isDead) return hero;
           
           let newGold = (hero.gold || 0) + goldAmount;
-          let newPotions = hero.potions ? { ...hero.potions } : { health: 0 };
           
           console.log(`[Treasure] ${hero.name} finds ${goldAmount}g!`);
           
@@ -1482,54 +1869,79 @@ export default function CleanBattlefieldSource() {
             addSCT(`${goldAmount}g`, rect.left + rect.width / 2, rect.top + 25, 'loot');
           }
           
-          // AUTO-BUY during treasure (if autoBuy enabled)
-          if (hero.autoBuy && Math.random() < 0.3) {
+          // AUTO-BUY during treasure (if autoBuy enabled) - Queue for batch sync
+          if (hero.autoBuy && Math.random() < 0.3 && hero.id) {
+            let itemToPurchase: string | null = null;
+            
             // Prioritize health potions when low stock
-            if (newGold >= 10 && newPotions.health < 2) {
-              newGold -= 10;
-              newPotions.health++;
-              console.log(`[Auto-Buy] 🛒 ${hero.name} bought Health Potion! (${newPotions.health} potions)`);
+            // Count potions in inventory
+            const potionsInInventory = (hero.inventory || []).filter(item => 
+              (item as any).itemKey === 'healthpotion' || (item as any).type === 'potion'
+            ).length;
+            
+            if (newGold >= 10 && potionsInInventory < 2) {
+              itemToPurchase = 'healthpotion';
             }
             // Buy buffs if enough gold
             else {
               const affordableBuffs = [];
               if (newGold >= 25) affordableBuffs.push('xpboost');
-              if (newGold >= 50) affordableBuffs.push('attackbuff');
-              if (newGold >= 50) affordableBuffs.push('defensebuff');
+              if (newGold >= 15) affordableBuffs.push('attackbuff');
+              if (newGold >= 15) affordableBuffs.push('defensebuff');
               
               if (affordableBuffs.length > 0) {
-                const buffChoice = affordableBuffs[Math.floor(Math.random() * affordableBuffs.length)];
-                const cost = SHOP_ITEMS[buffChoice].cost;
-                newGold -= cost;
+                itemToPurchase = affordableBuffs[Math.floor(Math.random() * affordableBuffs.length)];
                 
-                // Apply buff
-                const newShopBuffs = hero.shopBuffs ? { ...hero.shopBuffs } : {};
-                const now = Date.now();
-                
-                if (buffChoice === 'xpboost') {
-                  newShopBuffs.xpBoost = { remainingDuration: 300000, lastUpdateTime: now };
-                  console.log(`[Auto-Buy] 🛒 ${hero.name} bought XP Boost!`);
-                } else if (buffChoice === 'attackbuff') {
-                  newShopBuffs.attackBuff = { remainingDuration: 600000, lastUpdateTime: now };
-                  console.log(`[Auto-Buy] 🛒 ${hero.name} bought Attack Buff!`);
-                } else if (buffChoice === 'defensebuff') {
-                  newShopBuffs.defenseBuff = { remainingDuration: 600000, lastUpdateTime: now };
-                  console.log(`[Auto-Buy] 🛒 ${hero.name} bought Defense Buff!`);
+                // Queue purchase for batch sync (don't call API immediately)
+                // The backend will add to inventory, then we'll auto-use it
+                if (!pendingPurchasesRef.current.has(hero.id)) {
+                  pendingPurchasesRef.current.set(hero.id, []);
                 }
+                pendingPurchasesRef.current.get(hero.id)!.push({ itemKey: itemToPurchase, quantity: 1 });
                 
                 // Show buff SCT
+                const buffNames: Record<string, string> = {
+                  xpboost: 'XP Boost Scroll',
+                  attackbuff: 'Sharpening Stone',
+                  defensebuff: 'Armor Polish'
+                };
+                
                 const heroEl = document.querySelector(`[data-hero-id="${hero.id}"]`);
                 if (heroEl) {
                   const rect = heroEl.getBoundingClientRect();
-                  addSCT(`+${SHOP_ITEMS[buffChoice].name}`, rect.left + rect.width / 2, rect.top + 45, 'loot');
+                  addSCT(`+${buffNames[itemToPurchase]}`, rect.left + rect.width / 2, rect.top + 45, 'loot');
                 }
                 
-                return { ...hero, gold: newGold, potions: newPotions, shopBuffs: newShopBuffs };
+                return { 
+                  ...hero, 
+                  gold: newGold
+                };
               }
+            }
+            
+            // Purchase potion
+            if (itemToPurchase === 'healthpotion') {
+              // Show item SCT
+              const heroEl = document.querySelector(`[data-hero-id="${hero.id}"]`);
+              if (heroEl) {
+                const rect = heroEl.getBoundingClientRect();
+                addSCT('+Health Potion', rect.left + rect.width / 2, rect.top + 45, 'loot');
+              }
+              
+              // Queue purchase for batch sync (don't call API immediately)
+              if (!pendingPurchasesRef.current.has(hero.id)) {
+                pendingPurchasesRef.current.set(hero.id, []);
+              }
+              pendingPurchasesRef.current.get(hero.id)!.push({ itemKey: itemToPurchase, quantity: 1 });
+              
+              return { 
+                ...hero, 
+                gold: newGold
+              };
             }
           }
           
-          return { ...hero, gold: newGold, potions: newPotions };
+          return { ...hero, gold: newGold };
         });
         
         heroesRef.current = updated;
@@ -1675,9 +2087,16 @@ export default function CleanBattlefieldSource() {
         
         const hpPercent = hero.hp / hero.maxHp;
         
-        // Check if hero has potions and HP is below 30%
-        if (hpPercent < 0.30 && hero.potions && hero.potions.health > 0) {
-          console.log(`[Auto-Potion] 🧪 ${hero.name} uses Health Potion! (${hpPercent.toFixed(0)}% HP)`);
+        // Check if hero has potions in inventory and HP is below 30%
+        const inventory = hero.inventory || [];
+        const healthPotion = inventory.find((item: any) => 
+          item.itemKey === 'healthpotion' || 
+          item.type === 'potion' ||
+          (item.name && item.name.toLowerCase().includes('health potion'))
+        );
+        
+        if (hpPercent < 0.30 && healthPotion && hero.id) {
+          console.log(`[Auto-Potion] 🧪 ${hero.name} uses Health Potion from inventory! (${hpPercent.toFixed(0)}% HP)`);
           
           // Use potion (heal 50% max HP)
           const healAmount = Math.floor(hero.maxHp * 0.5);
@@ -1688,12 +2107,14 @@ export default function CleanBattlefieldSource() {
           const overheal = healAmount - actualHeal;
           const newShield = (hero.shield || 0) + overheal;
           
+          // Remove potion from inventory
+          const updatedInventory = inventory.filter((item: any) => item.id !== healthPotion.id);
+          
+          // Update local state immediately for combat
           setHeroes(current => {
             const updated = current.map(h => {
               if (h.id === hero.id) {
-                // Consume potion
-                const newPotions = { ...h.potions, health: (h.potions?.health || 1) - 1 };
-                return { ...h, hp: newHp, shield: newShield, potions: newPotions };
+                return { ...h, hp: Math.round(newHp), shield: Math.round(newShield), inventory: updatedInventory };
               }
               return h;
             });
@@ -1701,11 +2122,20 @@ export default function CleanBattlefieldSource() {
             return updated;
           });
           
+          // Sync to Firebase (fire and forget - don't block combat)
+          heroAPI.updateHeroById(hero.id, {
+            hp: Math.round(newHp),
+            shield: Math.round(newShield),
+            inventory: updatedInventory
+          }).catch(err => {
+            console.error(`[Auto-Potion] ❌ Failed to sync potion use to Firebase:`, err);
+          });
+          
           // Show heal SCT
           const heroElement = document.querySelector(`[data-hero-id="${hero.id}"]`);
           if (heroElement) {
             const rect = heroElement.getBoundingClientRect();
-            addSCT(`+${actualHeal}`, rect.left + rect.width / 2, rect.top + 20, 'heal');
+            addSCT(`+${Math.round(actualHeal)}`, rect.left + rect.width / 2, rect.top + 20, 'heal');
             if (overheal > 0) {
               setTimeout(() => {
                 addSCT(`+${overheal} Shield`, rect.left + rect.width / 2, rect.top + 40, 'loot');
@@ -1750,16 +2180,19 @@ export default function CleanBattlefieldSource() {
                 let remainingDamage = dotDamage;
                 let newShield = hero.shield || 0;
                 let newHp = hero.hp;
+                let shieldAbsorbed = 0;
                 
                 if (newShield > 0) {
                   if (remainingDamage >= newShield) {
+                    shieldAbsorbed = newShield;
                     remainingDamage -= newShield;
                     newShield = 0;
-                    console.log(`[DoT] 🛡️ ${hero.name}'s shield absorbed ${newShield} DoT damage, ${remainingDamage} HP damage remains`);
+                    console.log(`[DoT] 🛡️ ${hero.name}'s shield absorbed ${shieldAbsorbed} DoT damage, ${remainingDamage} HP damage remains`);
                   } else {
+                    shieldAbsorbed = remainingDamage;
                     newShield -= remainingDamage;
                     remainingDamage = 0;
-                    console.log(`[DoT] 🛡️ ${hero.name}'s shield absorbed ${dotDamage} DoT damage`);
+                    console.log(`[DoT] 🛡️ ${hero.name}'s shield absorbed ${shieldAbsorbed} DoT damage`);
                   }
                 }
                 
@@ -1769,7 +2202,17 @@ export default function CleanBattlefieldSource() {
                 setHeroes(current => {
                   const updated = current.map(h => {
                     if (h.id === hero.id) {
-                      return { ...h, hp: Math.floor(newHp), shield: Math.floor(newShield) };
+                      const updatedHero = { ...h, hp: Math.round(newHp), shield: Math.round(newShield) };
+                      
+                      // Track damage blocked by shields in DoT
+                      if (shieldAbsorbed > 0) {
+                        if (!updatedHero.stats) {
+                          updatedHero.stats = { totalDamage: 0, totalHealing: 0, damageBlocked: 0 };
+                        }
+                        updatedHero.stats.damageBlocked = (updatedHero.stats.damageBlocked || 0) + shieldAbsorbed;
+                      }
+                      
+                      return updatedHero;
                     }
                     return h;
                   });
@@ -1843,7 +2286,7 @@ export default function CleanBattlefieldSource() {
                 setEnemies(current => {
                   const updated = current.map(e => {
                     if (e.id === enemy.id) {
-                      const newHp = Math.max(0, e.hp - actualDamage);
+                      const newHp = Math.round(Math.max(0, e.hp - actualDamage));
                       const died = newHp === 0 && !e.isDead;
                       return { ...e, hp: newHp, isDead: died || e.isDead };
                     }
@@ -1896,17 +2339,17 @@ export default function CleanBattlefieldSource() {
             const updated = current.map(h => {
               if (h.isDead || h.hp <= 0) return h;
               
-              const healAmount = Math.floor(h.maxHp * 0.3);
-              const newHp = Math.min(h.maxHp, h.hp + healAmount);
-              const actualHeal = newHp - h.hp;
-              const overheal = healAmount - actualHeal;
-              const newShield = (h.shield || 0) + overheal;
+              const healAmount = Math.round(h.maxHp * 0.3);
+              const newHp = Math.round(Math.min(h.maxHp, h.hp + healAmount));
+              const actualHeal = Math.round(newHp - h.hp);
+              const overheal = Math.round(healAmount - actualHeal);
+              const newShield = Math.round((h.shield || 0) + overheal);
               
               // Show heal SCT for each hero
               const heroElement = document.querySelector(`[data-hero-id="${h.id}"]`);
               if (heroElement && actualHeal > 0) {
                 const rect = heroElement.getBoundingClientRect();
-                addSCT(`+${actualHeal}`, rect.left + rect.width / 2, rect.top + 20, 'heal');
+                addSCT(`+${Math.round(actualHeal)}`, rect.left + rect.width / 2, rect.top + 20, 'heal');
               }
               
               // Set cooldown on cleric
@@ -2053,6 +2496,26 @@ export default function CleanBattlefieldSource() {
             h.hp > 0 && 
             (h.hp / h.maxHp) < healThreshold
           );
+          
+          // Find dead allies that can be resurrected
+          const deadAllies = currentHeroes.filter(h => h.isDead || h.hp <= 0);
+          
+          // RESURRECTION: If no one needs healing but there are dead allies, resurrect one
+          if (injuredAllies.length === 0 && deadAllies.length > 0) {
+            const resurrectTarget = deadAllies[0]; // Resurrect first dead hero
+            console.log(`[Resurrection] ✨ ${hero.name} casts RESURRECT on ${resurrectTarget.name}!`);
+            
+            actions.push({
+              type: 'resurrect', // Special type for resurrection
+              actorId: hero.id,
+              actorName: hero.name,
+              targetId: resurrectTarget.id,
+              targetName: resurrectTarget.name,
+              initiative,
+              isHero: true
+            } as any);
+            return; // Healer resurrects instead of attacking
+          }
           
           if (injuredAllies.length > 0) {
             // SMART HEALING PRIORITY:
@@ -2271,6 +2734,8 @@ export default function CleanBattlefieldSource() {
           console.log(`[Combat] Executing ${index + 1}/${actions.length}: ${action.actorName} → ${action.targetName}`);
           if (action.type === 'heal') {
             executeHeal(action);
+          } else if (action.type === 'resurrect') {
+            executeResurrect(action);
           } else if (action.type === 'hero') {
             executeHeroAttack(action);
           } else {
@@ -2450,11 +2915,11 @@ export default function CleanBattlefieldSource() {
       const targetElement = document.querySelector(`[data-hero-id="${target.id}"]`);
       if (targetElement) {
         const rect = targetElement.getBoundingClientRect();
-        const actualHeal = Math.min(healAmount, target.maxHp - target.hp);
-        const overheal = healAmount - actualHeal;
+        const actualHeal = Math.round(Math.min(healAmount, target.maxHp - target.hp));
+        const overheal = Math.round(healAmount - actualHeal);
         
-        // Main heal number
-        addSCT(`+${healAmount}`, rect.left + rect.width / 2, rect.top + 20, 'heal');
+        // Main heal number (round for display)
+        addSCT(`+${Math.round(healAmount)}`, rect.left + rect.width / 2, rect.top + 20, 'heal');
         
         // Multiple "+" particles for visual flair (like idle!)
         for (let i = 0; i < 5; i++) {
@@ -2478,10 +2943,76 @@ export default function CleanBattlefieldSource() {
         
         if (overheal > 0) {
           setTimeout(() => {
-            addSCT(`+${overheal} Shield`, rect.left + rect.width / 2, rect.top + 40, 'loot');
+            addSCT(`+${Math.round(overheal)} Shield`, rect.left + rect.width / 2, rect.top + 40, 'loot');
           }, 300);
         }
       }
+    };
+
+    // Execute resurrection action (HEALERS)
+    const executeResurrect = (action: CombatAction) => {
+      const allCurrentHeroes = testHealer ? [...heroesRef.current, testHealer] : heroesRef.current;
+      const healer = allCurrentHeroes.find(h => h.id === action.actorId);
+      const target = allCurrentHeroes.find(h => h.id === action.targetId);
+      
+      if (!healer || !target) {
+        console.warn('[Resurrection] Healer or target not found');
+        return;
+      }
+      
+      // Only resurrect if target is actually dead
+      if (!target.isDead && target.hp > 0) {
+        console.log(`[Resurrection] ${target.name} is already alive, skipping resurrect`);
+        return;
+      }
+      
+      console.log(`[Resurrection] ✨ ${healer.name} resurrects ${target.name}!`);
+      
+      // Calculate resurrection HP (50% of max HP)
+      const resurrectHp = Math.round(target.maxHp * 0.5);
+      
+      // Play heal animation (attack animation for healers)
+      const healerRef = getHeroSpriteRef(healer.id);
+      if (healerRef.current) {
+        console.log(`[Animation] ${healer.name} → attack (resurrection cast)`);
+        healerRef.current.playAnimation('attack');
+      }
+      
+      // Apply resurrection
+      setHeroes(current => {
+        const updated = current.map(h => {
+          if (h.id === target.id) {
+            return { 
+              ...h, 
+              hp: resurrectHp, 
+              isDead: false,
+              shield: 0, // Clear shield on resurrection
+              activeDebuffs: {} // Clear debuffs on resurrection
+            };
+          }
+          return h;
+        });
+        heroesRef.current = updated;
+        return updated;
+      });
+      
+      // Play idle animation for resurrected hero
+      const targetRef = getHeroSpriteRef(target.id);
+      if (targetRef.current) {
+        targetRef.current.playAnimation('idle');
+      }
+      
+      // Show resurrection SCT
+      const targetElement = document.querySelector(`[data-hero-id="${target.id}"]`);
+      if (targetElement) {
+        const rect = targetElement.getBoundingClientRect();
+        addSCT(`✨ RESURRECTED`, rect.left + rect.width / 2, rect.top + 20, 'heal');
+        setTimeout(() => {
+          addSCT(`+${resurrectHp} HP`, rect.left + rect.width / 2, rect.top + 40, 'heal');
+        }, 200);
+      }
+      
+      console.log(`[Resurrection] ✅ ${target.name} resurrected with ${resurrectHp} HP`);
     };
 
     // Execute hero attack
@@ -2640,7 +3171,7 @@ export default function CleanBattlefieldSource() {
       }
       
       const variance = baseDamage * 0.3;
-      let damage = Math.floor(baseDamage + (Math.random() * variance * 2) - variance);
+      let damage = Math.round(baseDamage + (Math.random() * variance * 2) - variance);
       
       // Chain Lightning damage reduction per jump
       if ((action as any).isChainLightning) {
@@ -2652,7 +3183,7 @@ export default function CleanBattlefieldSource() {
       
       // Whirlwind damage reduction (70% of normal)
       if ((action as any).isWhirlwind) {
-        damage = Math.floor(damage * 0.7);
+        damage = Math.round(damage * 0.7);
         console.log(`[Whirlwind] AoE damage: 70% of normal`);
       }
       
@@ -2699,7 +3230,7 @@ export default function CleanBattlefieldSource() {
       const critChance = criticalStrikeActive ? 1.0 : (baseCritChance + (hero.critChance || 0));
       const isCrit = Math.random() < critChance;
       if (isCrit) {
-        damage = Math.floor(damage * 2);
+        damage = Math.round(damage * 2);
         console.log(`[Combat] ⚡ CRITICAL HIT! ${hero.name} crits for ${damage}!`);
       }
       
@@ -2805,24 +3336,24 @@ export default function CleanBattlefieldSource() {
         const updatedEnemies = [...currentEnemies];
 
         // Apply damage (already calculated above, outside setState)
-        let remainingDamage = damage;
-        let newShield = target.shield || 0;
-        let newHp = target.hp;
+        let remainingDamage = Math.round(damage);
+        let newShield = Math.round(target.shield || 0);
+        let newHp = Math.round(target.hp);
 
         if (newShield > 0) {
           if (remainingDamage >= newShield) {
             // Shield breaks
             remainingDamage -= newShield;
             newShield = 0;
-            newHp = Math.max(0, target.hp - remainingDamage);
+            newHp = Math.round(Math.max(0, target.hp - remainingDamage));
             console.log(`[Combat] 🛡️ ${target.name}'s shield broke!`);
           } else {
             // Shield absorbs all
-            newShield -= remainingDamage;
+            newShield = Math.round(newShield - remainingDamage);
             console.log(`[Combat] 🛡️ Shield absorbed ${remainingDamage} damage (${newShield} remaining)`);
           }
         } else {
-          newHp = Math.max(0, target.hp - remainingDamage);
+          newHp = Math.round(Math.max(0, target.hp - remainingDamage));
         }
 
         // CRITICAL: Mark as dead immediately if HP reaches 0
@@ -3469,7 +4000,7 @@ export default function CleanBattlefieldSource() {
       
       // Check for VULNERABLE debuff (+40% damage taken)
       if (targetHeroRef.activeDebuffs?.vulnerable) {
-        actualDamage = Math.floor(actualDamage * 1.4);
+        actualDamage = Math.round(actualDamage * 1.4);
         console.log(`[Debuff] 🛡️💥 ${targetHeroRef.name} is Vulnerable (+40% damage)`);
       }
       
@@ -3485,7 +4016,7 @@ export default function CleanBattlefieldSource() {
             if (Math.random() < proc.chance) {
               // Thorns: Reflect 20% damage
               if (proc.effect === 'reflectDamage') {
-                thornsDamage += Math.floor(actualDamage * proc.value);
+                thornsDamage += Math.round(actualDamage * proc.value);
                 console.log(`[Proc] 🌵 ${targetHeroRef.name}'s Thorns procs! (${(proc.value * 100).toFixed(0)}% reflect)`);
               }
               
@@ -3511,15 +4042,22 @@ export default function CleanBattlefieldSource() {
         });
       }
       
+      // Track original damage before reductions for blocked damage calculation
+      let blockedByAbilities = 0;
+      
       // Apply Last Stand reduction (75% reduction)
       if (lastStandActive) {
-        actualDamage = Math.floor(actualDamage * 0.25);
+        const damageBefore = actualDamage;
+        actualDamage = Math.round(actualDamage * 0.25);
+        blockedByAbilities += (damageBefore - actualDamage);
         console.log(`[Last Stand] Damage reduced by 75%: ${Math.floor(actualDamage / 0.25)} → ${actualDamage}`);
       }
       
       // Apply Iron Skin reduction (50% reduction)
       if (ironSkinActive) {
-        actualDamage = Math.floor(actualDamage * 0.50);
+        const damageBefore = actualDamage;
+        actualDamage = Math.round(actualDamage * 0.50);
+        blockedByAbilities += (damageBefore - actualDamage);
         console.log(`[Iron Skin] Damage reduced by 50%: ${Math.floor(actualDamage / 0.5)} → ${actualDamage}`);
       }
       
@@ -3527,7 +4065,9 @@ export default function CleanBattlefieldSource() {
       const allCurrentHeroes = testHealer ? [...heroesRef.current, testHealer] : heroesRef.current;
       const shieldWallActive = allCurrentHeroes.some(h => h.activeBuffs?.shieldWall?.active && h.activeBuffs.shieldWall.expiresAt > Date.now());
       if (shieldWallActive) {
+        const damageBefore = actualDamage;
         actualDamage = Math.floor(actualDamage * 0.70);
+        blockedByAbilities += (damageBefore - actualDamage);
         console.log(`[Shield Wall] 🛡️ Damage reduced by 30%: ${Math.floor(actualDamage / 0.7)} → ${actualDamage}`);
       }
       
@@ -3544,7 +4084,7 @@ export default function CleanBattlefieldSource() {
       const heroElement = document.querySelector(`[data-hero-id="${targetHeroRef.id}"]`);
       if (heroElement) {
         const rect = heroElement.getBoundingClientRect();
-        addSCT(`${actualDamage}`, rect.left + rect.width / 2, rect.top + 20, 'damage');
+        addSCT(`${Math.round(actualDamage)}`, rect.left + rect.width / 2, rect.top + 20, 'damage');
       }
 
       // Find current state of target hero and apply damage
@@ -3559,9 +4099,9 @@ export default function CleanBattlefieldSource() {
 
         // Apply damage (shield first, then HP) - NO SIDE EFFECTS HERE!
         // Apply damage (shield first, then HP) - using pre-calculated actualDamage
-        let remainingDamage = actualDamage;
-        let newShield = target.shield || 0;
-        let newHp = target.hp;
+        let remainingDamage = Math.round(actualDamage);
+        let newShield = Math.round(target.shield || 0);
+        let newHp = Math.round(target.hp);
         let shieldDamage = 0;
         let hpDamage = 0;
 
@@ -3598,7 +4138,25 @@ export default function CleanBattlefieldSource() {
             activeDebuffs: {} // Clear debuffs on death
           };
         } else {
-          updatedHeroes[targetIndex] = { ...target, hp: newHp, shield: newShield };
+          // Track blocked damage in stats
+          const updatedTarget = { ...target, hp: newHp, shield: newShield };
+          
+          // Initialize stats if needed
+          if (!updatedTarget.stats) {
+            updatedTarget.stats = { totalDamage: 0, totalHealing: 0, damageBlocked: 0 };
+          }
+          
+          // Track damage blocked by tank abilities
+          if (blockedByAbilities > 0) {
+            updatedTarget.stats.damageBlocked = (updatedTarget.stats.damageBlocked || 0) + blockedByAbilities;
+          }
+          
+          // Track damage blocked by shields (healer shields)
+          if (shieldDamage > 0) {
+            updatedTarget.stats.damageBlocked = (updatedTarget.stats.damageBlocked || 0) + shieldDamage;
+          }
+          
+          updatedHeroes[targetIndex] = updatedTarget;
           
           // ========================================
           // DRAGON ELEMENTAL DAMAGE (Fire & Poison DoT)
@@ -3614,7 +4172,7 @@ export default function CleanBattlefieldSource() {
                 expiresAt: now + 6000, // 6 seconds
                 appliedBy: enemy.name,
                 lastTick: now,
-                value: Math.floor(actualDamage * 0.15) // 15% of initial damage per tick
+                value: Math.round(actualDamage * 0.15) // 15% of initial damage per tick
               };
               console.log(`[Fire] 🔥 ${target.name} is BURNING! (${Math.floor(actualDamage * 0.15)} damage/sec for 6s)`);
               
@@ -3801,10 +4359,74 @@ export default function CleanBattlefieldSource() {
         // Victory! Grant XP to all alive heroes
         console.log('[Combat] ✅ Victory! All enemies defeated.');
         
-        // QUEST TRACKING: Track wave completion
-        aliveHeroes.forEach(hero => {
-          trackQuest(hero.id, 'completeWaves', 1);
-        });
+        // DUNGEON MODE: Check if we need to advance to next room
+        if (gameMode === 'dungeon' && instanceData) {
+          const currentRoom = instanceData.currentRoom || 0;
+          const totalRooms = instanceData.totalRooms || 5;
+          
+          console.log(`[Dungeon] Room ${currentRoom + 1}/${totalRooms} cleared!`);
+          
+          if (currentRoom + 1 < totalRooms) {
+            // Advance to next room
+            console.log(`[Dungeon] 🚪 Advancing to room ${currentRoom + 2}/${totalRooms}...`);
+            
+            // Update instance data in Firebase to trigger room change
+            if (instanceData.id) {
+              import('firebase/firestore').then(({ doc, updateDoc }) => {
+                updateDoc(doc(db, 'dungeonInstances', instanceData.id), {
+                  currentRoom: currentRoom + 1,
+                  updatedAt: new Date()
+                }).then(() => {
+                  console.log(`[Dungeon] ✅ Advanced to room ${currentRoom + 2}`);
+                  // Instance listener will detect the change and re-run dungeon setup useEffect
+                }).catch(err => {
+                  console.error('[Dungeon] Failed to advance room:', err);
+                });
+              });
+            }
+            
+            // Clear combat state (new room will spawn new enemies)
+            setEnemies([]);
+            enemiesRef.current = [];
+            setInCombat(false);
+            combatInProgress.current = false;
+            return; // Don't grant XP/loot yet - wait for next room
+          } else {
+            // Final room cleared - dungeon complete!
+            console.log(`[Dungeon] 🎉 DUNGEON COMPLETE!`);
+            
+            // QUEST TRACKING: Track dungeon completion for all alive heroes
+            aliveHeroes.forEach(hero => {
+              trackQuest(hero.id, 'completeDungeons', 1);
+            });
+            
+            // Mark dungeon as complete in Firebase
+            if (instanceData.id) {
+              import('firebase/firestore').then(({ doc, updateDoc }) => {
+                updateDoc(doc(db, 'dungeonInstances', instanceData.id), {
+                  status: 'completed',
+                  completedAt: new Date(),
+                  currentRoom: currentRoom + 1
+                }).then(() => {
+                  console.log(`[Dungeon] ✅ Marked dungeon as complete`);
+                  // Will return to idle mode after a delay
+                }).catch(err => {
+                  console.error('[Dungeon] Failed to mark complete:', err);
+                });
+              });
+            }
+            
+            // Grant dungeon completion rewards (from dungeon definition)
+            // TODO: Get rewards from dungeon definition and grant them
+          }
+        }
+        
+        // QUEST TRACKING: Track wave completion (for idle mode)
+        if (gameMode === 'idle') {
+          aliveHeroes.forEach(hero => {
+            trackQuest(hero.id, 'completeWaves', 1);
+          });
+        }
         
         // Check if clean victory (no deaths) for difficulty adjustment
         const anyDeaths = currentHeroes.some(h => h.isDead || h.hp <= 0);
@@ -3841,8 +4463,27 @@ export default function CleanBattlefieldSource() {
         
         console.log(`[Combat] Granting ${totalXP} base XP to all heroes (before XP Boost buff)`);
         
+        // Calculate total gold from defeated enemies (enemy.xp / 10 per kill)
+        let totalBaseGold = currentEnemies.reduce((sum, enemy) => {
+          const enemyXP = enemy.xp || enemy.level * 10;
+          return sum + Math.floor(enemyXP / 10);
+        }, 0);
+        
+        // Helper function to get founder pack gold multiplier
+        const getFounderGoldMultiplier = (founderPackTier: string | null | undefined): number => {
+          if (!founderPackTier) return 1.0; // No founder pack = 100% (no bonus)
+          const multipliers: Record<string, number> = {
+            'bronze': 1.10,  // +10% gold
+            'silver': 1.20,  // +20% gold
+            'gold': 1.30,    // +30% gold
+            'platinum': 1.50 // +50% gold
+          };
+          return multipliers[founderPackTier.toLowerCase()] || 1.0;
+        };
+        
         // Track XP gains and level ups (for SCT outside setState)
         const xpResults: Array<{heroId: string; name: string; xp: number; leveledUp: boolean; oldLevel?: number; newLevel?: number; isDead: boolean}> = [];
+        const goldResults: Array<{heroId: string; name: string; gold: number; baseGold: number; multiplier: number}> = [];
         
         // Grant XP and check for level ups (EVEN DEAD HEROES GET XP!)
         setHeroes(currentHeroes => {
@@ -3858,7 +4499,24 @@ export default function CleanBattlefieldSource() {
             
             const newXP = (hero.xp || 0) + xpToGrant;
             const maxXP = hero.maxXp || (100 + hero.level * 10);
-            let newHero = { ...hero, xp: newXP };
+            
+            // Calculate gold with founder pack multiplier
+            const founderTier = (hero as any).founderPackTier || null;
+            const goldMultiplier = getFounderGoldMultiplier(founderTier);
+            const goldToGrant = Math.floor(totalBaseGold * goldMultiplier);
+            
+            // Track gold results for SCT
+            goldResults.push({
+              heroId: hero.id,
+              name: hero.name,
+              gold: goldToGrant,
+              baseGold: totalBaseGold,
+              multiplier: goldMultiplier
+            });
+            
+            // Apply gold to hero
+            const newGold = (hero.gold || 0) + goldToGrant;
+            let newHero = { ...hero, xp: newXP, gold: newGold };
             
             // Track for SCT outside setState
             const result = {
@@ -3941,6 +4599,28 @@ export default function CleanBattlefieldSource() {
           }
         });
         
+        // Show gold SCT for all heroes (including dead ones, they still get gold)
+        goldResults.forEach(result => {
+          const hero = heroesRef.current.find(h => h.id === result.heroId);
+          const isDead = hero?.isDead || hero?.hp <= 0;
+          
+          // Only show SCT for alive heroes
+          if (!isDead) {
+            const heroElement = document.querySelector(`[data-hero-id="${result.heroId}"]`);
+            if (heroElement) {
+              const rect = heroElement.getBoundingClientRect();
+              // Show gold amount with multiplier indicator if founder pack
+              if (result.multiplier > 1.0) {
+                const bonusPercent = ((result.multiplier - 1.0) * 100).toFixed(0);
+                console.log(`[Gold] 💰 ${result.name} earned ${result.gold}g (${result.baseGold}g base + ${bonusPercent}% founder bonus)`);
+                addSCT(`💰 ${result.gold}g`, rect.left + rect.width / 2, rect.top + 60, 'gold');
+              } else {
+                addSCT(`💰 ${result.gold}g`, rect.left + rect.width / 2, rect.top + 60, 'gold');
+              }
+            }
+          }
+        });
+        
         // Track kills for quests (all enemies defeated = kills for all alive heroes)
         const defeatedCount = currentEnemies.length;
         setHeroes(current => {
@@ -3978,11 +4658,15 @@ export default function CleanBattlefieldSource() {
             
             const randomHero = aliveHeroes[Math.floor(Math.random() * aliveHeroes.length)];
             
-            // Generate loot for this hero's role
+            // Generate loot for this hero's role (with viewer bonus)
+            const viewerBonuses = calculateViewerBonuses();
+            const isRaidOrDungeon = gameMode === 'raid' || gameMode === 'dungeon';
             const loot = generateLoot(randomHero.role, {
               enemyLevel: enemy.level || 1,
               waveCount: waveCount,
-              isBoss: enemy.isBoss || false
+              isBoss: enemy.isBoss || false,
+              viewerLootBonus: viewerBonuses.loot || 0,
+              isRaidOrDungeon: isRaidOrDungeon // Raids/dungeons get stronger mythic (4.0x vs 3.5x)
             });
             
             if (!loot) continue;
@@ -4338,8 +5022,61 @@ export default function CleanBattlefieldSource() {
                 console.error(`[Quest Auto-Claim] ❌ Failed to auto-claim for ${hero.name}:`, error);
               }
             });
-          } catch (error: any) {
+          } catch (error) {
             console.error('[Quest Sync] ❌ Failed to sync quest progress:', error);
+          }
+        }
+        
+        // AUTO-PURCHASE BATCH SYNC: Sync pending purchases to backend
+        const timeSinceLastPurchaseSync = now - lastPurchaseSyncRef.current;
+        if (pendingPurchasesRef.current.size > 0 && timeSinceLastPurchaseSync >= 60000) {
+          console.log('[Purchase Sync] Syncing auto-purchases for', pendingPurchasesRef.current.size, 'heroes...');
+          
+          // Process each hero's pending purchases
+          const purchasePromises: Promise<void>[] = [];
+          
+          pendingPurchasesRef.current.forEach((purchases, heroId) => {
+            const hero = heroes.find(h => h.id === heroId);
+            if (!hero || purchases.length === 0) return;
+            
+            // Group purchases by itemKey and sum quantities
+            const groupedPurchases = new Map<string, number>();
+            purchases.forEach(p => {
+              const current = groupedPurchases.get(p.itemKey) || 0;
+              groupedPurchases.set(p.itemKey, current + p.quantity);
+            });
+            
+            // Create API calls for each unique item
+            groupedPurchases.forEach((quantity, itemKey) => {
+              purchasePromises.push(
+                heroAPI.purchaseGoldItem(heroId, itemKey, quantity)
+                  .then(() => {
+                    console.log(`[Purchase Sync] ✅ Synced ${quantity}x ${itemKey} for hero ${heroId}`);
+                  })
+                  .catch(err => {
+                    console.error(`[Purchase Sync] ❌ Failed to sync ${quantity}x ${itemKey} for hero ${heroId}:`, err);
+                  })
+              );
+            });
+          });
+          
+          // Wait for all purchases to complete
+          if (purchasePromises.length > 0) {
+            Promise.all(purchasePromises).then(async () => {
+              console.log('[Purchase Sync] ✅ All purchases synced');
+              
+              // Clear pending purchases after successful sync
+              pendingPurchasesRef.current.clear();
+              lastPurchaseSyncRef.current = now;
+              
+              // Note: Items are now in inventory. Buffs and potions will be auto-used during combat.
+              // The Firebase listener will sync inventory updates to browser source automatically.
+            }).catch(err => {
+              console.error('[Purchase Sync] ❌ Some purchases failed to sync:', err);
+              // Still clear to prevent accumulation, but log error
+              pendingPurchasesRef.current.clear();
+              lastPurchaseSyncRef.current = now;
+            });
           }
         }
       }
@@ -4354,7 +5091,8 @@ export default function CleanBattlefieldSource() {
             maxXp: hero.maxXp || 100,
             maxHp: hero.maxHp,
             attack: hero.attack,
-            defense: hero.defense
+            defense: hero.defense,
+            stats: hero.stats || { totalDamage: 0, totalHealing: 0, damageBlocked: 0 }
           });
           console.log(`[Sync] ✅ Synced ${hero.name} (HP: ${hero.hp}/${hero.maxHp})`);
         } catch (error: any) {
@@ -4929,6 +5667,97 @@ export default function CleanBattlefieldSource() {
       spellDamage: stats.spellDamage
     };
     
+    // Calculate gem stats from all equipped items
+    let gemStats = {
+      attack: 0,
+      defense: 0,
+      critChance: 0,
+      critDamage: 0,
+      damageReduction: 0,
+      maxHp: 0,
+      allStats: 0,
+      xpGain: 0,
+      goldGain: 0,
+      tokenGain: 0
+    };
+    
+    // Calculate socket bonuses from all equipped items
+    let socketBonusStats = {
+      attack: 0,
+      defense: 0,
+      allStats: 0,
+      xpGain: 0,
+      goldGain: 0,
+      critChance: 0,
+      damageReduction: 0
+    };
+    
+    Object.values(equipment).forEach((item: any) => {
+      if (!item) return;
+      
+      // Add gem stats from sockets
+      if (item.sockets && Array.isArray(item.sockets)) {
+        item.sockets.forEach((socket: any) => {
+          if (socket.gem && socket.gem.stats) {
+            const gemStat = socket.gem.stats;
+            gemStats.attack += gemStat.attack || 0;
+            gemStats.defense += gemStat.defense || 0;
+            gemStats.critChance += gemStat.critChance || 0;
+            gemStats.critDamage += gemStat.critDamage || 0;
+            gemStats.damageReduction += gemStat.damageReduction || 0;
+            gemStats.maxHp += gemStat.maxHp || 0;
+            gemStats.allStats += gemStat.allStats || 0;
+            gemStats.xpGain += gemStat.xpGain || 0;
+            gemStats.goldGain += gemStat.goldGain || 0;
+            gemStats.tokenGain += gemStat.tokenGain || 0;
+          }
+        });
+        
+        // Calculate socket bonuses for this item
+        if (item.socketBonuses) {
+          socketBonusStats.attack += item.socketBonuses.attack || 0;
+          socketBonusStats.defense += item.socketBonuses.defense || 0;
+          socketBonusStats.allStats += item.socketBonuses.allStats || 0;
+          socketBonusStats.xpGain += item.socketBonuses.xpGain || 0;
+          socketBonusStats.goldGain += item.socketBonuses.goldGain || 0;
+          socketBonusStats.critChance += item.socketBonuses.critChance || 0;
+          socketBonusStats.damageReduction += item.socketBonuses.damageReduction || 0;
+        }
+      }
+    });
+    
+    // Apply gem stats (flat bonuses)
+    stats.attack += gemStats.attack;
+    stats.defense += gemStats.defense;
+    stats.maxHp += gemStats.maxHp;
+    stats.critChance += gemStats.critChance / 100; // Convert percentage to decimal
+    stats.damageReduction += gemStats.damageReduction;
+    // All stats bonus (applied as percentage of current stats)
+    if (gemStats.allStats > 0) {
+      stats.attack += Math.floor(stats.attack * gemStats.allStats / 100);
+      stats.defense += Math.floor(stats.defense * gemStats.allStats / 100);
+      stats.maxHp += Math.floor(stats.maxHp * gemStats.allStats / 100);
+    }
+    
+    // Apply socket bonuses (percentage bonuses)
+    if (socketBonusStats.attack > 0) {
+      stats.attack += Math.floor(stats.attack * socketBonusStats.attack / 100);
+    }
+    if (socketBonusStats.defense > 0) {
+      stats.defense += Math.floor(stats.defense * socketBonusStats.defense / 100);
+    }
+    if (socketBonusStats.allStats > 0) {
+      stats.attack += Math.floor(stats.attack * socketBonusStats.allStats / 100);
+      stats.defense += Math.floor(stats.defense * socketBonusStats.allStats / 100);
+      stats.maxHp += Math.floor(stats.maxHp * socketBonusStats.allStats / 100);
+    }
+    stats.critChance += socketBonusStats.critChance / 100; // Convert percentage to decimal
+    stats.damageReduction += socketBonusStats.damageReduction;
+    
+    // Store gem/socket bonuses for display (optional - can be used in UI)
+    (stats as any).gemStats = gemStats;
+    (stats as any).socketBonusStats = socketBonusStats;
+    
     // Apply upgrade bonuses (custom stat selection system)
     // Upgrades are percentages of the hero's TOTAL stats, not the item's base stats
     Object.values(equipment).forEach((item: any) => {
@@ -5053,12 +5882,12 @@ export default function CleanBattlefieldSource() {
     const screenWidth = 1920;
     const screenHeight = 1080;
     
-    // Boss positioning: aligned with LOWEST hero (900 + 30 stagger = 930px)
+    // Boss positioning: aligned with LOWEST hero (935 + 30 stagger = 965px)
     // Raid/dungeon bosses use special positioning (already handled separately)
     if (isBoss) {
       return {
         left: '1400px', // Further right for massive Elder Dragon (more space from heroes)
-        top: '930px' // Aligned with lowest hero
+        top: '965px' // Aligned with lowest hero (moved down ~1/3 inch from 930px)
       };
     }
     
@@ -5066,20 +5895,20 @@ export default function CleanBattlefieldSource() {
     const heroZoneEnd = screenWidth * 0.6; // 1152px (end of hero zone)
     const enemyZoneWidth = screenWidth * 0.4; // 768px (enemy zone)
     const leftMargin = 80; // Distance from hero zone
-    const rightMargin = 100; // Distance from right edge (safety buffer for sprite width)
-    const availableEnemyWidth = enemyZoneWidth - leftMargin - rightMargin; // ~588px for enemies
+    const rightMargin = 150; // Increased buffer for sprite width (sprites at 3.0x scale can be ~120px wide)
+    const availableEnemyWidth = enemyZoneWidth - leftMargin - rightMargin; // ~538px for enemies
     
     // Calculate horizontal position (spread evenly, never exceed screen bounds)
     const enemyStartX = heroZoneEnd + leftMargin; // 1232px
-    const spacing = total > 1 ? Math.min(250, availableEnemyWidth / (total - 1)) : 0;
+    const spacing = total > 1 ? Math.min(200, availableEnemyWidth / (total - 1)) : 0;
     const x = enemyStartX + (index * spacing);
     
-    // Safety check: ensure enemy never goes past right edge
-    const maxX = screenWidth - rightMargin; // 1820px max
+    // Safety check: ensure enemy never goes past right edge (with extra buffer for sprite width)
+    const maxX = screenWidth - rightMargin; // 1770px max (ensures sprite doesn't overflow)
     const finalX = Math.min(x, maxX);
     
-    // Vertical position - aligned with lowest hero (900 + 30 = 930px)
-    const y = 930;
+    // Vertical position - aligned with lowest hero (935 + 30 = 965px, moved down ~1/3 inch from 930px)
+    const y = 965;
     
     return {
       left: `${finalX}px`,
@@ -5123,7 +5952,7 @@ export default function CleanBattlefieldSource() {
     // Vertical stagger - FEET AT BOTTOM for OBS overlay
     // Sprite height scaled 3.0x ~= 240px, UI above ~= 100px, total ~= 340px
     // Positioned to ensure all heroes fit on 1080px canvas
-    const baseY = 900; // Safe bottom position (ensures UI doesn't go off-screen)
+    const baseY = 935; // Safe bottom position (moved down ~1/3 inch from 900px)
     const staggerAmount = 30; // Vertical offset (reduced to fit on screen)
     const y = sortedIndex % 2 === 0 
       ? baseY - staggerAmount // Even index: slightly higher
@@ -5198,7 +6027,7 @@ export default function CleanBattlefieldSource() {
       <div style={{
         width: '1920px',
         height: '1080px',
-        background: 'transparent',
+        background: darkMode ? '#1a1a1a' : 'transparent',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -5220,33 +6049,333 @@ export default function CleanBattlefieldSource() {
   // MODE SWITCHING: Conditional rendering based on gameMode
   // ============================================================================
   
-  // DUNGEON MODE
+  // DUNGEON MODE - Uses same combat display as idle/raid (heroes and enemies state)
   if (gameMode === 'dungeon' && instanceData) {
+    // SIMPLIFIED: Just use heroes/enemies state directly!
+    // Dungeon setup useEffect already populated them with dungeon room enemies
+    // Reuse the same render logic as idle adventure (just different header)
+    
     return (
       <div style={{ 
         width: '1920px', 
         height: '1080px', 
         position: 'relative', 
-        backgroundColor: 'transparent', 
-        overflow: 'hidden',
+        backgroundColor: darkMode ? '#1a1a1a' : 'transparent', 
+        overflow: 'hidden', 
+        fontFamily: 'Arial, sans-serif',
         opacity: fadeOpacity,
         transition: 'opacity 0.5s ease-in-out'
       }}>
-        <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center' }}>
-          <div style={{ color: '#fbbf24', fontSize: '56px', fontWeight: 'bold', textShadow: '3px 3px 6px rgba(0,0,0,0.9)', marginBottom: '20px' }}>
-            🏰 DUNGEON MODE 🏰
+        {/* Dungeon Header */}
+        <div style={{
+          position: 'absolute',
+          top: '20px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 1000,
+          textAlign: 'center',
+          pointerEvents: 'none'
+        }}>
+          <div style={{ 
+            color: '#fbbf24', 
+            fontSize: '32px', 
+            fontWeight: 'bold', 
+            textShadow: '3px 3px 6px rgba(0,0,0,0.9)',
+            marginBottom: '8px'
+          }}>
+            🏰 {instanceData.name || 'Dungeon'}
           </div>
-          <div style={{ color: 'white', fontSize: '32px', marginBottom: '40px', textShadow: '2px 2px 4px rgba(0,0,0,0.8)' }}>
-            {instanceData.name || 'Dungeon'}
-          </div>
-          <div style={{ color: '#10b981', fontSize: '24px', marginBottom: '40px', textShadow: '2px 2px 4px rgba(0,0,0,0.8)' }}>
-            Room {instanceData.currentRoom || 0}/{instanceData.totalRooms || 5}
-          </div>
-          <div style={{ color: '#a0a0a0', fontSize: '18px', textShadow: '2px 2px 4px rgba(0,0,0,0.8)' }}>
-            Dungeon combat will be displayed here<br/>
-            (Coming soon!)
+          <div style={{ 
+            color: '#10b981', 
+            fontSize: '20px', 
+            textShadow: '2px 2px 4px rgba(0,0,0,0.8)' 
+          }}>
+            Room {((instanceData.currentRoom || 0) + 1)}/{instanceData.totalRooms || 5}
           </div>
         </div>
+        
+        {/* Heroes - Use same positioning as idle mode */}
+        {heroes.map((hero, index) => {
+          const position = getHeroPosition(hero, index, heroes);
+          const hpPercent = (hero.hp / hero.maxHp) * 100;
+          const hasShield = (hero.shield || 0) > 0;
+          const spriteKey = hero.isDead ? `${hero.id}-dead` : `${hero.id}-alive`;
+          
+          return (
+            <div
+              key={spriteKey}
+              data-hero-id={hero.id}
+              style={{
+                position: 'absolute',
+                ...position,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center'
+              }}
+            >
+              {/* Active Title - ABOVE hero name */}
+              {(hero as any).activeTitle && (() => {
+                const title = (hero as any).activeTitle as string;
+                const isFounder = title?.toLowerCase().includes('founder');
+                const founderTier = isFounder ? getFounderTierFromTitle(title) : null;
+                const titleColor = founderTier ? getFounderTitleColor(founderTier) : '#fbbf24';
+                const displayText = isFounder ? 'Founder' : title;
+                
+                return (
+                  <div style={{
+                    color: titleColor,
+                    fontSize: '14px',
+                    fontWeight: 'bold',
+                    fontStyle: 'italic',
+                    textShadow: `2px 2px 4px rgba(0,0,0,0.9), 0 0 10px ${titleColor}80`,
+                    backgroundColor: 'transparent',
+                    marginBottom: '4px',
+                    transform: 'translateY(-40px)'
+                  }}>
+                    {displayText}
+                  </div>
+                );
+              })()}
+              
+              {/* Hero Name - HIGH ABOVE sprite */}
+              <div style={{
+                color: hero.isDead ? '#ef4444' : 'white',
+                fontSize: '18px',
+                fontWeight: 'bold',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                marginBottom: '6px',
+                textShadow: '2px 2px 4px rgba(0,0,0,0.9)',
+                backgroundColor: 'transparent',
+                padding: '2px 8px',
+                borderRadius: '4px',
+                transform: 'translateY(-40px)',
+                ...(getNameFrameStyles(hero.nameFrame as any) || {})
+              }}>
+                {hero.founderBadge && (
+                  <img
+                    src={hero.founderBadge}
+                    alt="Founder Badge"
+                    style={{
+                      width: '24px',
+                      height: '24px',
+                      objectFit: 'contain',
+                      filter: 'drop-shadow(2px 2px 4px rgba(0,0,0,0.9))'
+                    }}
+                  />
+                )}
+                <span>
+                  <span style={{ color: hero.nameColor || (hero.isDead ? '#ef4444' : 'white') }}>{hero.name}</span> <span style={{ color: '#fbbf24' }}>{hero.level}</span>
+                  {hero.isDead && ' 💀'}
+                </span>
+              </div>
+
+              {/* HP Bar - Smaller for OBS */}
+              <div style={{
+                width: '120px',
+                height: '16px',
+                backgroundColor: 'rgba(0,0,0,0.7)',
+                border: '1px solid #4a5568',
+                borderRadius: '3px',
+                marginBottom: '8px',
+                overflow: 'hidden',
+                transform: 'translateY(-40px)'
+              }}>
+                {/* HP Fill */}
+                <div style={{
+                  width: `${hpPercent}%`,
+                  height: '100%',
+                  backgroundColor: hpPercent > 50 ? '#10b981' : hpPercent > 25 ? '#f59e0b' : '#ef4444',
+                  transition: 'width 0.3s ease'
+                }} />
+                
+                {/* HP Text */}
+                <div style={{
+                  position: 'absolute',
+                  width: '120px',
+                  textAlign: 'center',
+                  marginTop: '-14px',
+                  color: 'white',
+                  fontSize: '10px',
+                  fontWeight: 'bold',
+                  textShadow: '1px 1px 2px rgba(0,0,0,1)'
+                }}>
+                  {Math.floor(hero.hp)} / {hero.maxHp}
+                </div>
+              </div>
+
+              {/* Hero Sprite - Wrap in div for aura, shield glow and enrage effect */}
+              <div 
+                className={`${hasShield ? 'has-shield' : ''} ${hero.enrageExpiry && hero.enrageExpiry > Date.now() ? 'is-enraged' : ''}`}
+                style={{
+                  filter: (() => {
+                    const isEnraged = hero.enrageExpiry && hero.enrageExpiry > Date.now();
+                    const filters = [];
+                    
+                    // Aura effect (founder pack) - base layer
+                    if (hero.auraEffect) {
+                      const auraFilters = getAuraFilter(hero.auraEffect as any, hero.auraColor);
+                      if (auraFilters) {
+                        filters.push(auraFilters);
+                      }
+                    }
+                    
+                    return filters.length > 0 ? filters.join(' ') : 'none';
+                  })(),
+                }}
+              >
+                <HeroSpriteJS
+                  key={spriteKey}
+                  ref={getHeroSpriteRef(hero.id)}
+                  heroId={hero.id}
+                  role={hero.role}
+                  facing={getFacingDirection(hero.role, 'right')}
+                  scale={3.0}
+                  shield={0}
+                />
+              </div>
+            </div>
+          );
+        })}
+
+        {/* Enemies - Use same positioning as idle mode */}
+        {enemies.map((enemy, index) => {
+          const position = getEnemyPosition(index, enemies.length, enemy.isBoss);
+          const hpPercent = (enemy.hp / enemy.maxHp) * 100;
+          const hasShield = (enemy.shield || 0) > 0;
+          
+          return (
+            <div
+              key={enemy.id}
+              data-enemy-id={enemy.id}
+              style={{
+                position: 'absolute',
+                ...position,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center'
+              }}
+            >
+              {/* Enemy Name - ONLY for wave mobs, NOT boss */}
+              {!enemy.isBoss && (
+                <div style={{
+                  color: '#ef4444',
+                  fontSize: '18px',
+                  fontWeight: 'bold',
+                  marginBottom: '6px',
+                  textShadow: '3px 3px 6px rgba(0,0,0,0.9)',
+                  backgroundColor: 'transparent',
+                  padding: '4px 12px',
+                  borderRadius: '6px',
+                  transform: 'translateY(-48px)',
+                  position: 'relative',
+                  zIndex: 100
+                }}>
+                  {enemy.name} (Lv{enemy.level})
+                </div>
+              )}
+                
+              {/* Enemy HP Bar - ONLY for wave mobs, NOT boss */}
+              {!enemy.isBoss && (
+                <div style={{
+                  width: '150px',
+                  height: '20px',
+                  backgroundColor: 'rgba(0,0,0,0.8)',
+                  border: '2px solid #7f1d1d',
+                  borderRadius: '6px',
+                  marginBottom: '12px',
+                  overflow: 'hidden',
+                  transform: 'translateY(-48px)',
+                  position: 'relative',
+                  zIndex: 100
+                }}>
+                  <div style={{
+                    width: `${hpPercent}%`,
+                    height: '100%',
+                    backgroundColor: '#dc2626',
+                    transition: 'width 0.3s ease'
+                  }} />
+                  <div style={{
+                    position: 'absolute',
+                    width: '150px',
+                    textAlign: 'center',
+                    marginTop: '-18px',
+                    color: 'white',
+                    fontSize: '12px',
+                    fontWeight: 'bold',
+                    textShadow: '2px 2px 4px rgba(0,0,0,1)'
+                  }}>
+                    {Math.floor(enemy.hp).toLocaleString()} / {enemy.maxHp.toLocaleString()}
+                  </div>
+                </div>
+              )}
+                
+              {/* Enemy Sprite */}
+              <div 
+                className={hasShield ? 'has-shield' : ''}
+                style={{
+                  width: enemy.isBoss ? '1200px' : 'auto',
+                  overflow: 'visible',
+                  position: 'relative'
+                }}
+              >
+                <EnemySpriteJS
+                  ref={getEnemySpriteRef(enemy.id)}
+                  enemyId={enemy.id}
+                  enemyType={enemy.enemyType || enemy.name}
+                  enemyName={enemy.name}
+                  facing="left"
+                  scale={enemy.isBoss ? 12.0 : 3.0}
+                />
+              </div>
+            </div>
+          );
+        })}
+        
+        {/* SCT Messages (reuse from idle mode) */}
+        {sctMessages.map(msg => (
+          <div
+            key={msg.id}
+            style={{
+              position: 'absolute',
+              left: `${msg.x}px`,
+              top: `${msg.y}px`,
+              color: msg.type === 'damage' ? '#ef4444' :
+                     msg.type === 'crit' ? '#fbbf24' :
+                     msg.type === 'heal' ? '#10b981' :
+                     msg.type === 'heal-hot' ? '#6ee7b7' :
+                     msg.type === 'dot' ? '#a855f7' :
+                     msg.type === 'loot' ? '#fcd34d' :
+                     msg.type === 'levelup' ? '#f472b6' :
+                     msg.type === 'questcomplete' ? '#8b5cf6' :
+                     msg.type === 'xp' ? '#60a5fa' :
+                     msg.type === 'gather' ? '#f472b6' :
+                     msg.type === 'profession-xp' ? '#a78bfa' :
+                     msg.type === 'miss' ? '#9ca3af' :
+                     'white',
+              fontSize: msg.type === 'crit' ? '42px' :
+                        msg.type === 'levelup' || msg.type === 'questcomplete' ? '28px' :
+                        msg.type === 'loot' ? '24px' :
+                        msg.type === 'xp' ? '20px' :
+                        msg.type === 'heal' ? '28px' :
+                        '24px',
+              fontWeight: 'bold',
+              textShadow: msg.type === 'crit' ? '0 0 10px rgba(251, 191, 36, 0.8), 2px 2px 4px rgba(0,0,0,1)' : 
+                          msg.type === 'heal' ? '0 0 8px rgba(16, 185, 129, 0.6), 2px 2px 4px rgba(0,0,0,1)' :
+                          '2px 2px 4px rgba(0,0,0,0.9)',
+              pointerEvents: 'none',
+              animation: msg.type === 'crit' ? 'float-up 3s ease-out forwards' :
+                         msg.type === 'heal' ? 'float-up 2.5s ease-out forwards' :
+                         'float-up 2s ease-out forwards',
+              zIndex: msg.type === 'crit' ? 1001 : 1000,
+              transform: msg.type === 'crit' ? 'scale(1.2)' : 'scale(1)'
+            }}
+          >
+            {msg.type === 'crit' && '💥 '}{msg.text}{msg.type === 'heal' && ' 💚'}
+          </div>
+        ))}
+
       </div>
     );
   }
@@ -5625,8 +6754,8 @@ export default function CleanBattlefieldSource() {
                     <EnemySpriteJS
                       ref={getEnemySpriteRef(enemy.id)}
                       enemyId={enemy.id}
-                      enemyType={mappedType}
-                      enemyName={mappedType}
+                      enemyType={enemy.enemyType || mappedType}
+                      enemyName={enemy.name}
                       facing={mappedType.startsWith('Dragon_') ? 'left' : 'right'}
                       scale={enemy.isBoss ? 12.0 : mappedType.startsWith('Dragon_') ? 6.0 : 3.0}
                     />
@@ -5691,12 +6820,110 @@ export default function CleanBattlefieldSource() {
     <div className="clean-battlefield-page" style={{
       width: '1920px',
       height: '1080px',
-      background: 'transparent',
+      background: darkMode ? '#1a1a1a' : 'transparent',
       position: 'relative',
       overflow: 'hidden',
       opacity: fadeOpacity,
       transition: 'opacity 0.5s ease-in-out'
     }}>
+
+      {/* Queue Status Overlay */}
+      {queueStatus?.inQueue && gameMode === 'idle' && (
+        <div style={{
+          position: 'absolute',
+          bottom: '20px',
+          right: '20px',
+          background: 'rgba(0, 0, 0, 0.85)',
+          border: '2px solid #8b5cf6',
+          borderRadius: '12px',
+          padding: '16px 24px',
+          zIndex: 10000,
+          boxShadow: '0 4px 20px rgba(139, 92, 246, 0.5)',
+          minWidth: '280px'
+        }}>
+          <div style={{
+            color: '#8b5cf6',
+            fontSize: '18px',
+            fontWeight: 'bold',
+            marginBottom: '12px',
+            textShadow: '0 0 10px rgba(139, 92, 246, 0.8)'
+          }}>
+            🎯 In Queue
+          </div>
+          
+          <div style={{
+            color: '#fff',
+            fontSize: '24px',
+            fontWeight: 'bold',
+            marginBottom: '12px'
+          }}>
+            {queueStatus.totalInQueue}/5
+          </div>
+          
+          <div style={{
+            fontSize: '14px',
+            color: '#ccc',
+            marginBottom: '8px'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+              <span>Tank:</span>
+              <span style={{ 
+                color: queueStatus.roleCounts.tank >= 1 ? '#10b981' : '#ef4444',
+                fontWeight: 'bold'
+              }}>
+                {queueStatus.roleCounts.tank}/1
+              </span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+              <span>Healer:</span>
+              <span style={{ 
+                color: queueStatus.roleCounts.healer >= 1 ? '#10b981' : '#ef4444',
+                fontWeight: 'bold'
+              }}>
+                {queueStatus.roleCounts.healer}/1
+              </span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>DPS:</span>
+              <span style={{ 
+                color: queueStatus.roleCounts.dps >= 3 ? '#10b981' : '#ef4444',
+                fontWeight: 'bold'
+              }}>
+                {queueStatus.roleCounts.dps}/3
+              </span>
+            </div>
+          </div>
+          
+          {queueStatus.totalInQueue === 5 && (
+            <div style={{
+              marginTop: '12px',
+              padding: '8px',
+              background: 'rgba(16, 185, 129, 0.2)',
+              border: '1px solid #10b981',
+              borderRadius: '6px',
+              color: '#10b981',
+              fontSize: '13px',
+              fontWeight: 'bold',
+              textAlign: 'center'
+            }}>
+              ✅ Group Ready!
+            </div>
+          )}
+          
+          <div style={{
+            marginTop: '12px',
+            fontSize: '12px',
+            color: '#888',
+            textAlign: 'center'
+          }}>
+            Your Role: <span style={{ 
+              color: '#8b5cf6', 
+              fontWeight: 'bold',
+              textTransform: 'uppercase'
+            }}>{queueStatus.userRole}</span>
+          </div>
+        </div>
+      )}
 
       {/* Heroes (including test healer) */}
       {allHeroes && allHeroes.map((hero, index) => {
@@ -5938,7 +7165,7 @@ export default function CleanBattlefieldSource() {
               <EnemySpriteJS
                 ref={getEnemySpriteRef(enemy.id)}
                 enemyId={enemy.id}
-                enemyType={enemy.name}
+                enemyType={enemy.enemyType || enemy.name}
                 enemyName={enemy.name}
                 facing={getFacingDirection(enemy.name, 'left')}
                 scale={3.0}

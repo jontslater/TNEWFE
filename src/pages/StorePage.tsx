@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useHero } from '../hooks/useHero';
 import Navigation from '../components/Navigation';
-import { heroAPI } from '../api/client';
+import { heroAPI, tokenPackAPI } from '../api/client';
 
 // Shop item definitions (balanced for monetization)
 const GOLD_SHOP_ITEMS = {
@@ -46,7 +46,7 @@ const TOKEN_SHOP_PRICES = {
   rare: 200, // Increased from 100 (2x for monetization)
   epic: 600, // Increased from 300 (2x for monetization)
   legendary: 2500, // Increased from 1000 (2.5x for monetization)
-  mythic: 10000 // NEW - ultra-rare tier
+  mythic: 10000 // Ultra-rare tier (3.5x multiplier - slightly weaker than raid/dungeon mythic at 4.0x)
 };
 
 const RARITIES = ['common', 'rare', 'epic', 'legendary', 'mythic'] as const;
@@ -57,8 +57,58 @@ export default function StorePage() {
   const { user, isAuthenticated } = useAuth();
   const { hero, heroes, refetch: refetchHero } = useHero(user?.twitchId || null);
   const [purchasing, setPurchasing] = useState(false);
-  const [selectedTokenItem, setSelectedTokenItem] = useState<{ rarity: string; slot: string } | null>(null);
-  const [selectedGoldItem, setSelectedGoldItem] = useState<{ itemKey: string; heroId: string | null } | null>(null);
+  const [selectedTokenItem, setSelectedTokenItem] = useState<{ rarity: string; slot: string; heroId: string | null; quantity?: number } | null>(null);
+  const [selectedGoldItem, setSelectedGoldItem] = useState<{ itemKey: string; heroId: string | null; quantity?: number } | null>(null);
+  const [selectedTokenPack, setSelectedTokenPack] = useState<{ type: string; heroId: string | null } | null>(null);
+  const [slotInfo, setSlotInfo] = useState<{
+    slotsUnlocked: number;
+    heroCount: number;
+    nextSlot: number;
+    nextSlotCost: number | null;
+    totalTokens: number;
+    maxHeroes: number;
+    canUnlock: boolean;
+  } | null>(null);
+  const [unlocking, setUnlocking] = useState(false);
+
+  // Load slot info on mount and when heroes change
+  React.useEffect(() => {
+    if (user?.id && heroes) {
+      loadSlotInfo();
+    }
+  }, [user?.id, heroes?.length]);
+
+  const loadSlotInfo = async () => {
+    if (!user?.id) return;
+    try {
+      const info = await heroAPI.getSlotInfo(user.id, user.twitchId, undefined);
+      setSlotInfo(info);
+    } catch (error) {
+      console.error('Failed to load slot info:', error);
+    }
+  };
+
+  const handleUnlockSlot = async () => {
+    if (!user?.id || !slotInfo || unlocking) return;
+    
+    if (!slotInfo.canUnlock) {
+      alert(`Cannot unlock slot ${slotInfo.nextSlot}. You need ${slotInfo.nextSlotCost || 0} tokens.`);
+      return;
+    }
+
+    setUnlocking(true);
+    try {
+      await heroAPI.unlockHeroSlot(user.id, user.twitchId, undefined);
+      alert(`Successfully unlocked hero slot ${slotInfo.nextSlot}! You can now create ${slotInfo.nextSlot} heroes.`);
+      await loadSlotInfo(); // Refresh slot info
+      if (refetchHero) await refetchHero(); // Refresh heroes to update token totals
+    } catch (error: any) {
+      alert(error.response?.data?.error || 'Failed to unlock slot. Please try again.');
+      console.error('Failed to unlock slot:', error);
+    } finally {
+      setUnlocking(false);
+    }
+  };
 
   const handleGoldPurchaseClick = (itemKey: string) => {
     // Check if user has multiple heroes
@@ -68,8 +118,8 @@ export default function StorePage() {
     }
 
     if (heroes.length === 1) {
-      // Only one hero - purchase directly
-      handleGoldPurchase(itemKey, heroes[0].id!);
+      // Only one hero - show modal with quantity selector
+      setSelectedGoldItem({ itemKey, heroId: heroes[0].id || null, quantity: 1 });
       return;
     }
 
@@ -77,7 +127,7 @@ export default function StorePage() {
     setSelectedGoldItem({ itemKey, heroId: null });
   };
 
-  const handleGoldPurchase = async (itemKey: string, heroId: string) => {
+  const handleGoldPurchase = async (itemKey: string, heroId: string, quantity: number = 1) => {
     if (!user?.id || !heroId) return;
 
     const item = GOLD_SHOP_ITEMS[itemKey as keyof typeof GOLD_SHOP_ITEMS];
@@ -90,16 +140,18 @@ export default function StorePage() {
       return;
     }
 
-    if ((targetHero.gold || 0) < item.cost) {
-      alert(`Not enough gold! ${targetHero.name} needs ${item.cost}g (has ${targetHero.gold || 0}g)`);
+    const totalCost = item.cost * quantity;
+    if ((targetHero.gold || 0) < totalCost) {
+      alert(`Not enough gold! ${targetHero.name} needs ${totalCost}g (has ${targetHero.gold || 0}g)`);
       return;
     }
 
     setPurchasing(true);
     try {
       // Purchase using hero document ID (backend expects hero doc ID, not Twitch user ID)
-      await heroAPI.purchaseGoldItem(heroId, itemKey);
-      alert(`✅ Purchased ${item.name} for ${targetHero.name}!`);
+      await heroAPI.purchaseGoldItem(heroId, itemKey, quantity);
+      alert(`✅ Purchased ${quantity}x ${item.name} for ${targetHero.name}!`);
+      setSelectedGoldItem(null);
       refetchHero();
     } catch (error: any) {
       const errorMsg = error.response?.data?.error || 'Failed to purchase item';
@@ -111,24 +163,54 @@ export default function StorePage() {
     }
   };
 
-  const handleTokenPurchase = async (rarity: string, slot: string) => {
-    if (!user?.id || !hero) return;
+  const handleTokenPurchaseClick = (rarity: string, slot: string) => {
+    // Check if user has multiple heroes
+    if (!heroes || heroes.length === 0) {
+      alert('No heroes found. Create a hero first!');
+      return;
+    }
 
-    const cost = TOKEN_SHOP_PRICES[rarity as keyof typeof TOKEN_SHOP_PRICES];
-    if ((hero.tokens || 0) < cost) {
-      alert(`Not enough tokens! You need ${cost}t (you have ${hero.tokens || 0}t)`);
+    if (heroes.length === 1) {
+      // Only one hero - show modal with quantity selector
+      setSelectedTokenItem({ rarity, slot, heroId: heroes[0].id || null, quantity: 1 });
+      return;
+    }
+
+    // Multiple heroes - show selection modal with quantity
+    setSelectedTokenItem({ rarity, slot, heroId: null, quantity: 1 });
+  };
+
+  const handleTokenPurchase = async (rarity: string, slot: string, heroId: string, quantity: number = 1) => {
+    if (!heroId) return;
+
+    const costPerItem = TOKEN_SHOP_PRICES[rarity as keyof typeof TOKEN_SHOP_PRICES];
+    const totalCost = costPerItem * quantity;
+    const targetHero = heroes?.find(h => h.id === heroId);
+    
+    if (!targetHero) {
+      alert('Hero not found');
+      return;
+    }
+
+    if ((targetHero.tokens || 0) < totalCost) {
+      alert(`Not enough tokens! ${targetHero.name} needs ${totalCost}t (${quantity}x ${costPerItem}t, has ${targetHero.tokens || 0}t)`);
       return;
     }
 
     setPurchasing(true);
     try {
-      await heroAPI.purchaseTokenGear(user.id, rarity, slot);
-      alert(`✅ Purchased ${rarity} ${slot}!`);
+      // Use hero document ID (backend expects hero doc ID, not Twitch user ID)
+      await heroAPI.purchaseTokenGear(heroId, rarity, slot, quantity);
+      alert(`✅ Purchased ${quantity}x ${rarity} ${slot} for ${targetHero.name}!`);
+      setSelectedTokenItem(null);
       refetchHero();
     } catch (error: any) {
-      alert(error.response?.data?.error || 'Failed to purchase gear');
+      const errorMsg = error.response?.data?.error || 'Failed to purchase gear';
+      alert(errorMsg);
+      console.error('Purchase error:', error);
     } finally {
       setPurchasing(false);
+      setSelectedTokenItem(null);
     }
   };
 
@@ -216,6 +298,136 @@ export default function StorePage() {
               Earn gold from combat • Earn tokens from idle rewards (!claim in Twitch chat)
             </div>
           </div>
+
+          {/* Token Purchase Packs */}
+          <div className="bg-gray-800 rounded-lg p-6 border border-gray-700 mb-8">
+            <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2">
+              💳 Token Purchase Packs
+            </h2>
+            <p className="text-gray-400 mb-6">Buy tokens directly with real money - Standard gacha pricing</p>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {[
+                { type: 'impulse', price: 0.99, tokens: 100, gold: 1000, name: 'Impulse Pack', color: 'from-green-600 to-green-700', highlight: '🔥 Impulse Buy' },
+                { type: 'starter', price: 4.99, tokens: 500, gold: 5000, name: 'Starter Pack', color: 'from-blue-600 to-blue-700', highlight: '⭐ Most Popular' },
+                { type: 'value', price: 9.99, tokens: 1500, gold: 15000, name: 'Value Pack', color: 'from-purple-600 to-purple-700', highlight: '💎 Best Value' },
+                { type: 'premium', price: 24.99, tokens: 5000, gold: 50000, name: 'Premium Pack', color: 'from-yellow-600 to-yellow-700', highlight: '👑 Whale Tier' }
+              ].map((pack) => (
+                <div
+                  key={pack.type}
+                  className={`bg-gradient-to-br ${pack.color} rounded-lg p-6 border-2 border-white/20 hover:border-white/40 transition-all transform hover:scale-105`}
+                >
+                  <div className="text-center mb-4">
+                    <div className="text-xs font-semibold text-white/80 mb-1">{pack.highlight}</div>
+                    <div className="text-2xl font-bold text-white mb-2">{pack.name}</div>
+                    <div className="text-3xl font-bold text-white mb-1">${pack.price}</div>
+                  </div>
+                  
+                  <div className="bg-black/30 rounded-lg p-3 mb-4">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-sm text-white/90">Tokens:</span>
+                      <span className="text-lg font-bold text-blue-300">{pack.tokens.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-white/90">Gold:</span>
+                      <span className="text-lg font-bold text-yellow-300">{pack.gold.toLocaleString()}</span>
+                    </div>
+                    <div className="text-xs text-white/70 mt-2 text-center">
+                      ~${(pack.price / pack.tokens * 100).toFixed(2)} per 100 tokens
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      if (!heroes || heroes.length === 0) {
+                        alert('No heroes found. Create a hero first!');
+                        return;
+                      }
+                      if (heroes.length === 1) {
+                        handleTokenPackPurchase(pack.type, heroes[0].id || null);
+                      } else {
+                        setSelectedTokenPack({ type: pack.type, heroId: null });
+                      }
+                    }}
+                    disabled={purchasing || !heroes || heroes.length === 0}
+                    className={`w-full py-3 rounded font-bold text-white transition-colors ${
+                      purchasing || !heroes || heroes.length === 0
+                        ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                        : 'bg-white/20 hover:bg-white/30'
+                    }`}
+                  >
+                    {purchasing ? 'Processing...' : 'Purchase'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Hero Slot Expansion */}
+          {slotInfo && (
+            <div className="bg-gray-800 rounded-lg p-6 border border-gray-700 mb-8">
+              <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2">
+                🎭 Hero Slot Expansion
+              </h2>
+              <div className="bg-gray-900 rounded-lg p-4 mb-4">
+                <div className="flex justify-between items-center mb-4">
+                  <div>
+                    <div className="text-sm text-gray-400">Current Heroes</div>
+                    <div className="text-2xl font-bold text-white">
+                      {slotInfo.heroCount} / {slotInfo.slotsUnlocked}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-sm text-gray-400">Max Slots</div>
+                    <div className="text-2xl font-bold text-blue-400">{slotInfo.maxHeroes}</div>
+                  </div>
+                </div>
+                
+                {slotInfo.heroCount >= slotInfo.slotsUnlocked && slotInfo.nextSlot <= slotInfo.maxHeroes ? (
+                  <div className="border-t border-gray-700 pt-4">
+                    <div className="flex justify-between items-center mb-3">
+                      <div>
+                        <div className="text-sm text-gray-400">Next Slot</div>
+                        <div className="text-lg font-semibold text-white">Slot {slotInfo.nextSlot}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm text-gray-400">Cost</div>
+                        <div className={`text-lg font-bold ${slotInfo.totalTokens >= (slotInfo.nextSlotCost || 0) ? 'text-green-400' : 'text-red-400'}`}>
+                          {slotInfo.nextSlotCost || 0} tokens
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-xs text-gray-500 mb-3">
+                      Available tokens: {slotInfo.totalTokens}t
+                    </div>
+                    <button
+                      onClick={handleUnlockSlot}
+                      disabled={!slotInfo.canUnlock || unlocking}
+                      className={`w-full py-3 rounded font-semibold transition-colors ${
+                        slotInfo.canUnlock && !unlocking
+                          ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                          : 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                      }`}
+                    >
+                      {unlocking ? 'Unlocking...' : `Unlock Slot ${slotInfo.nextSlot}`}
+                    </button>
+                  </div>
+                ) : slotInfo.heroCount < slotInfo.slotsUnlocked ? (
+                  <div className="border-t border-gray-700 pt-4">
+                    <div className="text-sm text-green-400">
+                      ✓ You have {slotInfo.slotsUnlocked - slotInfo.heroCount} unused slot{slotInfo.slotsUnlocked - slotInfo.heroCount !== 1 ? 's' : ''}. Create more heroes!
+                    </div>
+                  </div>
+                ) : (
+                  <div className="border-t border-gray-700 pt-4">
+                    <div className="text-sm text-gray-400">
+                      Maximum hero slots reached ({slotInfo.maxHeroes} slots)
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Gold Shop */}
           <div className="bg-gray-800 rounded-lg p-6 border border-gray-700 mb-8">
@@ -308,7 +520,7 @@ export default function StorePage() {
                           }`}
                           onClick={() => {
                             if (canAfford && !purchasing) {
-                              setSelectedTokenItem({ rarity, slot });
+                              handleTokenPurchaseClick(rarity, slot);
                             }
                           }}
                         >
@@ -329,82 +541,130 @@ export default function StorePage() {
             </div>
           </div>
 
-          {/* Gold Sinks - Balanced, Not Gacha */}
-          <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-            <h2 className="text-3xl font-bold text-white mb-4 flex items-center gap-3">
-              <span>⚡</span> Gold Sinks
-            </h2>
-            <p className="text-gray-400 mb-6">
-              Improve your gear and expand storage with gold • Balanced prices, meaningful upgrades
-            </p>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Hero Selection Modal for Token Packs */}
+          {selectedTokenPack && heroes && heroes.length > 1 && (
+            <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+              <div className="bg-gray-900 rounded-lg max-w-2xl w-full border border-gray-700 p-6">
+                <h3 className="text-2xl font-bold text-white mb-4">Purchase Token Pack</h3>
+                <p className="text-gray-400 mb-4">
+                  Which hero should receive the token pack?
+                </p>
 
-              {/* Storage Expansion */}
-              <div className="bg-gray-700 rounded-lg p-6 border-2 border-gray-600">
-                <div className="text-4xl mb-3 text-center">📦</div>
-                <div className="font-bold text-white text-center mb-2">Expand Storage</div>
-                <div className="text-sm text-gray-400 mb-4 text-center min-h-[60px]">
-                  Add bank slots for item storage<br />
-                  Current: {hero.bankSize || 50} slots
+                <div className="space-y-2 max-h-96 overflow-y-auto mb-4">
+                  {heroes.map((h) => {
+                    const packInfo = {
+                      impulse: { name: 'Impulse Pack', price: 0.99, tokens: 100, gold: 1000 },
+                      starter: { name: 'Starter Pack', price: 4.99, tokens: 500, gold: 5000 },
+                      value: { name: 'Value Pack', price: 9.99, tokens: 1500, gold: 15000 },
+                      premium: { name: 'Premium Pack', price: 24.99, tokens: 5000, gold: 50000 }
+                    }[selectedTokenPack.type] || { name: 'Token Pack', price: 0, tokens: 0, gold: 0 };
+
+                    return (
+                      <button
+                        key={h.id}
+                        onClick={() => handleTokenPackPurchase(selectedTokenPack.type, h.id || null)}
+                        className="w-full bg-gray-800 hover:bg-gray-700 rounded-lg p-4 border border-gray-600 text-left transition-colors"
+                      >
+                        <div className="flex justify-between items-center">
+                          <div>
+                            <div className="font-semibold text-white">{h.name}</div>
+                            <div className="text-sm text-gray-400">
+                              {h.role} Lv{h.level || 1} • {h.tokens || 0}t
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-sm text-gray-400">Will receive:</div>
+                            <div className="text-blue-300 font-semibold">+{packInfo.tokens}t</div>
+                            <div className="text-yellow-300 font-semibold">+{packInfo.gold.toLocaleString()}g</div>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
-                <div className="text-center mb-4">
-                  <div className="text-lg font-bold text-yellow-400">50g per slot</div>
-                </div>
+
                 <button
-                  onClick={async () => {
-                    const slots = prompt('How many slots? (1-50, default 10)', '10');
-                    if (slots) {
-                      const numSlots = parseInt(slots);
-                      if (numSlots >= 1 && numSlots <= 50) {
-                        setPurchasing(true);
-                        try {
-                          await heroAPI.expandStorage(user?.id || '', numSlots);
-                          alert(`✅ Expanded bank by ${numSlots} slots!`);
-                          refetchHero();
-                        } catch (error: any) {
-                          alert(error.response?.data?.error || 'Failed to expand storage');
-                        } finally {
-                          setPurchasing(false);
-                        }
-                      }
-                    }
-                  }}
-                  disabled={purchasing}
-                  className="w-full py-2 rounded font-semibold transition-colors bg-yellow-600 hover:bg-yellow-700 text-white disabled:bg-gray-600"
+                  onClick={() => setSelectedTokenPack(null)}
+                  className="w-full py-2 bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors"
                 >
-                  {purchasing ? 'Expanding...' : 'Expand Bank'}
+                  Cancel
                 </button>
-                <div className="text-xs text-gray-500 mt-2 text-center">
-                  Max: 500 slots
-                </div>
               </div>
             </div>
-          </div>
+          )}
 
           {/* Hero Selection Modal for Gold Shop Items */}
           {selectedGoldItem && heroes && heroes.length > 0 && (
             <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
               <div className="bg-gray-900 rounded-lg max-w-2xl w-full border border-gray-700 p-6">
-                <h3 className="text-2xl font-bold text-white mb-4">Select Hero</h3>
-                <p className="text-gray-400 mb-6">
+                <h3 className="text-2xl font-bold text-white mb-4">Purchase Item</h3>
+                <p className="text-gray-400 mb-4">
                   Which hero should receive{' '}
                   <span className="font-bold text-yellow-400">
                     {GOLD_SHOP_ITEMS[selectedGoldItem.itemKey as keyof typeof GOLD_SHOP_ITEMS]?.name}
                   </span>?
                 </p>
 
+                {/* Quantity Selector */}
+                <div className="mb-6">
+                  <label className="block text-sm font-semibold text-gray-300 mb-2">Quantity</label>
+                  <div className="flex items-center gap-4">
+                    <button
+                      onClick={() => {
+                        if (selectedGoldItem.quantity && selectedGoldItem.quantity > 1) {
+                          setSelectedGoldItem({ ...selectedGoldItem, quantity: selectedGoldItem.quantity - 1 });
+                        }
+                      }}
+                      disabled={!selectedGoldItem.quantity || selectedGoldItem.quantity <= 1}
+                      className="bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed text-white w-10 h-10 rounded font-bold"
+                    >
+                      -
+                    </button>
+                    <input
+                      type="number"
+                      min="1"
+                      max="100"
+                      value={selectedGoldItem.quantity || 1}
+                      onChange={(e) => {
+                        const qty = Math.max(1, Math.min(100, parseInt(e.target.value) || 1));
+                        setSelectedGoldItem({ ...selectedGoldItem, quantity: qty });
+                      }}
+                      className="w-20 text-center bg-gray-800 text-white border border-gray-600 rounded px-3 py-2"
+                    />
+                    <button
+                      onClick={() => {
+                        const currentQty = selectedGoldItem.quantity || 1;
+                        if (currentQty < 100) {
+                          setSelectedGoldItem({ ...selectedGoldItem, quantity: currentQty + 1 });
+                        }
+                      }}
+                      disabled={selectedGoldItem.quantity && selectedGoldItem.quantity >= 100}
+                      className="bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed text-white w-10 h-10 rounded font-bold"
+                    >
+                      +
+                    </button>
+                    <span className="text-gray-400 text-sm">
+                      Total: <span className="text-yellow-400 font-semibold">
+                        {(GOLD_SHOP_ITEMS[selectedGoldItem.itemKey as keyof typeof GOLD_SHOP_ITEMS]?.cost || 0) * (selectedGoldItem.quantity || 1)}g
+                      </span>
+                    </span>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 max-h-96 overflow-y-auto">
                   {heroes.map((h) => {
                     const item = GOLD_SHOP_ITEMS[selectedGoldItem.itemKey as keyof typeof GOLD_SHOP_ITEMS];
-                    const canAfford = (h.gold || 0) >= (item?.cost || 0);
+                    const quantity = selectedGoldItem.quantity || 1;
+                    const totalCost = (item?.cost || 0) * quantity;
+                    const canAfford = (h.gold || 0) >= totalCost;
                     
                     return (
                       <button
                         key={h.id}
                         onClick={() => {
                           if (canAfford && h.id) {
-                            handleGoldPurchase(selectedGoldItem.itemKey, h.id);
+                            handleGoldPurchase(selectedGoldItem.itemKey, h.id, quantity);
                           }
                         }}
                         disabled={!canAfford || purchasing || !h.id}
@@ -424,7 +684,7 @@ export default function StorePage() {
                           </span>
                           {!canAfford && (
                             <span className="text-xs text-red-400">
-                              Need {item?.cost || 0}g
+                              Need {totalCost}g
                             </span>
                           )}
                         </div>
@@ -444,48 +704,121 @@ export default function StorePage() {
             </div>
           )}
 
-          {/* Token Purchase Confirmation Modal */}
-          {selectedTokenItem && (
+          {/* Token Purchase Hero Selection Modal */}
+          {selectedTokenItem && heroes && heroes.length > 0 && (
             <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-              <div className="bg-gray-900 rounded-lg max-w-md w-full border border-gray-700 p-6">
-                <h3 className="text-2xl font-bold text-white mb-4">Confirm Purchase</h3>
+              <div className="bg-gray-900 rounded-lg max-w-2xl w-full border border-gray-700 p-6">
+                <h3 className="text-2xl font-bold text-white mb-4">Purchase Item</h3>
                 <p className="text-gray-400 mb-4">
-                  Purchase <span className={`font-bold capitalize ${getRarityColor(selectedTokenItem.rarity)}`}>
+                  Which hero should receive{' '}
+                  <span className={`font-bold capitalize ${getRarityColor(selectedTokenItem.rarity)}`}>
                     {selectedTokenItem.rarity} {selectedTokenItem.slot}
-                  </span> for{' '}
-                  <span className="font-bold text-blue-400">
-                    {TOKEN_SHOP_PRICES[selectedTokenItem.rarity as keyof typeof TOKEN_SHOP_PRICES]} tokens
                   </span>?
                 </p>
+
+                {/* Quantity Selector */}
+                <div className="mb-6">
+                  <label className="block text-sm font-semibold text-gray-300 mb-2">Quantity</label>
+                  <div className="flex items-center gap-4">
+                    <button
+                      onClick={() => {
+                        if (selectedTokenItem.quantity && selectedTokenItem.quantity > 1) {
+                          setSelectedTokenItem({ ...selectedTokenItem, quantity: selectedTokenItem.quantity - 1 });
+                        }
+                      }}
+                      disabled={!selectedTokenItem.quantity || selectedTokenItem.quantity <= 1}
+                      className="bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed text-white w-10 h-10 rounded font-bold"
+                    >
+                      -
+                    </button>
+                    <input
+                      type="number"
+                      min="1"
+                      max="100"
+                      value={selectedTokenItem.quantity || 1}
+                      onChange={(e) => {
+                        const qty = Math.max(1, Math.min(100, parseInt(e.target.value) || 1));
+                        setSelectedTokenItem({ ...selectedTokenItem, quantity: qty });
+                      }}
+                      className="w-20 text-center bg-gray-800 text-white border border-gray-600 rounded px-3 py-2"
+                    />
+                    <button
+                      onClick={() => {
+                        const currentQty = selectedTokenItem.quantity || 1;
+                        if (currentQty < 100) {
+                          setSelectedTokenItem({ ...selectedTokenItem, quantity: currentQty + 1 });
+                        }
+                      }}
+                      disabled={selectedTokenItem.quantity && selectedTokenItem.quantity >= 100}
+                      className="bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed text-white w-10 h-10 rounded font-bold"
+                    >
+                      +
+                    </button>
+                    <span className="text-gray-400 text-sm">
+                      Total: <span className="text-blue-400 font-semibold">
+                        {(TOKEN_SHOP_PRICES[selectedTokenItem.rarity as keyof typeof TOKEN_SHOP_PRICES] || 0) * (selectedTokenItem.quantity || 1)}t
+                      </span>
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 max-h-96 overflow-y-auto">
+                  {heroes.map((h) => {
+                    const costPerItem = TOKEN_SHOP_PRICES[selectedTokenItem.rarity as keyof typeof TOKEN_SHOP_PRICES];
+                    const quantity = selectedTokenItem.quantity || 1;
+                    const totalCost = costPerItem * quantity;
+                    const canAfford = (h.tokens || 0) >= totalCost;
+                    
+                    return (
+                      <button
+                        key={h.id}
+                        onClick={() => {
+                          if (canAfford && h.id) {
+                            handleTokenPurchase(selectedTokenItem.rarity, selectedTokenItem.slot, h.id, quantity);
+                          }
+                        }}
+                        disabled={!canAfford || purchasing || !h.id}
+                        className={`text-left p-4 rounded-lg border-2 transition-all ${
+                          canAfford && !purchasing && h.id
+                            ? 'border-blue-500 hover:border-blue-400 hover:bg-gray-800'
+                            : 'border-gray-600 bg-gray-800 opacity-50 cursor-not-allowed'
+                        }`}
+                      >
+                        <div className="font-bold text-white mb-1">{h.name}</div>
+                        <div className="text-sm text-gray-400 mb-2">Level {h.level} • {h.role}</div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm text-gray-300">
+                            Tokens: <span className={canAfford ? 'text-blue-400 font-semibold' : 'text-red-400'}>
+                              {h.tokens || 0}t
+                            </span>
+                          </span>
+                          {!canAfford && (
+                            <span className="text-xs text-red-400">
+                              Need {totalCost}t
+                            </span>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
 
                 <div className="bg-gray-800 rounded p-4 mb-6">
                   <div className="text-sm text-gray-300">
                     <div className="mb-2">✨ <strong>Guaranteed {selectedTokenItem.rarity} quality</strong></div>
-                    <div className="mb-2">📊 Stats scale with your level ({hero?.level || 0})</div>
+                    <div className="mb-2">📊 Stats scale with hero's level</div>
                     <div className="mb-2">🎲 Random proc effects for rare+ gear</div>
                     <div>⚡ Instant delivery to inventory</div>
                   </div>
                 </div>
 
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => {
-                      handleTokenPurchase(selectedTokenItem.rarity, selectedTokenItem.slot);
-                      setSelectedTokenItem(null);
-                    }}
-                    disabled={purchasing}
-                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded font-semibold transition-colors disabled:bg-gray-600"
-                  >
-                    {purchasing ? 'Purchasing...' : 'Confirm'}
-                  </button>
-                  <button
-                    onClick={() => setSelectedTokenItem(null)}
-                    disabled={purchasing}
-                    className="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-3 rounded font-semibold transition-colors"
-                  >
-                    Cancel
-                  </button>
-                </div>
+                <button
+                  onClick={() => setSelectedTokenItem(null)}
+                  disabled={purchasing}
+                  className="w-full bg-gray-700 hover:bg-gray-600 text-white py-3 rounded font-semibold transition-colors"
+                >
+                  Cancel
+                </button>
               </div>
             </div>
           )}

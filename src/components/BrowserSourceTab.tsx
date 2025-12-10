@@ -15,14 +15,7 @@ export default function BrowserSourceTab({ userId: propUserId, token: propToken 
   const [copiedCleanCode, setCopiedCleanCode] = useState(false);
   const [activeQueue, setActiveQueue] = useState<any>(null);
   const [showQueueModal, setShowQueueModal] = useState(false);
-  
-  // Auto-show modal when queue is created
-  useEffect(() => {
-    if (activeQueue) {
-      console.log('[Queue Modal] Active queue detected, showing modal:', activeQueue.code);
-      setShowQueueModal(true);
-    }
-  }, [activeQueue?.code]); // Watch for code change to detect new queues
+  const [darkMode, setDarkMode] = useState(false);
   
   // Get userId and token from props or auth
   const userId = propUserId || user?.twitchId || user?.id;
@@ -37,9 +30,9 @@ export default function BrowserSourceTab({ userId: propUserId, token: propToken 
     ? generateBrowserSourceUrl(battlefieldIdentifierString, token)
     : null;
 
-  // Clean Battlefield URL (uses twitchId)
+  // Clean Battlefield URL (uses twitchId) - includes darkMode parameter
   const cleanBattlefieldUrl = user?.twitchId 
-    ? `${window.location.origin}/clean-battlefield?battlefieldId=twitch:${user.twitchId}`
+    ? `${window.location.origin}/clean-battlefield?battlefieldId=twitch:${user.twitchId}${darkMode ? '&darkMode=true' : ''}`
     : null;
 
   const [copiedClean, setCopiedClean] = useState(false);
@@ -309,6 +302,24 @@ export default function BrowserSourceTab({ userId: propUserId, token: propToken 
           </p>
           
           <div className="space-y-3">
+            {/* Dark Mode Toggle */}
+            <div className="flex items-center gap-3 p-3 bg-gray-800/50 rounded-lg border border-gray-700">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={darkMode}
+                  onChange={(e) => setDarkMode(e.target.checked)}
+                  className="w-5 h-5 rounded border-gray-600 bg-gray-700 text-green-600 focus:ring-2 focus:ring-green-500 focus:ring-offset-2 focus:ring-offset-gray-800"
+                />
+                <span className="text-sm font-semibold text-gray-300">
+                  🌙 Dark Mode (for browser viewing)
+                </span>
+              </label>
+              <span className="text-xs text-gray-500 ml-auto">
+                {darkMode ? 'Dark background enabled' : 'Transparent for OBS'}
+              </span>
+            </div>
+            
             <div>
               <label className="block text-sm font-semibold text-gray-400 mb-2">
                 Clean Battlefield URL
@@ -334,43 +345,11 @@ export default function BrowserSourceTab({ userId: propUserId, token: propToken 
                   {copiedClean ? '✓ Copied!' : '📋 Copy'}
                 </button>
               </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Unified Browser Source (Legacy) */}
-        <div className="bg-gray-900 rounded-lg p-4 border border-gray-700">
-          <h3 className="text-lg font-semibold text-gray-300 mb-2">Unified Browser Source (Legacy)</h3>
-          <p className="text-gray-400 mb-4 text-sm">
-            Auto-switches between idle combat, raids, and dungeons. More complex but feature-complete.
-          </p>
-          
-          <div className="space-y-3">
-            <div>
-              <label className="block text-sm font-semibold text-gray-400 mb-2">
-                Browser Source URL
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={browserSourceUrl || 'Please log in to generate URL'}
-                  readOnly
-                  className="flex-1 px-4 py-2 bg-gray-700 text-gray-200 rounded border border-gray-600 focus:outline-none focus:border-cyan-500 font-mono text-xs"
-                />
-                <button
-                  onClick={handleCopy}
-                  disabled={!browserSourceUrl}
-                  className={`px-6 py-2 rounded font-semibold transition-colors ${
-                    copied
-                      ? 'bg-green-600 text-white'
-                      : browserSourceUrl
-                      ? 'bg-cyan-600 hover:bg-cyan-700 text-white'
-                      : 'bg-gray-600 text-gray-400 cursor-not-allowed'
-                  }`}
-                >
-                  {copied ? '✓ Copied!' : '📋 Copy'}
-                </button>
-              </div>
+              {darkMode && (
+                <p className="mt-2 text-xs text-yellow-400">
+                  ⚠️ Dark mode is enabled. For OBS, uncheck dark mode to use transparent background.
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -389,7 +368,7 @@ export default function BrowserSourceTab({ userId: propUserId, token: propToken 
         <div className="bg-yellow-900/30 rounded-lg p-4 border border-yellow-700">
           <h3 className="text-lg font-semibold text-yellow-300 mb-2">✨ Features</h3>
           <ul className="list-disc list-inside space-y-1 text-gray-300 text-sm">
-            <li><strong className="text-white">Auto-switching:</strong> Automatically displays raids and dungeons when you join them</li>
+            <li><strong className="text-white">Mode switching:</strong> Automatically displays raids and dungeons when you join them</li>
             <li><strong className="text-white">Transparent background:</strong> Perfect for overlaying on your stream</li>
             <li><strong className="text-white">Real-time updates:</strong> Uses Firestore listeners for instant updates</li>
             <li><strong className="text-white">1920x1080 resolution:</strong> Optimized for streaming</li>

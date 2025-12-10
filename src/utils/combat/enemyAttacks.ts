@@ -787,17 +787,37 @@ function applyEnemyDamageToHero(
     });
   }
 
+  // Track original damage before reductions for blocked damage calculation
+  const damageBeforeReductions = actualDamage;
+  
   // Apply damage reductions
+  let blockedByAbilities = 0;
   if (lastStandActive) {
+    const damageBefore = actualDamage;
     actualDamage = Math.floor(actualDamage * 0.25);
+    blockedByAbilities += (damageBefore - actualDamage);
     callbacks.log('combat', `🛡️💥 ${target.username} LAST STAND absorbs massive damage!`);
   } else if (ironSkinActive) {
+    const damageBefore = actualDamage;
     actualDamage = Math.floor(actualDamage * 0.5);
+    blockedByAbilities += (damageBefore - actualDamage);
     callbacks.log('combat', `💎 ${target.username} IRON SKIN blocks damage!`);
   }
 
   if (shieldWallActive) {
+    const damageBefore = actualDamage;
     actualDamage = Math.floor(actualDamage * 0.7);
+    blockedByAbilities += (damageBefore - actualDamage);
+  }
+  
+  // Initialize stats if needed
+  if (!target.hero.stats) {
+    target.hero.stats = { totalDamage: 0, totalHealing: 0, damageBlocked: 0 };
+  }
+  
+  // Track damage blocked by tank abilities
+  if (blockedByAbilities > 0) {
+    target.hero.stats.damageBlocked += blockedByAbilities;
   }
 
   // Apply debuff chance
@@ -855,6 +875,12 @@ function applyEnemyDamageToHero(
 
   if (shieldResult.absorbed > 0) {
     callbacks.log('combat', `💙 ${target.username}'s shield absorbs ${Math.floor(shieldResult.absorbed)} damage!`);
+    
+    // Track damage blocked by shields (healer shields)
+    if (!target.hero.stats) {
+      target.hero.stats = { totalDamage: 0, totalHealing: 0, damageBlocked: 0 };
+    }
+    target.hero.stats.damageBlocked += shieldResult.absorbed;
   }
 
   // Apply damage
@@ -995,13 +1021,29 @@ async function handleBloodlustAttack(
         bloodlustActualDamage = maxDamagePerHit;
       }
 
+      // Track blocked damage from abilities for bloodlust
+      let bloodlustBlockedByAbilities = 0;
       if (lastStandActive) {
+        const damageBefore = bloodlustActualDamage;
         bloodlustActualDamage = Math.floor(bloodlustActualDamage * 0.25);
+        bloodlustBlockedByAbilities += (damageBefore - bloodlustActualDamage);
       } else if (ironSkinActive) {
+        const damageBefore = bloodlustActualDamage;
         bloodlustActualDamage = Math.floor(bloodlustActualDamage * 0.5);
+        bloodlustBlockedByAbilities += (damageBefore - bloodlustActualDamage);
       }
       if (shieldWallActive) {
+        const damageBefore = bloodlustActualDamage;
         bloodlustActualDamage = Math.floor(bloodlustActualDamage * 0.7);
+        bloodlustBlockedByAbilities += (damageBefore - bloodlustActualDamage);
+      }
+      
+      // Track damage blocked by abilities for bloodlust
+      if (bloodlustBlockedByAbilities > 0) {
+        if (!target.hero.stats) {
+          target.hero.stats = { totalDamage: 0, totalHealing: 0, damageBlocked: 0 };
+        }
+        target.hero.stats.damageBlocked += bloodlustBlockedByAbilities;
       }
 
       // Apply inverse difficulty scaling to hero damage taken (same as main attack)
@@ -1011,6 +1053,14 @@ async function handleBloodlustAttack(
 
       // Shield absorption for bloodlust
       const bloodlustShieldResult = absorbShieldDamage(target.hero, bloodlustActualDamage);
+      
+      // Track damage blocked by shields in bloodlust attack
+      if (bloodlustShieldResult.absorbed > 0) {
+        if (!target.hero.stats) {
+          target.hero.stats = { totalDamage: 0, totalHealing: 0, damageBlocked: 0 };
+        }
+        target.hero.stats.damageBlocked += bloodlustShieldResult.absorbed;
+      }
       bloodlustActualDamage = bloodlustShieldResult.remainingDamage;
 
       // CRITICAL: Match Electron app - explicitly set HP to 0 if it goes below 0

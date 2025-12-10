@@ -7,6 +7,7 @@ export type QuestTrackingKey =
   | 'kill'
   | 'defeatBosses'
   | 'completeWaves'
+  | 'completeDungeons'
   | 'surviveBosses'
   | 'dealDamage'
   | 'healAmount'

@@ -12,7 +12,8 @@ const RARITY_COLORS: { [key: string]: string } = {
   uncommon: 'bg-green-900 border-green-600 text-green-300',
   rare: 'bg-blue-900 border-blue-600 text-blue-300',
   epic: 'bg-purple-900 border-purple-600 text-purple-300',
-  legendary: 'bg-orange-900 border-orange-600 text-orange-300'
+  legendary: 'bg-orange-900 border-orange-600 text-orange-300',
+  mythic: 'bg-red-900 border-red-600 text-red-300'
 };
 
 const FOUNDER_BADGES = [
@@ -133,7 +134,7 @@ export default function AchievementsPanel({ hero }: AchievementsPanelProps) {
       {/* Badge Selection Section */}
       <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
         <h2 className="text-2xl font-bold text-white mb-4">⭐ Founder Badges</h2>
-        {isAdmin && (
+        {isAdmin && user?.twitchUsername?.toLowerCase()?.trim() === 'theneverendingwar' && (
           <div className="mb-2 text-yellow-400 text-sm font-semibold">
             🔧 Admin Mode: All badges available for testing
           </div>
@@ -143,16 +144,75 @@ export default function AchievementsPanel({ hero }: AchievementsPanelProps) {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {FOUNDER_BADGES.map((badge) => {
             const isActive = hero.founderBadge === badge.path;
+            
+            // STRICT ACCESS CONTROL: Only allow access if:
+            // 1. User is admin (theneverendingwar only - exact match)
+            // 2. Hero has founderPackTier field set (from purchase) AND tier level is sufficient
+            // REMOVED: Backwards compatibility check - no access based on founderBadge alone!
+            
+            // Check admin status (VERY STRICT - must be exact match)
+            const twitchUsername = user?.twitchUsername?.toLowerCase()?.trim();
+            const isAdminUser = twitchUsername === 'theneverendingwar';
+            
+            // Check founder pack tier purchase (REQUIRED for non-admin access)
+            const heroTier = (hero as any).founderPackTier || null;
+            const tierOrder = { bronze: 1, silver: 2, gold: 3, platinum: 4 };
+            const heroTierLevel = heroTier ? tierOrder[heroTier as keyof typeof tierOrder] : 0;
+            const badgeTierLevel = tierOrder[badge.id as keyof typeof tierOrder];
+            
+            // Access granted ONLY if: (admin) OR (has founderPackTier purchase AND tier level is sufficient)
+            const canAccessTier = isAdminUser || (heroTier !== null && heroTierLevel >= badgeTierLevel);
+            
+            // Debug logging for access issues
+            if (process.env.NODE_ENV === 'development') {
+              console.log('[Founder Badge Access Check]', {
+                heroName: hero.name,
+                twitchUsername,
+                isAdminUser,
+                heroTier,
+                heroTierLevel,
+                badgeId: badge.id,
+                badgeTierLevel,
+                canAccess: canAccessTier,
+                hasFounderBadge: !!hero.founderBadge
+              });
+            }
+            
+            // Warn if hero has founderBadge but no founderPackTier (shouldn't happen)
+            if (!isAdminUser && heroTier === null && hero.founderBadge) {
+              console.warn('[Founder Badge] ⚠️ SECURITY WARNING: Hero has founderBadge but no founderPackTier purchase:', {
+                heroName: hero.name,
+                heroId: hero.id,
+                twitchUsername,
+                founderBadge: hero.founderBadge,
+                founderPackTier: heroTier
+              });
+            }
+            
             return (
               <div
                 key={badge.id}
-                className={`relative rounded-lg p-4 border-2 transition-all cursor-pointer ${
-                  isActive
-                    ? 'border-yellow-500 bg-yellow-900/20 shadow-lg scale-105'
-                    : 'border-gray-600 bg-gray-700/50 hover:border-gray-500 hover:bg-gray-700'
+                className={`relative rounded-lg p-4 border-2 transition-all ${
+                  !canAccessTier 
+                    ? 'border-gray-700 bg-gray-800/30 opacity-50 cursor-not-allowed'
+                    : isActive
+                    ? 'border-yellow-500 bg-yellow-900/20 shadow-lg scale-105 cursor-pointer'
+                    : 'border-gray-600 bg-gray-700/50 hover:border-gray-500 hover:bg-gray-700 cursor-pointer'
                 }`}
                 onClick={async () => {
-                  if (updatingBadge || !hero?.id) return;
+                  if (updatingBadge || !hero?.id || !canAccessTier) {
+                    if (!canAccessTier && !isAdminUser) {
+                      alert(`This badge requires a ${badge.name} or higher tier founder pack purchase.\n\nYou must purchase a Founder Pack to unlock badges.`);
+                      console.log('[Founder Badge] Access denied:', {
+                        heroName: hero.name,
+                        heroTier: (hero as any).founderPackTier,
+                        badgeId: badge.id,
+                        isAdmin: isAdminUser,
+                        canAccess: canAccessTier
+                      });
+                    }
+                    return;
+                  }
                   if (isActive) {
                     // Deselect badge
                     setUpdatingBadge(true);
@@ -193,13 +253,23 @@ export default function AchievementsPanel({ hero }: AchievementsPanelProps) {
                   className="w-full h-24 object-contain mb-2"
                 />
                 <div className="text-center">
-                  <div className={`text-sm font-semibold ${isActive ? 'text-yellow-400' : 'text-white'}`}>
+                  <div className={`text-sm font-semibold ${isActive ? 'text-yellow-400' : canAccessTier ? 'text-white' : 'text-gray-500'}`}>
                     {badge.name}
                   </div>
+                  {!canAccessTier && !isAdmin && (
+                    <div className="text-xs text-gray-500 mt-1">
+                      Requires {badge.name}
+                    </div>
+                  )}
                 </div>
                 {updatingBadge && isActive && (
                   <div className="absolute inset-0 bg-black/50 rounded-lg flex items-center justify-center">
                     <div className="text-white">Updating...</div>
+                  </div>
+                )}
+                {!canAccessTier && !isAdminUser && (
+                  <div className="absolute inset-0 bg-black/30 rounded-lg flex items-center justify-center">
+                    <div className="text-gray-400 text-xs text-center">🔒 Locked</div>
                   </div>
                 )}
               </div>

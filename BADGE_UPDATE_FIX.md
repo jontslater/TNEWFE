@@ -48,3 +48,4 @@ This matches the pattern used elsewhere in the codebase (e.g., in `deleteHero`).
 ---
 
 **The fix should resolve the 404 error!**
+

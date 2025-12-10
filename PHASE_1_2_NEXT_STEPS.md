@@ -49,3 +49,4 @@
 This is the foundation - everything else depends on it!
 
 **Ready to proceed?** Let's add the badge field to the Hero type first.
+

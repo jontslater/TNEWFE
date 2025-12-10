@@ -99,36 +99,19 @@ export default function Navigation() {
               >
                 ⭐ Founders Pack
               </button>
+              <button
+                onClick={() => navigate('/founders-hall')}
+                className="text-yellow-400 hover:text-yellow-300 transition-colors font-semibold"
+              >
+                🏛️ Founders Hall
+              </button>
               {isAuthenticated && (
                 <>
-                  <button
-                    onClick={() => navigate('/quests')}
-                    className="text-orange-400 hover:text-orange-300 transition-colors font-semibold relative"
-                  >
-                    📜 Quests
-                    {unclaimedQuestsCount > 0 && (
-                      <span className="absolute -top-2 -right-2 bg-red-600 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center animate-pulse">
-                        {unclaimedQuestsCount}
-                      </span>
-                    )}
-                  </button>
                   <button
                     onClick={() => navigate('/portal')}
                     className="text-purple-400 hover:text-purple-300 transition-colors font-semibold"
                   >
                     Portal
-                  </button>
-                  <button
-                    onClick={() => navigate('/auction')}
-                    className="text-green-400 hover:text-green-300 transition-colors font-semibold"
-                  >
-                    Auction
-                  </button>
-                  <button
-                    onClick={() => navigate('/achievements')}
-                    className="text-yellow-400 hover:text-yellow-300 transition-colors font-semibold"
-                  >
-                    Achievements
                   </button>
                   <button
                     onClick={() => navigate('/leaderboards')}

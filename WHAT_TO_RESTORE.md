@@ -39,3 +39,4 @@ git diff f03c505 HEAD -- src/pages/CleanBattlefieldSource.tsx --shortstat
 ---
 
 **Your layout changes are SAFE! The question is: do you need the WebSocket/useCallback features that were removed?**
+

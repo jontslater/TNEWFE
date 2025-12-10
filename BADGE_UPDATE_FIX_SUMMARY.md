@@ -58,3 +58,4 @@ If the 404 error continues after this fix, possible causes:
 ---
 
 **Status:** Fix applied - ready for testing. If error persists, check backend route structure.
+

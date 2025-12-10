@@ -149,3 +149,4 @@ baseCost (50) * (1.5 ^ currentLevel)
 ```
 
 Costs scale exponentially, making higher-level upgrades and rerolls expensive.
+

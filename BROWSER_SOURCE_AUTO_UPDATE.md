@@ -52,3 +52,4 @@ The browser source uses **Firebase real-time listeners** (`onSnapshot`):
 - ✅ Badge/title appears next to hero name immediately
 
 **No additional work needed!** The system is already set up for real-time updates! 🎉
+

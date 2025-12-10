@@ -48,6 +48,10 @@ vercel --prod
 Create `.env` file:
 ```
 VITE_API_URL=http://localhost:3001
+
+# Stripe Payment Processing (Optional - for Founders Pack purchases)
+# Get your keys from: https://dashboard.stripe.com/apikeys
+REACT_APP_STRIPE_PUBLISHABLE_KEY=pk_test_...
 VITE_FIREBASE_API_KEY=your_key_here
 # Add more as needed
 ```

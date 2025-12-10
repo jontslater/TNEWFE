@@ -140,3 +140,4 @@ Spell effects will be layered on top of existing element filters:
 5. Add UI
 
 Let's start with Step 1: Adding the spellEffect field to the Hero type!
+

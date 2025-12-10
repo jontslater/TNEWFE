@@ -377,4 +377,3 @@
 **With Skin System (Year 2):** $12,000-18,000/year
 
 **Key Blocker:** Default sprites needed before skin system can generate revenue.
-

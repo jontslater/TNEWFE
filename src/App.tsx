@@ -29,6 +29,8 @@ import InstanceViewerPage from './pages/InstanceViewerPage';
 import RaidBrowserSourcePage from './pages/RaidBrowserSourcePage';
 import UnifiedBrowserSource from './pages/UnifiedBrowserSource';
 import FoundersPackPage from './pages/FoundersPackPage';
+import FoundersHallPage from './pages/FoundersHallPage';
+import MailPage from './pages/MailPage';
 // Old UnifiedBrowserSourcePage kept for reference but route now uses new component
 // import UnifiedBrowserSourcePage from './pages/UnifiedBrowserSourcePage';
 import LoginRewardModal from './components/LoginRewardModal';
@@ -70,6 +72,8 @@ function App() {
         <Route path="/instance/view" element={<InstanceViewerPage />} />
         <Route path="/browser-source/raid/:instanceId" element={<RaidBrowserSourcePage />} />
         <Route path="/founders-pack" element={<FoundersPackPage />} />
+        <Route path="/founders-hall" element={<FoundersHallPage />} />
+        <Route path="/mail" element={<MailPage />} />
       </Routes>
     </Router>
   );

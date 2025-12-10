@@ -2,8 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { questAPI } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import { QuestSet, QuestWithProgress, PlayerQuestProgress } from '../types/Quest';
-import Navigation from '../components/Navigation';
-
 const QuestsPage: React.FC = () => {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'daily' | 'weekly' | 'monthly'>('daily');
@@ -125,19 +123,12 @@ const QuestsPage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-gray-900 via-purple-900 to-gray-900">
-        <Navigation />
-        <div className="container mx-auto px-4 py-8">
-          <div className="text-center text-white">Loading quests...</div>
-        </div>
-      </div>
+      <div className="text-center text-white py-12">Loading quests...</div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-900 via-purple-900 to-gray-900">
-      <Navigation />
-      
+    <div className="w-full">
       <div className="container mx-auto px-4 py-8">
         <h1 className="text-5xl font-bold text-center mb-8 bg-gradient-to-r from-yellow-400 to-orange-500 bg-clip-text text-transparent">
           Quests

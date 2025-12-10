@@ -46,3 +46,4 @@ git checkout f03c505 -- src/pages/CleanBattlefieldSource.tsx
 ---
 
 **Start with Step 1 - restore the 3 files from f03c505, then we'll check CleanBattlefieldSource.tsx**
+

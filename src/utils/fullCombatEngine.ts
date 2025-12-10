@@ -1458,6 +1458,16 @@ export class FullCombatEngine {
       hero.profession.materials.ore = { iron: 0, steel: 0, mithril: 0, adamantite: 0 };
     }
     
+    // Initialize gems structure if needed
+    if (!hero.profession.materials.gems) {
+      hero.profession.materials.gems = {
+        ruby: { common: 0, uncommon: 0, rare: 0, epic: 0, legendary: 0 },
+        sapphire: { common: 0, uncommon: 0, rare: 0, epic: 0, legendary: 0 },
+        emerald: { common: 0, uncommon: 0, rare: 0, epic: 0, legendary: 0 },
+        diamond: { common: 0, uncommon: 0, rare: 0, epic: 0, legendary: 0 }
+      };
+    }
+    
     const profLevel = hero.profession.level || 1;
     
     // Mining has slightly lower travel chance than herbalism (more combat-focused)
@@ -1490,6 +1500,68 @@ export class FullCombatEngine {
     // Update totals
     hero.profession.totalGathered = (hero.profession.totalGathered || 0) + oreAmount;
     hero.profession.lastGatherTime = Date.now();
+    
+    // 5% chance to also find a gem (same as manual gathering)
+    if (Math.random() < 0.05) {
+      const gemTypes = ['ruby', 'sapphire', 'emerald', 'diamond'];
+      const gemType = gemTypes[Math.floor(Math.random() * gemTypes.length)];
+      
+      // Gem rarity based on mining level
+      let rarityWeights: number[];
+      if (profLevel <= 25) {
+        rarityWeights = [0.70, 0.25, 0.05, 0, 0]; // Common, Uncommon, Rare
+      } else if (profLevel <= 50) {
+        rarityWeights = [0.50, 0.30, 0.15, 0.05, 0]; // + Epic
+      } else if (profLevel <= 75) {
+        rarityWeights = [0.30, 0.35, 0.25, 0.08, 0.02]; // + Legendary
+      } else {
+        rarityWeights = [0.20, 0.30, 0.30, 0.15, 0.05]; // Higher Legendary
+      }
+      
+      const rarities: Array<'common' | 'uncommon' | 'rare' | 'epic' | 'legendary'> = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
+      const gemRoll = Math.random();
+      let gemRarity: 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary' = 'common';
+      
+      for (let i = 0; i < rarities.length; i++) {
+        if (gemRoll < rarityWeights.slice(0, i + 1).reduce((a, b) => a + b, 0)) {
+          gemRarity = rarities[i];
+          break;
+        }
+      }
+      
+      // Add to materials (for tracking)
+      hero.profession.materials.gems[gemType as keyof typeof hero.profession.materials.gems][gemRarity] = 
+        (hero.profession.materials.gems[gemType as keyof typeof hero.profession.materials.gems][gemRarity] || 0) + 1;
+      
+      // Create gem item and add to inventory (gems are inventory items, not just materials)
+      const heroInventory = (hero as any).inventory || [];
+      
+      // Generate gem stats
+      const gemStats = this.generateGemStatsForAutoGather(gemType, gemRarity);
+      
+      const gemItem = {
+        id: `gem_${gemType}_${gemRarity}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        name: `${gemType.charAt(0).toUpperCase() + gemType.slice(1)} (${gemRarity})`,
+        type: gemType,
+        rarity: gemRarity,
+        slot: 'consumable' as const,
+        attack: 0,
+        defense: 0,
+        hp: 0,
+        color: gemType === 'ruby' ? '#ef4444' : gemType === 'sapphire' ? '#3b82f6' : gemType === 'emerald' ? '#10b981' : '#fbbf24',
+        stats: gemStats
+      };
+      
+      heroInventory.push(gemItem);
+      (hero as any).inventory = heroInventory;
+      
+      // Show SCT for gem finding
+      this.log('loot', `💎 ${hero.username} found a ${gemRarity} ${gemType}!`);
+      const heroId = hero.id || hero.username || hero.name || hero.characterName;
+      if (this.triggerCombatText) {
+        this.triggerCombatText(heroId, 0, 'loot', true); // Show gem icon
+      }
+    }
     
     // Log and show SCT (only show steel+)
     if (oreType !== 'iron') {
@@ -2847,17 +2919,37 @@ export class FullCombatEngine {
       });
     }
     
+    // Track original damage before reductions for blocked damage calculation
+    const damageBeforeReductions = actualDamage;
+    
     // Apply damage reductions
+    let blockedByAbilities = 0;
     if (lastStandActive) {
+      const damageBefore = actualDamage;
       actualDamage = Math.floor(actualDamage * 0.25);
+      blockedByAbilities += (damageBefore - actualDamage);
       this.log('combat', `🛡️💥 ${target.username} LAST STAND absorbs massive damage!`);
     } else if (ironSkinActive) {
+      const damageBefore = actualDamage;
       actualDamage = Math.floor(actualDamage * 0.5);
+      blockedByAbilities += (damageBefore - actualDamage);
       this.log('combat', `💎 ${target.username} IRON SKIN blocks damage!`);
     }
     
     if (shieldWallActive) {
+      const damageBefore = actualDamage;
       actualDamage = Math.floor(actualDamage * 0.7);
+      blockedByAbilities += (damageBefore - actualDamage);
+    }
+    
+    // Initialize stats if needed
+    if (!target.hero.stats) {
+      target.hero.stats = { totalDamage: 0, totalHealing: 0, damageBlocked: 0 };
+    }
+    
+    // Track damage blocked by tank abilities
+    if (blockedByAbilities > 0) {
+      target.hero.stats.damageBlocked += blockedByAbilities;
     }
     
     // Apply debuff chance
@@ -2893,6 +2985,12 @@ export class FullCombatEngine {
       
       if (shieldAbsorbed > 0) {
         this.log('combat', `💙 ${target.username}'s shield absorbs ${Math.floor(shieldAbsorbed)} damage!`);
+        
+        // Track damage blocked by shields (healer shields)
+        if (!target.hero.stats) {
+          target.hero.stats = { totalDamage: 0, totalHealing: 0, damageBlocked: 0 };
+        }
+        target.hero.stats.damageBlocked += shieldAbsorbed;
         
         if (target.hero.shield.amount <= 0) {
           target.hero.shield = null;
@@ -2998,6 +3096,14 @@ export class FullCombatEngine {
           const shieldAbsorbed = Math.min(target.hero.shield.amount, bloodlustActualDamage);
           target.hero.shield.amount -= shieldAbsorbed;
           bloodlustActualDamage -= shieldAbsorbed;
+          
+          // Track damage blocked by shields
+          if (shieldAbsorbed > 0) {
+            if (!target.hero.stats) {
+              target.hero.stats = { totalDamage: 0, totalHealing: 0, damageBlocked: 0 };
+            }
+            target.hero.stats.damageBlocked += shieldAbsorbed;
+          }
           if (target.hero.shield.amount <= 0) {
             target.hero.shield = null;
           }

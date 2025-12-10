@@ -69,3 +69,4 @@ To test:
 - ✅ Spell effects applied to exhaust
 - ✅ Auto-cleanup after animation
 - ✅ Positioned correctly at hero's bottom center
+

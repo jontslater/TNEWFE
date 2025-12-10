@@ -15,7 +15,7 @@ export interface Item {
   id?: string;
   name: string;
   slot: 'weapon' | 'armor' | 'accessory' | 'shield' | 'helm' | 'cloak' | 'gloves' | 'ring1' | 'ring2' | 'boots' | 'consumable';
-  rarity: 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
+  rarity: 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary' | 'mythic';
   attack: number;
   defense: number;
   hp: number;
@@ -60,6 +60,33 @@ export interface Item {
   tier?: number;
   quantity?: number;
   craftedAt?: number;
+  // Socket system
+  sockets?: Socket[];
+  maxSockets?: number;
+}
+
+export interface Socket {
+  id: string;          // Unique socket ID
+  gem?: Gem;           // Inserted gem (if any)
+  socketType?: 'red' | 'blue' | 'green' | 'yellow' | 'prismatic'; // Socket color (optional - can be any color)
+}
+
+export interface Gem {
+  id: string;
+  type: 'ruby' | 'sapphire' | 'emerald' | 'diamond';
+  rarity: 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
+  stats: {
+    attack?: number;
+    defense?: number;
+    critChance?: number;
+    critDamage?: number;
+    damageReduction?: number;
+    maxHp?: number;
+    allStats?: number;
+    xpGain?: number;
+    goldGain?: number;
+    tokenGain?: number;
+  };
 }
 
 export interface AppliedUpgrade {
@@ -144,6 +171,8 @@ export interface Hero {
   auraEffect?: string; // Aura effect style: 'bronze' | 'silver' | 'gold' | 'platinum' | null
   auraColor?: string; // Custom hex color for aura effect (e.g., "#FF5733") - overrides tier default color
   spellEffect?: string; // Spell effect style: 'bronze' | 'silver' | 'gold' | 'platinum' | null - Enhanced visual effects for projectiles/abilities
+  inventory?: Item[]; // Hero's inventory items (gear, consumables, etc.)
+  shopBuffs?: Record<string, { remainingDuration: number; lastUpdateTime: number }>; // Active shop buffs
 }
 
 export interface Profession {

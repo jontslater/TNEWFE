@@ -75,3 +75,4 @@ Achievements are **not explicitly tracked** in CleanBattlefieldSource because:
 
 ✅ **Quests**: Fully tracked from CleanBattlefieldSource  
 ⚠️ **Achievements**: Handled by backend when quest/stats reach thresholds (no explicit tracking needed in frontend)
+
