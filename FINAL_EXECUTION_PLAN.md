@@ -1252,7 +1252,7 @@ These features are promised in the founders pack tiers. See `FOUNDERS_PACK_FEATU
 ---
 
 ### **Step 8.4: Token & Gold Packs** ⭐⭐⭐ HIGH PRIORITY
-**Status:** ❌ Not Implemented  
+**Status:** ✅ COMPLETE  
 **Priority:** HIGH - Immediate revenue generation for sprite development
 
 **Goal:** Direct currency purchase packs (real money) - Standard gacha pricing model
@@ -1278,8 +1278,21 @@ These features are promised in the founders pack tiers. See `FOUNDERS_PACK_FEATU
 - Backend endpoint: `POST /api/purchases/token-pack`
 - Grant tokens and gold to selected hero
 
-**Estimated Time:** 1-2 days  
+**Estimated Time:** ✅ Complete (1-2 days)  
 **Revenue Potential:** HIGH - Immediate revenue, funds sprite development
+
+**Implementation Complete:**
+1. ✅ Backend endpoints created (`POST /api/purchases/token-pack`, `POST /api/purchases/complete-token-pack`)
+2. ✅ Token pack configurations (4 tiers: impulse $0.99, starter $4.99, value $9.99, premium $24.99)
+3. ✅ Frontend UI added to Store page (gradient cards, hero selection modal)
+4. ✅ API client methods added (`tokenPackAPI.initiatePurchase`, `tokenPackAPI.completePurchase`)
+5. ✅ Grants tokens and gold to selected hero on completion
+6. ✅ Ready for Stripe integration (placeholder structure in place)
+
+**Files Modified:**
+- ✅ `E:\IdleDnD-Backend\src\routes\purchases.js` - Added token pack endpoints
+- ✅ `E:\IdleDnD-Web\src\pages\StorePage.tsx` - Added token purchase packs section
+- ✅ `E:\IdleDnD-Web\src\api\client.ts` - Added tokenPackAPI methods
 
 ---
 
@@ -1328,8 +1341,8 @@ These features are promised in the founders pack tiers. See `FOUNDERS_PACK_FEATU
 
 ---
 
-### **Step 1.3.5: Chat Badge** ❌ Not Implemented
-**Status:** ❌ Not Implemented  
+### **Step 1.3.5: Chat Badge** ✅ COMPLETE
+**Status:** ✅ COMPLETE  
 **Needed for:** Platinum tier ($25)
 
 **What It Is:**
@@ -1337,19 +1350,18 @@ These features are promised in the founders pack tiers. See `FOUNDERS_PACK_FEATU
 - Shows "Platinum Founder" status
 - Visible to other players in chat
 
-**Implementation:**
-1. **Determine Chat System:**
-   - Check if Twitch extension exists
-   - Check if web chat exists
-   - Determine badge display method
+**Implementation Complete:**
+1. ✅ Chat system uses web chat (ChatPanel.tsx)
+2. ✅ Founder badges displayed in chat messages (all tiers: Bronze, Silver, Gold, Platinum)
+3. ✅ Badge icon appears next to username in chat
+4. ✅ Uses `getFounderBadgePath()` and `getFounderBadgeTitle()` functions
+5. ✅ Badge displayed based on `msg.founderPackTier` field
 
-2. **Implement Badge Display:**
-   - Display badge in chat messages
-   - Or display in web chat UI
-   - Badge icon next to username
+**Files Modified:**
+- ✅ `E:\IdleDnD-Web\src\components\ChatPanel.tsx` - Badge display in chat messages (lines 675-688)
 
-**Estimated Time:** 1-2 days  
-**Priority:** LOW (Platinum tier only, depends on chat system)
+**Estimated Time:** ✅ Complete  
+**Priority:** LOW (Platinum tier only, but implemented for all tiers)
 
 ---
 
