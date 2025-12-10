@@ -301,38 +301,38 @@ export default function StorePage() {
 
           {/* Token Purchase Packs */}
           <div className="bg-gray-800 rounded-lg p-6 border border-gray-700 mb-8">
-            <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2">
-              💳 Token Purchase Packs
+            <h2 className="text-3xl font-bold text-white mb-4 flex items-center gap-3">
+              <span>🎫</span> Token Purchase Packs
             </h2>
-            <p className="text-gray-400 mb-6">Buy tokens directly with real money - Standard gacha pricing</p>
+            <p className="text-gray-400 mb-6">Buy tokens directly - Standard gacha pricing</p>
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               {[
-                { type: 'impulse', price: 0.99, tokens: 100, gold: 1000, name: 'Impulse Pack', color: 'from-green-600 to-green-700', highlight: '🔥 Impulse Buy' },
-                { type: 'starter', price: 4.99, tokens: 500, gold: 5000, name: 'Starter Pack', color: 'from-blue-600 to-blue-700', highlight: '⭐ Most Popular' },
-                { type: 'value', price: 9.99, tokens: 1500, gold: 15000, name: 'Value Pack', color: 'from-purple-600 to-purple-700', highlight: '💎 Best Value' },
-                { type: 'premium', price: 24.99, tokens: 5000, gold: 50000, name: 'Premium Pack', color: 'from-yellow-600 to-yellow-700', highlight: '👑 Whale Tier' }
+                { type: 'impulse', price: 0.99, tokens: 100, gold: 1000, name: 'Impulse Pack', highlight: '🔥 Impulse Buy' },
+                { type: 'starter', price: 4.99, tokens: 500, gold: 5000, name: 'Starter Pack', highlight: '⭐ Most Popular' },
+                { type: 'value', price: 9.99, tokens: 1500, gold: 15000, name: 'Value Pack', highlight: '💎 Best Value' },
+                { type: 'premium', price: 24.99, tokens: 5000, gold: 50000, name: 'Premium Pack', highlight: '👑 Whale Tier' }
               ].map((pack) => (
                 <div
                   key={pack.type}
-                  className={`bg-gradient-to-br ${pack.color} rounded-lg p-6 border-2 border-white/20 hover:border-white/40 transition-all transform hover:scale-105`}
+                  className="bg-gray-700 rounded-lg p-6 border-2 border-gray-600 hover:border-gray-500 transition-all"
                 >
                   <div className="text-center mb-4">
-                    <div className="text-xs font-semibold text-white/80 mb-1">{pack.highlight}</div>
-                    <div className="text-2xl font-bold text-white mb-2">{pack.name}</div>
+                    <div className="text-xs font-semibold text-gray-400 mb-1">{pack.highlight}</div>
+                    <div className="text-xl font-bold text-white mb-2">{pack.name}</div>
                     <div className="text-3xl font-bold text-white mb-1">${pack.price}</div>
                   </div>
                   
-                  <div className="bg-black/30 rounded-lg p-3 mb-4">
+                  <div className="bg-gray-900 rounded-lg p-3 mb-4 border border-gray-600">
                     <div className="flex justify-between items-center mb-2">
-                      <span className="text-sm text-white/90">Tokens:</span>
-                      <span className="text-lg font-bold text-blue-300">{pack.tokens.toLocaleString()}</span>
+                      <span className="text-sm text-gray-300">Tokens:</span>
+                      <span className="text-lg font-bold text-blue-400">{pack.tokens.toLocaleString()}</span>
                     </div>
                     <div className="flex justify-between items-center">
-                      <span className="text-sm text-white/90">Gold:</span>
-                      <span className="text-lg font-bold text-yellow-300">{pack.gold.toLocaleString()}</span>
+                      <span className="text-sm text-gray-300">Gold:</span>
+                      <span className="text-lg font-bold text-yellow-400">{pack.gold.toLocaleString()}</span>
                     </div>
-                    <div className="text-xs text-white/70 mt-2 text-center">
+                    <div className="text-xs text-gray-500 mt-2 text-center">
                       ~${(pack.price / pack.tokens * 100).toFixed(2)} per 100 tokens
                     </div>
                   </div>
@@ -350,10 +350,10 @@ export default function StorePage() {
                       }
                     }}
                     disabled={purchasing || !heroes || heroes.length === 0}
-                    className={`w-full py-3 rounded font-bold text-white transition-colors ${
+                    className={`w-full py-3 rounded font-semibold transition-colors ${
                       purchasing || !heroes || heroes.length === 0
                         ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
-                        : 'bg-white/20 hover:bg-white/30'
+                        : 'bg-blue-600 hover:bg-blue-700 text-white'
                     }`}
                   >
                     {purchasing ? 'Processing...' : 'Purchase'}
