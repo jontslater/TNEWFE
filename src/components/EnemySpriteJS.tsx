@@ -39,6 +39,10 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
       scale = 2.5,
       isTransformed = false,
     } = props;
+    
+    // Goblin sprites need visible overflow to show full death animations
+    const isGoblin = enemyType === 'Goblin' || enemyType === 'Goblin Chief' || 
+                     enemyName === 'Goblin' || enemyName?.startsWith('Goblin');
 
     // For Werewolf, use human form (idleHuman) if not transformed, werewolf form (idle) if transformed
     // For Elder Dragon, use idleBattle instead of idle
@@ -53,8 +57,9 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
     };
 
     const defaultAnim = getDefaultAnimation();
+    // Use enemyType for sprite lookup (not enemyName, which may have numbers like "Goblin 1")
     const { currentAnimation, playAnimation, onComplete } = useEnemyAnimator({
-      enemyName: enemyName || enemyType,
+      enemyName: enemyType || enemyName, // Prefer enemyType for sprite lookup
       defaultAnimationName: defaultAnim,
     });
     
@@ -81,12 +86,37 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
 
     const spriteRef = useRef<HTMLDivElement>(null);
     const rafRef = useRef<number | null>(null);
+    const deathAnimationPlayedRef = useRef<boolean>(false); // Track if death animation has been played
+    
+    // Reset death animation ref when enemyId changes (new enemy instance)
+    useEffect(() => {
+      deathAnimationPlayedRef.current = false;
+      console.log(`[EnemySpriteJS] Reset death animation ref for new enemy ${enemyId}`);
+    }, [enemyId]);
+
+    // Wrapper to track death animation
+    const playAnimationWithTracking = (name: string) => {
+      // If death animation has already been completed, don't restart it
+      // But allow it to play the first time (don't set the ref until it completes)
+      if (name === 'death' && deathAnimationPlayedRef.current) {
+        console.log(`[EnemySpriteJS] Death animation already completed for ${enemyId}, skipping restart`);
+        return;
+      }
+      
+      // Don't set deathAnimationPlayedRef here - wait until animation completes
+      // This allows the animation to actually start playing
+      if (name === 'death') {
+        console.log(`[EnemySpriteJS] Starting death animation for ${enemyId}`);
+      }
+      
+      playAnimation(name);
+    };
 
     // External API
     useImperativeHandle(
       ref,
       () => ({
-        playAnimation,
+        playAnimation: playAnimationWithTracking,
         setSpriteImage: () => {},
         getCurrentAnimation: () => currentAnimation?.name || "idle",
       }),
@@ -96,6 +126,15 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
     // Animation loop
     useEffect(() => {
       if (!currentAnimation || !spriteRef.current) return;
+
+      // CRITICAL: If this is a death animation that has already completed, don't restart it
+      // But allow it to start playing the first time (ref is set after completion)
+      if (currentAnimation.name === 'death' && deathAnimationPlayedRef.current) {
+        // Only skip if we're trying to restart a completed death animation
+        // Check if we're already on the last frame to determine if it's a restart
+        console.log(`[EnemySpriteJS] Death animation already completed for ${enemyId}, preventing restart`);
+        return;
+      }
 
       // cancel old rAF
       if (rafRef.current) {
@@ -115,24 +154,51 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
 
       const el = spriteRef.current;
 
-      // Check if this is using individual frame files (like Dragon - Fully Animated)
-      // Individual frames have paths like "/Sprites/enemies/Dragon - Fully Animated/Idle/001.png"
-      const isIndividualFrames = sheet.includes('/001.png') || sheet.includes('/01.png');
+      // Check if this is using individual frame files (like Dragon - Fully Animated or Goblin sprites)
+      // Individual frames have paths like:
+      // - "/Sprites/enemies/Dragon - Fully Animated/Idle/001.png" (Elder Dragon format)
+      // - "/Sprites/enemies/GoblinUnderling/idle/idle_0000.png" (Goblin format with _0000)
+      // - "/Sprites/enemies/Cultistpriest/cultist_priest_idle_1.png" (Cultist format with _1)
+      const isIndividualFrames = sheet.includes('/001.png') || 
+                                 sheet.includes('/01.png') || 
+                                 sheet.includes('_0000.png') || 
+                                 sheet.includes('_0001.png') ||
+                                 sheet.includes('_1.png') ||
+                                 sheet.includes('_2.png');
       
       // Helper to get frame path for individual frames
       const getFramePath = (frameIndex: number): string => {
         if (!isIndividualFrames) return sheet;
         
-        // Extract directory path and determine frame number format
-        const dirMatch = sheet.match(/^(.+\/)(\d+)\.png$/);
-        if (!dirMatch) return sheet;
+        // Check for Cultist format: path/cultist_priest_idle_1.png (underscore + single digit)
+        const cultistMatch = sheet.match(/^(.+\/)([^\/]+)_(\d)\.png$/);
+        if (cultistMatch) {
+          const [, basePath, prefix, startNum] = cultistMatch;
+          const frameNum = frameIndex + 1; // Cultist uses 1-based indexing
+          return `${basePath}${prefix}_${frameNum}.png`;
+        }
         
-        const [, dirPath, firstFrameNum] = dirMatch;
-        // Determine padding based on first frame number length
-        // "001" = 3 digits, "01" = 2 digits
-        const padding = firstFrameNum.length;
-        const frameNum = (frameIndex + 1).toString().padStart(padding, '0');
-        return `${dirPath}${frameNum}.png`;
+        // Check for Goblin format: path/idle/idle_0000.png (underscore + 4 digits)
+        const goblinMatch = sheet.match(/^(.+\/)([^\/]+)_(\d{4})\.png$/);
+        if (goblinMatch) {
+          const [, dirPath, baseName, firstFrameNum] = goblinMatch;
+          const frameNum = frameIndex.toString().padStart(4, '0');
+          return `${dirPath}${baseName}_${frameNum}.png`;
+        }
+        
+        // Check for Elder Dragon format: path/Idle/001.png (just numbers)
+        const dragonMatch = sheet.match(/^(.+\/)(\d+)\.png$/);
+        if (dragonMatch) {
+          const [, dirPath, firstFrameNum] = dragonMatch;
+          // Determine padding based on first frame number length
+          // "001" = 3 digits, "01" = 2 digits
+          const padding = firstFrameNum.length;
+          const frameNum = (frameIndex + 1).toString().padStart(padding, '0');
+          return `${dirPath}${frameNum}.png`;
+        }
+        
+        // Fallback: return original sheet
+        return sheet;
       };
       
       // Real sprite sheet size (only used for sprite sheets, not individual frames)
@@ -213,6 +279,13 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
       const animate = (ts: number) => {
         if (!spriteRef.current) return;
 
+        // For death animations that have completed, stop the animation loop
+        // This prevents infinite loops after completion but allows the animation to play once
+        if (animName === 'death' && deathAnimationPlayedRef.current) {
+          rafRef.current = null; // Stop the animation loop
+          return; // Don't continue animating
+        }
+
         if (currentAnimation.name !== animName) return;
 
         if (!start) {
@@ -259,7 +332,9 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
                 if (img.complete && img.naturalWidth > 0 && img.naturalHeight > 0) {
                   ctx.clearRect(0, 0, frameWidth, frameHeight);
                   ctx.drawImage(img, 0, 0, frameWidth, frameHeight);
-                  el.style.setProperty("transform", `scaleX(${animScaleX}) scaleY(${animScaleY})`, "important");
+                  // Canvas is already displayed at scaled size, so no additional transform needed
+                  // The container scale(3.0) will handle the final scaling
+                  el.style.setProperty("transform", "none", "important");
                 }
               }
             } else {
@@ -301,6 +376,36 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
             rafRef.current = requestAnimationFrame(animate);
           } else {
             rafRef.current = null;
+            // For death animations, stay on last frame and don't call onComplete (prevents transition back to idle)
+            if (animName === 'death') {
+              // Death animation stays on last frame - ensure we're displaying it
+              // Make sure we're displaying the last frame
+              if (isIndividualFrames) {
+                // Force display last frame for individual frame animations
+                const canvas = (el as any).__canvas as HTMLCanvasElement;
+                const ctx = (el as any).__ctx as CanvasRenderingContext2D;
+                const loadedFrames = (el as any).__loadedFrames as HTMLImageElement[];
+                if (canvas && ctx && loadedFrames && loadedFrames[frames - 1]) {
+                  const lastImg = loadedFrames[frames - 1];
+                  if (lastImg.complete && lastImg.naturalWidth > 0 && lastImg.naturalHeight > 0) {
+                    ctx.clearRect(0, 0, frameWidth, frameHeight);
+                    ctx.drawImage(lastImg, 0, 0, frameWidth, frameHeight);
+                  }
+                }
+              } else {
+                // For sprite sheets, ensure we're on the last frame
+                const animScaleX = frameWidth > VIEWPORT ? VIEWPORT / frameWidth : 1;
+                const animScaleY = frameHeight > VIEWPORT ? VIEWPORT / frameHeight : 1;
+                const lastFrameX = -((frames - 1) * frameWidth);
+                el.style.setProperty("transform", `scaleX(${animScaleX}) scaleY(${animScaleY}) translateX(${lastFrameX}px)`, "important");
+              }
+              
+              // Mark death animation as complete to prevent restart
+              deathAnimationPlayedRef.current = true;
+              console.log(`[EnemySpriteJS] ✅ Death animation completed for ${enemyId} - locked on last frame`);
+              lastIndex = frames - 1; // Ensure lastIndex is at final frame
+              return; // Stop animation loop completely
+            }
             onComplete();
           }
         }
@@ -335,31 +440,57 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
           
           if (!canvas) {
             canvas = document.createElement('canvas');
+            // Canvas should match the actual frame size for proper rendering
             canvas.width = frameWidth;
             canvas.height = frameHeight;
-            canvas.style.width = '100%';
-            canvas.style.height = '100%';
+            // Canvas display size should be scaled to fit VIEWPORT (48px)
+            // The canvas is frameWidth x frameHeight internally, but we display it at the scaled size
+            // Then the transform on the sprite element scales it further if needed, and container scales final
+            const canvasDisplayScaleX = frameWidth > VIEWPORT ? VIEWPORT / frameWidth : 1;
+            const canvasDisplayScaleY = frameHeight > VIEWPORT ? VIEWPORT / frameHeight : 1;
+            canvas.style.width = `${frameWidth * canvasDisplayScaleX}px`;
+            canvas.style.height = `${frameHeight * canvasDisplayScaleY}px`;
             canvas.style.position = 'absolute';
             canvas.style.top = '0';
             canvas.style.left = '0';
             canvas.style.imageRendering = 'pixelated';
+            canvas.style.imageRendering = '-moz-crisp-edges';
+            canvas.style.imageRendering = 'crisp-edges';
             el.appendChild(canvas);
-            ctx = canvas.getContext('2d')!;
+            ctx = canvas.getContext('2d', { 
+              willReadFrequently: false,
+              alpha: true 
+            })!;
+            // Disable image smoothing for crisp pixel art
+            ctx.imageSmoothingEnabled = false;
             (el as any).__canvas = canvas;
             (el as any).__ctx = ctx;
+          }
+          
+          // Update canvas size if frame dimensions changed
+          if (canvas.width !== frameWidth || canvas.height !== frameHeight) {
+            canvas.width = frameWidth;
+            canvas.height = frameHeight;
+            // Update display size to match scaled size
+            const canvasDisplayScaleX = frameWidth > VIEWPORT ? VIEWPORT / frameWidth : 1;
+            const canvasDisplayScaleY = frameHeight > VIEWPORT ? VIEWPORT / frameHeight : 1;
+            canvas.style.width = `${frameWidth * canvasDisplayScaleX}px`;
+            canvas.style.height = `${frameHeight * canvasDisplayScaleY}px`;
           }
           
           // Store loaded images for quick access during animation
           (el as any).__loadedFrames = images;
           
-          // Draw initial frame
+          // Draw initial frame - draw at full size, canvas display is already scaled
           const initialImg = images[startFrame];
           if (initialImg && initialImg.complete && initialImg.naturalWidth > 0 && initialImg.naturalHeight > 0) {
             ctx.clearRect(0, 0, frameWidth, frameHeight);
             ctx.drawImage(initialImg, 0, 0, frameWidth, frameHeight);
           }
           
-          el.style.setProperty("transform", `scaleX(${initialScaleX}) scaleY(${initialScaleY})`, "important");
+          // Canvas is already displayed at scaled size, so no additional transform needed
+          // The container scale(3.0) will handle the final scaling
+          el.style.setProperty("transform", "none", "important");
           el.style.transformOrigin = "top left";
           lastIndex = startFrame;
           
@@ -410,7 +541,7 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
           ...style,
           width: `${VIEWPORT}px`,
           height: `${VIEWPORT}px`,
-          overflow: "hidden",
+          overflow: isGoblin ? "visible" : "hidden", // Goblins need visible for death animations, others use hidden
           position: "relative",
           transform:
             facing === "left"
@@ -418,6 +549,8 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
               : `scale(${scale})`,
           transformOrigin: "bottom center", // FEET anchor
           imageRendering: "pixelated",
+          imageRendering: "-moz-crisp-edges",
+          imageRendering: "crisp-edges",
         }}
       >
         <div
@@ -434,7 +567,9 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
             animation: "none",
             backgroundRepeat: "no-repeat",
             imageRendering: "pixelated",
-            overflow: "hidden", // Prevent frames from showing outside the viewport
+            imageRendering: "-moz-crisp-edges",
+            imageRendering: "crisp-edges",
+            overflow: isGoblin ? "visible" : "hidden", // Goblins need visible for death animations, others use hidden
           }}
         />
       </div>

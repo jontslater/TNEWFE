@@ -9,8 +9,8 @@ import { Enemy } from './combat/types';
 // Map dungeon enemy type names to existing enemy template types
 const DUNGEON_ENEMY_MAP: Record<string, string> = {
   // Goblins
-  'Goblin': 'Kobold Warrior', // Use Kobold as Goblin equivalent
-  'Goblin Chief': 'Masked Orc', // Use Orc as Goblin Chief equivalent
+  'Goblin': 'Goblin', // Use actual Goblin sprites
+  'Goblin Chief': 'Goblin Chief', // Use actual Goblin Chief sprites
   
   // Undead
   'Skeleton': 'Skeleton Mage', // Use existing Skeleton Mage
@@ -128,16 +128,21 @@ export function generateDungeonEnemies(
       
       const enemy: Enemy = {
         id: `dungeon-${type}-${Date.now()}-${i}`,
-        name: count > 1 ? `${type} ${i + 1}` : type, // Display name (can have numbers)
-        enemyType: mappedSpriteType, // Sprite type for animation lookup (e.g., "Skeleton Mage")
+        name: count > 1 ? `${type} ${i + 1}` : type, // Display name (can have numbers like "Goblin 1")
+        enemyType: mappedSpriteType, // Sprite type for animation lookup - MUST match sprite config (e.g., "Goblin", "Goblin Chief")
         level: enemyLevel,
         hp: finalHp,
         maxHp: finalHp,
         attack: attack,
         defense: defense,
         xp: isBoss ? Math.floor(baseStats.xp * 1.5) : baseStats.xp,
-        isBoss: isBoss || false
+        isBoss: isBoss || false,
+        isDead: false // CRITICAL: Must match idle and raid enemy creation
       };
+      
+      // Debug: Log enemy sprite type mapping and stats
+      console.log(`[Dungeon Enemy] Generated: name="${enemy.name}", enemyType="${enemy.enemyType}" (for sprite lookup)`);
+      console.log(`[Dungeon Enemy] Stats: level=${enemy.level}, HP=${enemy.hp}/${enemy.maxHp}, ATK=${enemy.attack}, DEF=${enemy.defense}, isBoss=${enemy.isBoss}, difficulty=${(difficultyModifier * 100).toFixed(0)}%`);
       
       generatedEnemies.push(enemy);
     }

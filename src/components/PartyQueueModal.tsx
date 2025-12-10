@@ -1,6 +1,17 @@
 import { useState, useEffect } from 'react';
-import { partyAPI, raidAPI } from '../api/client';
+import { partyAPI, raidAPI, dungeonAPI } from '../api/client';
 import { Raid } from '../types/Raid';
+
+interface Dungeon {
+  id: string;
+  name: string;
+  type: string;
+  difficulty: string;
+  minLevel?: number;
+  minItemScore?: number;
+  description?: string;
+  available: boolean;
+}
 
 interface PartyQueueModalProps {
   partyId: string;
@@ -19,20 +30,44 @@ interface PartyQueueModalProps {
 export default function PartyQueueModal({ partyId, partyMembers, onClose, onQueued }: PartyQueueModalProps) {
   const [queueType, setQueueType] = useState<'dungeon' | 'raid' | null>(null);
   const [selectedRaidId, setSelectedRaidId] = useState<string>('');
+  const [selectedDungeonId, setSelectedDungeonId] = useState<string>('');
   const [dungeonType, setDungeonType] = useState<string>('normal');
+  const [fillParty, setFillParty] = useState<boolean>(true); // Default: wait for matchmaking to fill party
   const [raids, setRaids] = useState<Raid[]>([]);
+  const [dungeons, setDungeons] = useState<Dungeon[]>([]);
   const [loading, setLoading] = useState(false);
   const [queuing, setQueuing] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
 
   useEffect(() => {
     loadRaids();
+    loadDungeons();
   }, []);
+
+  const loadDungeons = async () => {
+    try {
+      const data = await dungeonAPI.getAllDungeons();
+      setDungeons(data || []);
+      // Set default to first available dungeon
+      const availableDungeon = data?.find((d: Dungeon) => d.available);
+      if (availableDungeon) {
+        setSelectedDungeonId(availableDungeon.id);
+      }
+    } catch (error) {
+      console.error('Failed to load dungeons:', error);
+    }
+  };
 
   const loadRaids = async () => {
     try {
       const response = await raidAPI.getRaids();
-      setRaids(response || []);
+      // Filter to only show available raids
+      const availableRaids = (response || []).filter((r: Raid) => r.available !== false);
+      setRaids(availableRaids);
+      // Set default to first available raid
+      if (availableRaids.length > 0) {
+        setSelectedRaidId(availableRaids[0].id);
+      }
     } catch (error) {
       console.error('Failed to load raids:', error);
     }
@@ -60,6 +95,9 @@ export default function PartyQueueModal({ partyId, partyMembers, onClose, onQueu
     if (queueType === 'dungeon') {
       if (partyMembers.length > 5) {
         errors.push('Dungeon party size limit is 5 members');
+      }
+      if (!selectedDungeonId) {
+        errors.push('Please select a dungeon');
       }
       // Don't validate composition - incomplete parties can queue and matchmaking will fill them
       // The matchmaking system will find individual players to complete the group
@@ -89,13 +127,22 @@ export default function PartyQueueModal({ partyId, partyMembers, onClose, onQueu
       const response = await partyAPI.queueParty(
         partyId,
         queueType!,
-        queueType === 'raid' ? selectedRaidId : undefined,
-        queueType === 'dungeon' ? dungeonType : undefined
+        queueType === 'raid' ? selectedRaidId : undefined, // raidId
+        queueType === 'dungeon' ? dungeonType : undefined, // dungeonType
+        queueType === 'dungeon' ? selectedDungeonId : undefined, // dungeonId
+        fillParty // fillParty for both dungeons and raids
       );
 
       if (response.success) {
         if (response.errors && response.errors.length > 0) {
-          setErrors(response.errors.map(e => `${e.userId}: ${e.error}`));
+          const errorMessages = response.errors.map((e: any) => {
+            const member = partyMembers.find(m => m.userId === e.userId);
+            const memberName = member ? `${member.username} (${member.heroName})` : e.userId;
+            return `${memberName}: ${e.error}`;
+          });
+          setErrors(errorMessages);
+          // Don't close modal if there are errors - let user see them
+          return;
         }
         if (onQueued) onQueued();
         onClose();
@@ -104,7 +151,12 @@ export default function PartyQueueModal({ partyId, partyMembers, onClose, onQueu
       }
     } catch (error: any) {
       console.error('Failed to queue party:', error);
-      setErrors([error.response?.data?.error || 'Failed to queue party']);
+      console.error('Error details:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status
+      });
+      setErrors([error.response?.data?.error || error.message || 'Failed to queue party']);
     } finally {
       setQueuing(false);
     }
@@ -127,6 +179,13 @@ export default function PartyQueueModal({ partyId, partyMembers, onClose, onQueu
                 onClick={() => {
                   setQueueType('dungeon');
                   setSelectedRaidId('');
+                  // Set default dungeon if not already set
+                  if (!selectedDungeonId && dungeons.length > 0) {
+                    const availableDungeon = dungeons.find(d => d.available);
+                    if (availableDungeon) {
+                      setSelectedDungeonId(availableDungeon.id);
+                    }
+                  }
                   setErrors([]);
                 }}
                 className={`flex-1 px-4 py-3 rounded font-semibold transition-colors ${
@@ -156,47 +215,128 @@ export default function PartyQueueModal({ partyId, partyMembers, onClose, onQueu
             </div>
           </div>
 
-          {/* Dungeon Type Selection */}
+          {/* Dungeon Selection */}
           {queueType === 'dungeon' && (
-            <div>
-              <label className="block text-sm text-gray-300 mb-2">Dungeon Difficulty</label>
-              <select
-                value={dungeonType}
-                onChange={(e) => setDungeonType(e.target.value)}
-                className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-amber-400"
-              >
-                <option value="normal">Normal</option>
-                <option value="heroic">Heroic</option>
-                <option value="mythic">Mythic</option>
-              </select>
-            </div>
+            <>
+              <div>
+                <label className="block text-sm text-gray-300 mb-2">Select Dungeon</label>
+                <select
+                  value={selectedDungeonId}
+                  onChange={(e) => {
+                    setSelectedDungeonId(e.target.value);
+                    setErrors([]);
+                  }}
+                  className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-amber-400"
+                >
+                  <option value="">-- Select Dungeon --</option>
+                  {dungeons
+                    .filter(d => d.available)
+                    .map(dungeon => (
+                      <option key={dungeon.id} value={dungeon.id}>
+                        {dungeon.name} ({dungeon.difficulty})
+                        {dungeon.minLevel && ` - Lv${dungeon.minLevel}+`}
+                        {dungeon.minItemScore && ` - ${dungeon.minItemScore}+ Item Score`}
+                      </option>
+                    ))}
+                </select>
+                {selectedDungeonId && (
+                  <div className="mt-2 text-xs text-gray-400">
+                    {dungeons.find(d => d.id === selectedDungeonId)?.description}
+                  </div>
+                )}
+              </div>
+              
+              <div>
+                <label className="block text-sm text-gray-300 mb-2">Dungeon Difficulty</label>
+                <select
+                  value={dungeonType}
+                  onChange={(e) => setDungeonType(e.target.value)}
+                  className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-amber-400"
+                >
+                  <option value="normal">Normal</option>
+                  <option value="heroic">Heroic</option>
+                  <option value="mythic">Mythic</option>
+                </select>
+              </div>
+              
+              {/* Fill Party Toggle */}
+              <div className="p-3 bg-gray-700/50 rounded border border-gray-600">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={fillParty}
+                    onChange={(e) => setFillParty(e.target.checked)}
+                    className="w-5 h-5 rounded bg-gray-600 border-gray-500 text-blue-600 focus:ring-blue-500 focus:ring-2"
+                  />
+                  <div className="flex-1">
+                    <div className="text-sm font-semibold text-white">Fill Party with Matchmaking</div>
+                    <div className="text-xs text-gray-400 mt-1">
+                      {fillParty 
+                        ? `Wait for matchmaking to fill party up to ${dungeons.find(d => d.id === selectedDungeonId)?.maxPlayers || 5} players`
+                        : `Start immediately with ${partyMembers.length} party member(s) (if dungeon allows ${partyMembers.length} players)`
+                      }
+                    </div>
+                  </div>
+                </label>
+              </div>
+            </>
           )}
 
           {/* Raid Selection */}
           {queueType === 'raid' && (
-            <div>
-              <label className="block text-sm text-gray-300 mb-2">Select Raid</label>
-              <select
-                value={selectedRaidId}
-                onChange={(e) => {
-                  setSelectedRaidId(e.target.value);
-                  setErrors([]);
-                }}
-                className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-amber-400"
-              >
-                <option value="">-- Select Raid --</option>
-                {raids.map(raid => (
-                  <option key={raid.id} value={raid.id}>
-                    {raid.name} ({raid.difficulty}) - Lv{(raid as any).minLevel || raid.boss?.level || 'N/A'}+, {(raid as any).minItemScore || (raid as any).suggestedItemScore || 'N/A'}+ Item Score
-                  </option>
-                ))}
-              </select>
-              {selectedRaid && (
-                <div className="mt-2 text-xs text-gray-400">
-                  Requirements: Level {(selectedRaid as any).minLevel || selectedRaid.boss?.level || 'N/A'}+, {(selectedRaid as any).minItemScore || (selectedRaid as any).suggestedItemScore || 'N/A'}+ Item Score
-                </div>
-              )}
-            </div>
+            <>
+              <div>
+                <label className="block text-sm text-gray-300 mb-2">Select Raid</label>
+                <select
+                  value={selectedRaidId}
+                  onChange={(e) => {
+                    setSelectedRaidId(e.target.value);
+                    setErrors([]);
+                  }}
+                  className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-amber-400"
+                >
+                  <option value="">-- Select Raid --</option>
+                  {raids.map(raid => (
+                    <option key={raid.id} value={raid.id}>
+                      {raid.name} ({raid.difficulty}) - Lv{(raid as any).minLevel || raid.boss?.level || 'N/A'}+, {(raid as any).minItemScore || (raid as any).suggestedItemScore || 'N/A'}+ Item Score
+                    </option>
+                  ))}
+                </select>
+                {selectedRaid && (
+                  <div className="mt-2 text-xs text-gray-400">
+                    Requirements: Level {(selectedRaid as any).minLevel || selectedRaid.boss?.level || 'N/A'}+, {(selectedRaid as any).minItemScore || (selectedRaid as any).suggestedItemScore || 'N/A'}+ Item Score
+                    <br />
+                    Players: {(selectedRaid as any).minPlayers || 5} - {(selectedRaid as any).maxPlayers || 20}
+                    {partyMembers.length < ((selectedRaid as any).minPlayers || 5) && (
+                      <div className="mt-1 text-amber-400 font-semibold">
+                        ⚠️ Party too small! Need at least {(selectedRaid as any).minPlayers || 5} players (you have {partyMembers.length})
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+              
+              {/* Fill Party Toggle for Raids */}
+              <div className="p-3 bg-gray-700/50 rounded border border-gray-600">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={fillParty}
+                    onChange={(e) => setFillParty(e.target.checked)}
+                    className="w-5 h-5 rounded bg-gray-600 border-gray-500 text-blue-600 focus:ring-blue-500 focus:ring-2"
+                  />
+                  <div className="flex-1">
+                    <div className="text-sm font-semibold text-white">Fill Party with Matchmaking</div>
+                    <div className="text-xs text-gray-400 mt-1">
+                      {fillParty 
+                        ? `Wait for matchmaking to fill party up to ${selectedRaid ? (selectedRaid as any).maxPlayers || 20 : 20} players`
+                        : `Start immediately with ${partyMembers.length} party member(s) (if raid allows ${partyMembers.length} players)`
+                      }
+                    </div>
+                  </div>
+                </label>
+              </div>
+            </>
           )}
 
           {/* Party Composition */}
@@ -262,7 +402,7 @@ export default function PartyQueueModal({ partyId, partyMembers, onClose, onQueu
         <div className="mt-6 flex gap-3">
           <button
             onClick={handleQueue}
-            disabled={queuing || !queueType || (queueType === 'raid' && !selectedRaidId)}
+            disabled={queuing || !queueType || (queueType === 'raid' && !selectedRaidId) || (queueType === 'dungeon' && !selectedDungeonId) || (queueType === 'raid' && raids.length === 0)}
             className="flex-1 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {queuing ? 'Queueing...' : 'Queue Party'}

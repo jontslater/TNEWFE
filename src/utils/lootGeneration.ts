@@ -262,6 +262,10 @@ export function generateLoot(
       }
     } else if (category === 'healer') {
       item.secondaryStats.healingPower = Math.min(Math.floor(3 + (secondaryBase * 2)), 30);
+      // Healers also benefit from spell damage (for their offensive spells)
+      if (rarity === 'epic' || rarity === 'legendary' || rarity === 'mythic') {
+        item.secondaryStats.spellDamage = Math.min(Math.floor(2 + (secondaryBase * 1.5)) / 100, 0.20);
+      }
       if (rarity === 'epic' || rarity === 'legendary') {
         item.secondaryStats.hpRegen = Math.min(Math.floor(2 + secondaryBase), 15);
       }

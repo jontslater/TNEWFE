@@ -1,6 +1,18 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { dungeonAPI, heroAPI } from '../api/client';
+import { dungeonAPI, heroAPI, partyAPI } from '../api/client';
+import PartyQueueModal from '../components/PartyQueueModal';
+
+interface Dungeon {
+  id: string;
+  name: string;
+  type: string;
+  difficulty: string;
+  minLevel?: number;
+  minItemScore?: number;
+  description?: string;
+  available: boolean;
+}
 
 export default function DungeonFinderPage() {
   const { user } = useAuth();
@@ -9,12 +21,21 @@ export default function DungeonFinderPage() {
   const [loading, setLoading] = useState(true);
   const [inQueue, setInQueue] = useState(false);
   const [dungeonType, setDungeonType] = useState<'normal' | 'heroic' | 'mythic'>('normal');
+  const [selectedDungeonId, setSelectedDungeonId] = useState<string>('');
+  const [dungeons, setDungeons] = useState<Dungeon[]>([]);
+  const [party, setParty] = useState<any>(null);
+  const [showPartyQueueModal, setShowPartyQueueModal] = useState(false);
 
   useEffect(() => {
     if (user?.id) {
       loadHero();
+      loadDungeons();
+      loadParty();
       checkQueueStatus();
-      const interval = setInterval(checkQueueStatus, 5000);
+      const interval = setInterval(() => {
+        checkQueueStatus();
+        loadParty();
+      }, 5000);
       return () => clearInterval(interval);
     }
   }, [user]);
@@ -27,6 +48,36 @@ export default function DungeonFinderPage() {
       console.error('Failed to load hero:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadDungeons = async () => {
+    try {
+      const data = await dungeonAPI.getAllDungeons();
+      setDungeons(data || []);
+      // Set default to first available dungeon
+      const availableDungeon = data?.find((d: Dungeon) => d.available);
+      if (availableDungeon) {
+        setSelectedDungeonId(availableDungeon.id);
+      }
+    } catch (err) {
+      console.error('Failed to load dungeons:', err);
+    }
+  };
+
+  const loadParty = async () => {
+    try {
+      const userId = user?.twitchId || user?.id;
+      if (!userId) return;
+      const response = await partyAPI.getParty(userId);
+      if (response.success && response.party) {
+        setParty(response.party);
+      } else {
+        setParty(null);
+      }
+    } catch (err) {
+      console.error('Failed to load party:', err);
+      setParty(null);
     }
   };
 
@@ -52,7 +103,8 @@ export default function DungeonFinderPage() {
         hero.id || user!.id,
         category,
         itemScore,
-        dungeonType
+        dungeonType,
+        selectedDungeonId || undefined
       );
       setInQueue(true);
       checkQueueStatus();
@@ -127,23 +179,61 @@ export default function DungeonFinderPage() {
       {!inQueue ? (
         <div className="space-y-4">
           <div>
-            <label className="block mb-2">Dungeon Type</label>
+            <label className="block mb-2 font-semibold">Select Dungeon</label>
+            <select
+              value={selectedDungeonId}
+              onChange={(e) => setSelectedDungeonId(e.target.value)}
+              className="w-full p-2 border rounded bg-white"
+            >
+              <option value="">-- Select Dungeon --</option>
+              {dungeons
+                .filter(d => d.available)
+                .map(dungeon => (
+                  <option key={dungeon.id} value={dungeon.id}>
+                    {dungeon.name} ({dungeon.difficulty})
+                    {dungeon.minLevel && ` - Lv${dungeon.minLevel}+`}
+                    {dungeon.minItemScore && ` - ${dungeon.minItemScore}+ Item Score`}
+                  </option>
+                ))}
+            </select>
+            {selectedDungeonId && (
+              <div className="mt-2 text-sm text-gray-600">
+                {dungeons.find(d => d.id === selectedDungeonId)?.description}
+              </div>
+            )}
+          </div>
+          
+          <div>
+            <label className="block mb-2 font-semibold">Difficulty</label>
             <select
               value={dungeonType}
               onChange={(e) => setDungeonType(e.target.value as any)}
-              className="p-2 border rounded"
+              className="w-full p-2 border rounded bg-white"
             >
               <option value="normal">Normal</option>
               <option value="heroic">Heroic</option>
               <option value="mythic">Mythic</option>
             </select>
           </div>
-          <button
-            onClick={handleJoinQueue}
-            className="px-6 py-3 bg-blue-600 text-white rounded hover:bg-blue-700"
-          >
-            Join Queue as {role.toUpperCase()}
-          </button>
+
+          <div className="flex gap-3">
+            <button
+              onClick={handleJoinQueue}
+              disabled={!selectedDungeonId}
+              className="flex-1 px-6 py-3 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Join Queue as {role.toUpperCase()}
+            </button>
+            
+            {party && party.status === 'forming' && party.leaderId === (user?.twitchId || user?.id) && (
+              <button
+                onClick={() => setShowPartyQueueModal(true)}
+                className="px-6 py-3 bg-purple-600 text-white rounded hover:bg-purple-700"
+              >
+                Join as Party
+              </button>
+            )}
+          </div>
         </div>
       ) : (
         <div className="space-y-4">
@@ -175,6 +265,19 @@ export default function DungeonFinderPage() {
             Leave Queue
           </button>
         </div>
+      )}
+
+      {/* Party Queue Modal */}
+      {showPartyQueueModal && party && (
+        <PartyQueueModal
+          partyId={party.id}
+          partyMembers={party.memberData || []}
+          onClose={() => setShowPartyQueueModal(false)}
+          onQueued={() => {
+            loadParty();
+            checkQueueStatus();
+          }}
+        />
       )}
     </div>
   );

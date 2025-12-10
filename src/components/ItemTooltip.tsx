@@ -1,3 +1,4 @@
+import { useState, useRef, useEffect } from 'react';
 import { Item, Socket } from '../types/Hero';
 import { getRarityColor, getMaxSockets, getGemColor } from '../utils/format';
 
@@ -7,22 +8,78 @@ interface ItemTooltipProps {
   position?: 'above' | 'below';
 }
 
-export default function ItemTooltip({ item, children, position = 'below' }: ItemTooltipProps) {
-  const positionClasses = position === 'above' 
+export default function ItemTooltip({ item, children, position: initialPosition = 'below' }: ItemTooltipProps) {
+  const [actualPosition, setActualPosition] = useState<'above' | 'below'>(initialPosition);
+  const tooltipRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const checkPosition = () => {
+      if (!containerRef.current || !tooltipRef.current) return;
+
+      const containerRect = containerRef.current.getBoundingClientRect();
+      const tooltip = tooltipRef.current;
+      const viewportHeight = window.innerHeight;
+
+      // Temporarily make tooltip visible to measure it
+      const originalClasses = tooltip.className;
+      tooltip.classList.remove('invisible', 'opacity-0');
+      tooltip.classList.add('visible', 'opacity-100');
+      
+      const tooltipRect = tooltip.getBoundingClientRect();
+      const tooltipHeight = tooltipRect.height;
+      
+      // Restore original classes
+      tooltip.className = originalClasses;
+
+      // Calculate available space
+      const spaceBelow = viewportHeight - containerRect.bottom;
+      const spaceAbove = containerRect.top;
+      const neededSpace = tooltipHeight + 16; // 16px for margin
+
+      // Decide position: prefer below, but use above if not enough space below
+      if (spaceBelow < neededSpace && spaceAbove >= neededSpace) {
+        setActualPosition('above');
+      } else if (spaceBelow >= neededSpace) {
+        setActualPosition('below');
+      } else {
+        // Not enough space either way, use whichever has more space
+        setActualPosition(spaceAbove > spaceBelow ? 'above' : 'below');
+      }
+    };
+
+    const container = containerRef.current;
+    if (container) {
+      container.addEventListener('mouseenter', checkPosition);
+      window.addEventListener('scroll', checkPosition, true);
+      window.addEventListener('resize', checkPosition);
+      
+      return () => {
+        container.removeEventListener('mouseenter', checkPosition);
+        window.removeEventListener('scroll', checkPosition, true);
+        window.removeEventListener('resize', checkPosition);
+      };
+    }
+  }, []);
+
+  const positionClasses = actualPosition === 'above' 
     ? 'bottom-full mb-2' 
     : 'top-full mt-2';
     
-  const arrowClasses = position === 'above'
+  const arrowClasses = actualPosition === 'above'
     ? 'top-full w-0 h-0 border-l-8 border-l-transparent border-r-8 border-r-transparent border-t-8 border-t-gray-700'
     : 'bottom-full w-0 h-0 border-l-8 border-l-transparent border-r-8 border-r-transparent border-b-8 border-b-gray-700';
 
   return (
-    <div className="relative group cursor-help">
+    <div ref={containerRef} className="relative group cursor-help">
       {children}
       
-      {/* Tooltip */}
-      <div className={`absolute left-1/2 -translate-x-1/2 ${positionClasses} invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-50 pointer-events-none`}>
-        <div className="bg-gray-900 border-2 border-gray-700 rounded-lg p-4 shadow-2xl min-w-64">
+      {/* Tooltip - Smart positioning based on available space */}
+      <div 
+        ref={tooltipRef}
+        className={`absolute left-1/2 -translate-x-1/2 ${positionClasses} invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-50 pointer-events-none`}
+      >
+        <div className="bg-gray-900 border-2 border-gray-700 rounded-lg p-4 shadow-2xl min-w-64 max-w-80">
           {/* Item Name */}
           <div className={`text-lg font-bold mb-2 ${getRarityColor(item.rarity)}`}>
             <div className="flex items-center gap-2">

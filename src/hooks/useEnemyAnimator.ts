@@ -134,16 +134,17 @@ export function useEnemyAnimator({
     
     const animation = animations[actualName];
     if (!animation) {
+      console.warn(`[useEnemyAnimator] Animation "${actualName}" not found for ${enemyName}`);
       return;
     }
 
     // Interrupt rules: death blocks all, hurt interrupts non-death
     if (animationRef.current?.name === "death" && actualName !== "death") {
-      return;
+      return; // Don't interrupt death animation
     }
     
     if (animationRef.current?.name === "hurt" && actualName !== "death" && actualName !== "hurt") {
-      return;
+      return; // Don't interrupt hurt animation
     }
 
     animationRef.current = animation;

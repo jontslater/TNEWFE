@@ -11,7 +11,7 @@
 
 import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { collection, query, where, onSnapshot, doc, getDocs } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, getDocs, limit } from 'firebase/firestore';
 import { db } from '../utils/firebase';
 import { generateEnemiesForCombat } from '../utils/enemyGeneration';
 import { generateDungeonEnemies } from '../utils/dungeonEnemyGeneration';
@@ -151,6 +151,7 @@ interface CombatAction {
   isHero: boolean;
 }
 
+// Main component
 export default function CleanBattlefieldSource() {
   const [searchParams] = useSearchParams();
   
@@ -253,6 +254,8 @@ export default function CleanBattlefieldSource() {
   const [combatWaveCount, setCombatWaveCount] = useState(0); // Only combat waves
   const [inCombat, setInCombat] = useState(false);
   const [facingPreferences, setFacingPreferences] = useState<Record<string, 'left' | 'right'>>({});
+  const [enemyFlipOverride, setEnemyFlipOverride] = useState<Record<string, 'left' | 'right'>>({});
+  const [globalEnemyFlip, setGlobalEnemyFlip] = useState(false);
   const [resurrectionTimers, setResurrectionTimers] = useState<Record<string, number>>({});
   const [difficultyModifier, setDifficultyModifier] = useState(1.0);
   const [consecutiveWins, setConsecutiveWins] = useState(0);
@@ -272,6 +275,9 @@ export default function CleanBattlefieldSource() {
   // Rested XP tracking
   const heroBattlefieldJoinTime = useRef<Map<string, number>>(new Map());
   const lastChatTime = useRef<Map<string, number>>(new Map());
+  
+  // Adventure tick function ref (to access from checkCombatVictory)
+  const adventureTickRef = useRef<(() => void) | null>(null);
   
   // Extract twitchId from battlefieldId for WebSocket connection
   const twitchId = battlefieldId?.split(':')[1] || null;
@@ -420,10 +426,12 @@ export default function CleanBattlefieldSource() {
     const findHeroAndListen = async () => {
       try {
         // Find hero document for current user (use twitchId from battlefieldId or authenticated user)
-        const heroesSnapshot = await db.collection('heroes')
-          .where('twitchUserId', '==', twitchIdForListener)
-          .limit(1)
-          .get();
+        const heroesQuery = query(
+          collection(db, 'heroes'),
+          where('twitchUserId', '==', twitchIdForListener),
+          limit(1)
+        );
+        const heroesSnapshot = await getDocs(heroesQuery);
         
         if (heroesSnapshot.empty) {
           setQueueStatus(null);
@@ -917,6 +925,24 @@ export default function CleanBattlefieldSource() {
       
       console.log(`[Raid Setup] ✅ Total raid heroes created: ${raidHeroes.length}`);
     
+    // Calculate raid difficulty scaling based on party size
+    const raidPartySize = raidHeroes.length;
+    // Raid party size multiplier: More heroes = harder enemies
+    // For raids (5-20 players): 8% per hero beyond first 5, then 10% per hero beyond 10
+    // 5 heroes = 1.0x, 10 = 1.4x, 15 = 1.9x, 20 = 2.4x
+    let raidPartySizeMultiplier = 1.0;
+    if (raidPartySize > 5) {
+      if (raidPartySize <= 10) {
+        // 6-10 heroes: 8% per hero beyond 5
+        raidPartySizeMultiplier = 1.0 + ((raidPartySize - 5) * 0.08);
+      } else {
+        // 11-20 heroes: 1.4x base (for 10), then 10% per hero beyond 10
+        raidPartySizeMultiplier = 1.4 + ((raidPartySize - 10) * 0.10);
+      }
+    }
+    
+    console.log(`[Raid] Party size: ${raidPartySize}, difficulty multiplier: ${(raidPartySizeMultiplier * 100).toFixed(0)}%`);
+    
     // Convert boss to Enemy format
     // WAVE SYSTEM: Determine enemies based on current wave
     const currentWave = instanceData.currentWave || 0;
@@ -931,7 +957,18 @@ export default function CleanBattlefieldSource() {
     
     // WAVES 0-3: Trash mobs (waves 1-4 in display)
     if (currentWave < totalWaves - 1) {
-      const waveEnemyString = instanceData.waveEnemies?.[currentWave] || '';
+      let waveEnemyString = instanceData.waveEnemies?.[currentWave] || '';
+      
+      // Fallback: Generate wave enemies if missing (for raids created before wave generation was added)
+      if (!waveEnemyString) {
+        console.log(`[Raid Waves] ⚠️ Wave enemies missing for wave ${currentWave}, generating fallback enemies`);
+        const { generateRaidWaveEnemies } = await import('../utils/raidSystem');
+        const generatedEnemies = generateRaidWaveEnemies(currentWave, totalWaves, instanceData.difficulty || 'normal');
+        const enemyNames = generatedEnemies.flatMap(e => Array(e.count).fill(e.name));
+        waveEnemyString = enemyNames.join(',');
+        console.log(`[Raid Waves] ✅ Generated fallback enemies:`, waveEnemyString);
+      }
+      
       const waveEnemyNames = waveEnemyString ? waveEnemyString.split(',') : [];
       
       console.log(`[Raid Waves] Wave ${currentWave} index (display ${currentWave + 1}/${totalWaves})`);
@@ -946,16 +983,36 @@ export default function CleanBattlefieldSource() {
           'Baby Dragon': { hp: 5000, attack: 100, defense: 50, xp: 500, level: 38, type: 'Baby Dragon' },
           'Dragon Whelp': { hp: 8000, attack: 150, defense: 80, xp: 800, level: 40, type: 'Dragon_1' },
           'Dragon Guardian': { hp: 10000, attack: 180, defense: 100, xp: 1000, level: 42, type: 'Dragon_2' },
-          'Dragon Sentinel': { hp: 12000, attack: 200, defense: 120, xp: 1200, level: 44, type: 'Dragon_3' }
+          'Dragon Sentinel': { hp: 12000, attack: 200, defense: 120, xp: 1200, level: 44, type: 'Dragon_3' },
+          // Standard enemies for raid waves
+          'Goblin': { hp: 3000, attack: 60, defense: 30, xp: 300, level: 15, type: 'Goblin' },
+          'Orc': { hp: 4000, attack: 80, defense: 40, xp: 400, level: 18, type: 'Masked Orc' },
+          'Skeleton': { hp: 3500, attack: 70, defense: 35, xp: 350, level: 16, type: 'Skeleton Mage' },
+          'Imp': { hp: 2500, attack: 50, defense: 25, xp: 250, level: 14, type: 'Imp' },
+          'Witch': { hp: 4500, attack: 90, defense: 45, xp: 450, level: 20, type: 'Witch' },
+          'Skeleton Mage': { hp: 5000, attack: 100, defense: 50, xp: 500, level: 22, type: 'Skeleton Mage' },
+          'Demon Lord': { hp: 15000, attack: 200, defense: 100, xp: 1500, level: 35, type: 'Demon Lord' },
+          'Adult Dragon': { hp: 20000, attack: 250, defense: 120, xp: 2000, level: 40, type: 'Adult Dragon' },
+          'Cultist': { hp: 3500, attack: 70, defense: 35, xp: 350, level: 18, type: 'Cultist' }
         };
         
-        const stats = WAVE_STATS[trimmedName] || { hp: 5000, attack: 100, defense: 50, xp: 500, level: 40, type: 'Baby Dragon' };
+        const baseStats = WAVE_STATS[trimmedName] || { hp: 5000, attack: 100, defense: 50, xp: 500, level: 40, type: 'Baby Dragon' };
+        
+        // Apply party size scaling to enemy stats
+        const stats = {
+          ...baseStats,
+          hp: Math.floor(baseStats.hp * raidPartySizeMultiplier),
+          attack: Math.floor(baseStats.attack * raidPartySizeMultiplier),
+          defense: Math.floor(baseStats.defense * raidPartySizeMultiplier),
+          xp: Math.floor(baseStats.xp * raidPartySizeMultiplier)
+        };
         
         console.log(`[Raid Waves] Creating enemy "${trimmedName}" with stats:`, stats);
         
         raidEnemies.push({
           id: `wave-enemy-${currentWave}-${index}`,
           name: trimmedName,
+          enemyType: baseStats.type || trimmedName, // Add enemyType for sprite lookup
           level: stats.level,
           hp: stats.hp,
           maxHp: stats.hp,
@@ -972,15 +1029,27 @@ export default function CleanBattlefieldSource() {
     else if (instanceData.boss && instanceData.boss.hp > 0) {
       console.log(`[Raid Waves] Wave ${currentWave + 1} (FINAL): BOSS - ${instanceData.boss.name}`);
       
+      // Apply party size scaling to boss stats
+      const bossHp = Math.floor(instanceData.boss.hp * raidPartySizeMultiplier);
+      const bossMaxHp = Math.floor((instanceData.boss.maxHp || instanceData.boss.hp) * raidPartySizeMultiplier);
+      const bossAttack = Math.floor((instanceData.boss.attack || 100) * raidPartySizeMultiplier);
+      const bossDefense = Math.floor((instanceData.boss.defense || 50) * raidPartySizeMultiplier);
+      const bossXp = Math.floor((instanceData.boss.xp || 1000) * raidPartySizeMultiplier);
+      
+      console.log(`[Raid Boss] Scaling boss stats: HP ${instanceData.boss.hp}→${bossHp}, ATK ${instanceData.boss.attack || 100}→${bossAttack} (${(raidPartySizeMultiplier * 100).toFixed(0)}% difficulty)`);
+      
+      const bossEnemyType = instanceData.boss.name || 'Boss';
+      console.log(`[Raid Boss] Creating boss with enemyType: "${bossEnemyType}"`);
       raidEnemies.push({
         id: 'raid-boss',
         name: instanceData.boss.name || 'Boss',
+        enemyType: bossEnemyType, // Add enemyType for sprite lookup (e.g., 'Corrupted High Priest')
         level: instanceData.boss.level || 50,
-        hp: instanceData.boss.hp,
-        maxHp: instanceData.boss.maxHp,
-        attack: instanceData.boss.attack || 100,
-        defense: instanceData.boss.defense || 50,
-        xp: instanceData.boss.xp || 1000,
+        hp: bossHp,
+        maxHp: bossMaxHp,
+        attack: bossAttack,
+        defense: bossDefense,
+        xp: bossXp,
         isBoss: true,
         isDead: false,
         shield: 0
@@ -1015,7 +1084,7 @@ export default function CleanBattlefieldSource() {
       // TODO: Mark raid as complete in Firebase
     }
     
-    console.log(`[Raid Waves] ✅ Total enemies generated: ${raidEnemies.length}`, raidEnemies.map(e => e.name));
+    console.log(`[Raid Waves] ✅ Total enemies generated: ${raidEnemies.length}`, raidEnemies.map(e => ({ name: e.name, enemyType: e.enemyType, isBoss: e.isBoss })));
     
     if (raidEnemies.length === 0) {
       console.error('[Raid Waves] ❌ NO ENEMIES GENERATED! This is a bug!');
@@ -1063,6 +1132,19 @@ export default function CleanBattlefieldSource() {
   // In dungeon mode, populate heroes and enemies from instance data (similar to raids)
   useEffect(() => {
     if (gameMode !== 'dungeon' || !instanceData) return;
+    
+    // CRITICAL: Don't run setup if dungeon is already completed or failed
+    if (instanceData.status === 'completed' || instanceData.status === 'failed') {
+      console.log('[Dungeon Mode] ⚠️ Skipping dungeon setup - instance is already', instanceData.status);
+      return;
+    }
+    
+    // CRITICAL: Clear enemies first to prevent stale enemy state from previous room
+    console.log('[Dungeon Mode] 🧹 Clearing enemies before setting up new room...');
+    setEnemies([]);
+    enemiesRef.current = [];
+    setInCombat(false);
+    combatInProgress.current = false;
     
     console.log('[Dungeon Mode] ⚠️ DUNGEON SETUP RUNNING - This should only run on room change!');
     console.log('[Dungeon Mode] Trigger:', {
@@ -1171,19 +1253,63 @@ export default function CleanBattlefieldSource() {
       
       console.log(`[Dungeon Setup] ✅ Total dungeon heroes created: ${dungeonHeroes.length}`);
     
+      // Calculate dungeon-specific difficulty modifier based on hero stats and party size
+      // Unlike idle mode which uses state, dungeons should scale to hero power AND party size
+      const avgGearScore = calculateAverageGearScore(dungeonHeroes);
+      const avgHeroLevel = dungeonHeroes.length > 0
+        ? Math.floor(dungeonHeroes.reduce((sum, h) => sum + (h.level || 1), 0) / dungeonHeroes.length)
+        : 10;
+      const partySize = dungeonHeroes.length;
+      
+      // Scale difficulty based on gear score, level, and party size
+      // Base difficulty: 1.0, increases with gear/level/party size
+      let dungeonDifficultyModifier = 1.0;
+      
+      // Party size multiplier: More heroes = harder enemies (similar to idle mode)
+      // For dungeons (2-5 players): 8% per hero beyond first
+      // 2 heroes = 1.08x, 3 = 1.16x, 4 = 1.24x, 5 = 1.32x
+      const partySizeMultiplier = partySize > 1 
+        ? 1 + ((partySize - 1) * 0.08)
+        : 1.0;
+      
+      // Gear score scaling: +10% per 100 gear score above 0, capped at 2.0x bonus
+      if (avgGearScore > 0) {
+        const gearBonus = Math.min(2.0, (avgGearScore / 100) * 0.1);
+        dungeonDifficultyModifier = 1.0 + gearBonus;
+      }
+      
+      // Level scaling: +2% per level above 10, max +40% (levels 10-30)
+      const levelBonus = Math.min(0.4, Math.max(0, (avgHeroLevel - 10) * 0.02));
+      dungeonDifficultyModifier += levelBonus;
+      
+      // Apply party size multiplier
+      dungeonDifficultyModifier *= partySizeMultiplier;
+      
+      console.log(`[Dungeon] Hero stats: avgLevel=${avgHeroLevel}, avgGearScore=${avgGearScore}, partySize=${partySize}`);
+      console.log(`[Dungeon] Difficulty breakdown: base=1.0, gear=${((dungeonDifficultyModifier / partySizeMultiplier - 1.0 - levelBonus) * 100).toFixed(0)}%, level=${(levelBonus * 100).toFixed(0)}%, partySize=${((partySizeMultiplier - 1.0) * 100).toFixed(0)}%`);
+      console.log(`[Dungeon] Calculated difficulty modifier: ${(dungeonDifficultyModifier * 100).toFixed(0)}% (idle mode modifier: ${(difficultyModifier * 100).toFixed(0)}%)`);
+      
       // Generate enemies for current room from dungeon definition
       const currentRoom = instanceData.currentRoom || 0;
       const dungeonId = instanceData.dungeonId || 'goblin_cave';
       const roomEnemies: Enemy[] = [];
       
       console.log(`[Dungeon] ====================================`);
-      console.log(`[Dungeon] Current room: ${currentRoom}`);
+      console.log(`[Dungeon] Current room: ${currentRoom} (0-indexed)`);
       console.log(`[Dungeon] Dungeon ID: ${dungeonId}`);
-      console.log(`[Dungeon] Instance room data:`, instanceData.rooms?.[currentRoom]);
+      console.log(`[Dungeon] Instance rooms array length: ${instanceData.rooms?.length}`);
+      console.log(`[Dungeon] Instance maxRooms: ${instanceData.maxRooms}`);
+      console.log(`[Dungeon] Instance room data at index ${currentRoom}:`, instanceData.rooms?.[currentRoom]);
+      console.log(`[Dungeon] All rooms:`, instanceData.rooms?.map((r: any, i: number) => `${i}: ${r?.name || r?.id || 'unknown'}`));
       console.log(`[Dungeon] ====================================`);
       
       // Get room definition from instance data
       const roomData = instanceData.rooms?.[currentRoom];
+      
+      // Safety check: if room data is missing but we're not at the last room, log a warning
+      if (!roomData && currentRoom < (instanceData.maxRooms || instanceData.rooms?.length || 3) - 1) {
+        console.warn(`[Dungeon] ⚠️ Room data missing for room ${currentRoom + 1}! This might cause issues.`);
+      }
       
       if (roomData && roomData.enemies) {
         // Use room data from instance
@@ -1191,7 +1317,7 @@ export default function CleanBattlefieldSource() {
         const generated = generateDungeonEnemies(
           roomData.enemies,
           dungeonHeroes,
-          difficultyModifier
+          dungeonDifficultyModifier // Use calculated dungeon difficulty, not idle mode state
         );
         roomEnemies.push(...generated);
       } else {
@@ -1205,7 +1331,7 @@ export default function CleanBattlefieldSource() {
         const generated = generateDungeonEnemies(
           defaultRoom.enemies,
           dungeonHeroes,
-          difficultyModifier
+          dungeonDifficultyModifier // Use calculated dungeon difficulty, not idle mode state
         );
         roomEnemies.push(...generated);
       }
@@ -1217,25 +1343,158 @@ export default function CleanBattlefieldSource() {
         return;
       }
       
+      // CRITICAL: Ensure all enemies have full HP (defensive check)
+      roomEnemies.forEach((enemy, index) => {
+        // Check if maxHp is valid
+        if (!enemy.maxHp || enemy.maxHp <= 0) {
+          console.error(`[Dungeon] ❌ Enemy ${enemy.name} has invalid maxHp: ${enemy.maxHp}! This is a bug in enemy generation.`);
+          // Try to calculate maxHp from HP if available
+          if (enemy.hp && enemy.hp > 0) {
+            enemy.maxHp = enemy.hp;
+            console.warn(`[Dungeon] ⚠️ Using HP value ${enemy.hp} as maxHp for ${enemy.name}`);
+          } else {
+            console.error(`[Dungeon] ❌ Cannot fix enemy ${enemy.name} - both hp and maxHp are invalid!`);
+            return; // Skip this enemy
+          }
+        }
+        
+        // Ensure HP equals maxHp
+        if (enemy.hp !== enemy.maxHp) {
+          console.warn(`[Dungeon] ⚠️ Enemy ${enemy.name} has HP ${enemy.hp} but maxHp ${enemy.maxHp} - resetting to full HP!`);
+          enemy.hp = enemy.maxHp;
+        }
+        if (enemy.isDead) {
+          console.warn(`[Dungeon] ⚠️ Enemy ${enemy.name} is marked as dead - resetting!`);
+          enemy.isDead = false;
+        }
+        
+        console.log(`[Dungeon] ✅ Enemy ${enemy.name}: HP=${enemy.hp}, maxHp=${enemy.maxHp}, isDead=${enemy.isDead}`);
+      });
+      
       // Update heroes and enemies state (this triggers combat!)
       console.log(`[Dungeon Mode] 🎮 Setting ${dungeonHeroes.length} heroes, ${roomEnemies.length} enemies`);
       console.log('[Dungeon Mode] Heroes:', dungeonHeroes.map(h => `${h.name} (${h.role})`));
-      console.log('[Dungeon Mode] Enemies:', roomEnemies.map(e => `${e.name} (HP: ${e.hp})`));
+      console.log('[Dungeon Mode] Enemies BEFORE fix:', roomEnemies.map(e => ({
+        name: e.name,
+        hp: e.hp,
+        maxHp: e.maxHp,
+        isDead: e.isDead,
+        level: e.level
+      })));
       
-      // Update refs first
-      heroesRef.current = dungeonHeroes;
-      enemiesRef.current = roomEnemies;
+      // CRITICAL: Clear combat state FIRST to prevent stale victory checks
+      setInCombat(false);
+      combatInProgress.current = false;
+      
+      // Update refs first (create fresh array to avoid reference issues)
+      // Make sure enemies have fresh references and full HP
+      const freshEnemies = roomEnemies.map(e => {
+        // Double-check maxHp is valid before using it
+        console.log(`[Dungeon] Creating fresh enemy for ${e.name}: original hp=${e.hp}, maxHp=${e.maxHp}`);
+        
+        let validMaxHp = e.maxHp;
+        if (!validMaxHp || validMaxHp <= 0) {
+          // Try to use hp if it's valid
+          if (e.hp && e.hp > 0) {
+            validMaxHp = e.hp;
+            console.warn(`[Dungeon] ⚠️ Enemy ${e.name} maxHp was invalid (${e.maxHp}), using hp value: ${validMaxHp}`);
+          } else {
+            // Fallback to a calculated value based on level
+            validMaxHp = Math.floor(100 * (1 + (e.level || 15) * 0.15)) * 1.5; // Boss multiplier
+            console.error(`[Dungeon] ❌ Enemy ${e.name} has invalid hp (${e.hp}) and maxHp (${e.maxHp}), using calculated fallback: ${validMaxHp}`);
+          }
+        }
+        
+        const freshEnemy = {
+          ...e, 
+          maxHp: validMaxHp,
+          hp: validMaxHp, // Ensure full HP
+          isDead: false // Ensure not marked as dead
+        };
+        
+        console.log(`[Dungeon] ✅ Fresh enemy created: ${freshEnemy.name} - HP=${freshEnemy.hp}, maxHp=${freshEnemy.maxHp}, isDead=${freshEnemy.isDead}`);
+        return freshEnemy;
+      });
+      
+      console.log('[Dungeon Mode] Enemies AFTER fix:', freshEnemies.map(e => ({
+        name: e.name,
+        hp: e.hp,
+        maxHp: e.maxHp,
+        isDead: e.isDead,
+        level: e.level
+      })));
+      
+      heroesRef.current = [...dungeonHeroes];
+      enemiesRef.current = freshEnemies;
+      
+      // Debug: Log fresh enemies state before setting
+      console.log('[Dungeon Mode] 🐛 Fresh enemies state BEFORE setState:', freshEnemies.map(e => ({
+        name: e.name,
+        hp: e.hp,
+        maxHp: e.maxHp,
+        isDead: e.isDead,
+        level: e.level,
+        enemyType: e.enemyType,
+        isBoss: e.isBoss
+      })));
       
       // Then set state (this will trigger combat useEffect)
       setHeroes(dungeonHeroes);
-      setEnemies(roomEnemies);
+      setEnemies(freshEnemies);
       
-      // Delay combat start to let sprites render
+      // Delay combat start to let sprites render and ensure state is fully updated
       if (roomEnemies.length > 0) {
         console.log('[Dungeon Mode] ⏳ Waiting 1s for sprites to render...');
         setTimeout(() => {
-          console.log('[Dungeon Mode] ⚔️ Starting combat NOW!');
-          setInCombat(true);
+          // Double-check enemies are still valid before starting combat
+          const validEnemies = enemiesRef.current.filter(e => {
+            const isValid = e.hp > 0 && e.maxHp > 0 && !e.isDead;
+            if (!isValid) {
+              console.warn(`[Dungeon Mode] ⚠️ Invalid enemy detected: ${e.name} (hp: ${e.hp}, maxHp: ${e.maxHp}, isDead: ${e.isDead})`);
+            }
+            return isValid;
+          });
+          
+          if (validEnemies.length > 0) {
+            // Fix any enemies that have invalid HP or are marked as dead
+            enemiesRef.current.forEach(e => {
+              if ((e.hp <= 0 || e.isDead) && e.maxHp > 0) {
+                console.warn(`[Dungeon Mode] 🔧 Fixing enemy ${e.name}: HP was ${e.hp}, isDead was ${e.isDead}, setting HP to ${e.maxHp} and isDead to false`);
+                e.hp = e.maxHp;
+                e.isDead = false;
+              }
+            });
+            // Update state to reflect the fixes
+            setEnemies([...enemiesRef.current]);
+            console.log('[Dungeon Mode] ⚔️ Starting combat NOW!', `Valid enemies: ${validEnemies.length}`);
+            setInCombat(true);
+          } else {
+            console.error('[Dungeon Mode] ⚠️ Cannot start combat - enemies are dead or missing!', enemiesRef.current.map(e => ({
+              name: e.name,
+              hp: e.hp,
+              maxHp: e.maxHp,
+              isDead: e.isDead,
+              level: e.level,
+              enemyType: e.enemyType
+            })));
+            // Try to fix all enemies one more time
+            console.log('[Dungeon Mode] 🔧 Attempting emergency fix for all enemies...');
+            enemiesRef.current.forEach(e => {
+              if (e.maxHp > 0) {
+                e.hp = e.maxHp;
+                e.isDead = false;
+              } else {
+                // Calculate a fallback maxHp
+                const fallbackHp = Math.floor(100 * (1 + (e.level || 15) * 0.15)) * (e.isBoss ? 1.5 : 1);
+                e.maxHp = fallbackHp;
+                e.hp = fallbackHp;
+                e.isDead = false;
+                console.warn(`[Dungeon Mode] 🚨 Emergency fix for ${e.name}: calculated maxHp=${fallbackHp}`);
+              }
+            });
+            setEnemies([...enemiesRef.current]);
+            setInCombat(true);
+          }
         }, 1000);
       }
     };
@@ -1247,11 +1506,15 @@ export default function CleanBattlefieldSource() {
 
   // Quest tracking state (accumulate progress, batch sync to backend)
   const questProgressRef = useRef<Map<string, Map<string, number>>>(new Map()); // heroId -> trackingKey -> count
+  const pendingGathersRef = useRef<Map<string, number>>(new Map()); // heroId -> gather count (for batch sync)
   const lastQuestSyncRef = useRef<number>(Date.now());
   
   // Auto-purchase tracking state (accumulate purchases, batch sync to backend)
   const pendingPurchasesRef = useRef<Map<string, Array<{ itemKey: string; quantity: number }>>>(new Map()); // heroId -> array of purchases
   const lastPurchaseSyncRef = useRef<number>(Date.now());
+  
+  // Auto-gathering tracking state (accumulate gathers, batch sync to backend)
+  const lastGatherSyncRef = useRef<number>(Date.now());
 
   // SCT (Scrolling Combat Text) state
   type SCTType = 'damage' | 'crit' | 'heal' | 'heal-hot' | 'dot' | 'loot' | 'levelup' | 'questcomplete' | 'xp' | 'miss' | 'gather' | 'profession-xp';
@@ -1698,7 +1961,12 @@ export default function CleanBattlefieldSource() {
   };
 
   // Merge test healer with real heroes for combat/display
-  const allHeroes = testHealer ? [...heroes, testHealer] : heroes;
+  // CRITICAL: Deduplicate to prevent same hero appearing twice (e.g., if testHealer has same ID as real hero)
+  const allHeroes = testHealer 
+    ? (heroes.some(h => h.id === testHealer.id) 
+        ? heroes // If testHealer ID matches a real hero, don't add it
+        : [...heroes, testHealer])
+    : heroes;
 
   // ============================================================================
   // QUEST TRACKING SYSTEM
@@ -1842,8 +2110,9 @@ export default function CleanBattlefieldSource() {
               const goldAmount = Math.floor(5 + nextTick * 0.5);
               handleTreasure(goldAmount);
             } else {
-              // SAFE TRAVEL (30%) - no wave count
+              // SAFE TRAVEL (30%) - no wave count, but can gather materials
               console.log(`[Adventure] 🚶 Travel - no wave count`);
+              handleGathering();
             }
           }
         }, 0);
@@ -1851,6 +2120,9 @@ export default function CleanBattlefieldSource() {
         return nextTick;
       });
     };
+    
+    // Store adventureTick in ref so it can be accessed from checkCombatVictory
+    adventureTickRef.current = adventureTick;
     
     // Treasure handler function
     const handleTreasure = (goldAmount: number) => {
@@ -1948,6 +2220,46 @@ export default function CleanBattlefieldSource() {
         return updated;
       });
     };
+    
+    // Automatic gathering handler (during safe travel)
+    const handleGathering = () => {
+      setHeroes(current => {
+        const updated = current.map(hero => {
+          if (hero.isDead || !hero.profession) return hero;
+          
+          // 20% chance to gather during safe travel (if hero has a profession)
+          if (Math.random() < 0.2 && hero.id) {
+            // Queue gather for batch sync (don't call API immediately)
+            if (!pendingGathersRef.current.has(hero.id)) {
+              pendingGathersRef.current.set(hero.id, 0);
+            }
+            pendingGathersRef.current.set(hero.id, (pendingGathersRef.current.get(hero.id) || 0) + 1);
+            
+            // QUEST TRACKING: Track gathering
+            trackQuest(hero.id, 'gather', 1);
+            
+            // Get profession name (moved outside if block for scope)
+            const professionName = hero.profession.type === 'herbalism' ? 'Herb' : 
+                                   hero.profession.type === 'mining' ? 'Ore' : 
+                                   'Material';
+            
+            // Show gather SCT
+            const heroElement = document.querySelector(`[data-hero-id="${hero.id}"]`);
+            if (heroElement) {
+              const rect = heroElement.getBoundingClientRect();
+              addSCT(`+${professionName}`, rect.left + rect.width / 2, rect.top + 25, 'gather');
+            }
+            
+            console.log(`[Gathering] ${hero.name} gathered ${professionName} (${hero.profession.type})`);
+          }
+          
+          return hero;
+        });
+        
+        heroesRef.current = updated;
+        return updated;
+      });
+    };
 
     // Spawn enemies function
     const spawnEnemies = (isBoss: boolean) => {
@@ -1989,13 +2301,15 @@ export default function CleanBattlefieldSource() {
         return {
           id: e.id,
           name: e.name,
+          enemyType: (e as any).enemyType || e.name, // Preserve enemyType for sprite lookup (prevents Goblin Chief sprite mismatch)
           level: e.level,
           hp: scaledHp,
           maxHp: scaledHp,
           attack: scaledAttack,
           defense: e.defense,
           xp: e.xp,
-          isBoss: e.isBoss || false
+          isBoss: e.isBoss || false,
+          isDead: e.isDead || false // Ensure isDead is set (should come from generateEnemiesForCombat, but be defensive)
         };
       });
 
@@ -3363,17 +3677,25 @@ export default function CleanBattlefieldSource() {
         // Update state immediately so other actions can see this enemy is dead!
         enemiesRef.current = updatedEnemies;
         
-        // Play death animation if enemy just died
+        // Play death animation if enemy just died (only once)
+        // Note: State will be updated when this setEnemies callback returns updatedEnemies at the end
         if (died) {
           const enemyRef = getEnemySpriteRef(target.id);
           if (enemyRef.current) {
-            console.log(`[Animation] ${target.name} → death`);
-            // Defer animation to avoid "setState during render" warning
+            console.log(`[Animation] ${target.name} → death (from hero attack)`);
+            // Defer animation slightly to ensure state update is processed
+            // The state update happens when setEnemies callback returns updatedEnemies
             setTimeout(() => {
-              if (enemyRef.current) {
-                enemyRef.current.playAnimation('death');
+              const currentEnemyRef = getEnemySpriteRef(target.id);
+              if (currentEnemyRef.current) {
+                currentEnemyRef.current.playAnimation('death');
+                console.log(`[Animation] ✅ Death animation triggered for ${target.name}`);
+              } else {
+                console.warn(`[Animation] ⚠️ Enemy sprite ref not found for ${target.id} (${target.name}) after delay`);
               }
-            }, 0);
+            }, 100);
+          } else {
+            console.warn(`[Animation] ⚠️ Enemy sprite ref not found for ${target.id} (${target.name})`);
           }
         }
         
@@ -3397,10 +3719,24 @@ export default function CleanBattlefieldSource() {
               combatRoundTimeoutRef.current = null;
             }
             
-            // Trigger victory check immediately (after brief delay for death animation)
+            // Trigger victory check after death animation completes
+            // Bosses have longer death animations (Goblin Chief: 1.1s, Elder Dragon: ~2s)
+            const isBoss = target.isBoss;
+            const deathAnimationDelay = isBoss ? 2500 : 1500; // 2.5s for bosses, 1.5s for regular enemies
             setTimeout(() => {
-              checkCombatVictory();
-            }, 1000); // 1s for death animation to play
+              // Ensure combat is still in progress before checking (might have been cleared by room transition)
+              if (combatInProgress.current && inCombat) {
+                checkCombatVictory();
+              } else {
+                console.log('[Combat] Victory check skipped - combat state was cleared (might be room transition or dungeon complete)');
+                // Double-check if all enemies are dead and we're in dungeon mode - might need cleanup
+                const remainingEnemies = enemiesRef.current.filter(e => e.hp > 0 && !e.isDead);
+                if (remainingEnemies.length === 0 && gameMode === 'dungeon') {
+                  console.log('[Combat] All enemies dead but combat cleared - forcing victory check anyway');
+                  checkCombatVictory();
+                }
+              }
+            }, deathAnimationDelay);
           }
         }
         
@@ -3603,8 +3939,15 @@ export default function CleanBattlefieldSource() {
         }
       }
 
-      // Enemy hurt animation (skip if in aerial sequence!)
+      // Enemy hurt animation (skip if in aerial sequence or if enemy is dead!)
       setTimeout(() => {
+        // Check if enemy is still alive (might have died from this attack)
+        const currentEnemy = enemiesRef.current.find(e => e.id === target.id);
+        if (!currentEnemy || currentEnemy.hp <= 0 || currentEnemy.isDead) {
+          console.log(`[Animation] ${target.name} → hurt SKIPPED (enemy is dead)`);
+          return;
+        }
+        
         const enemyRef = getEnemySpriteRef(target.id);
         const enemyElement = document.querySelector(`[data-enemy-id="${target.id}"]`) as HTMLElement;
         
@@ -3614,21 +3957,26 @@ export default function CleanBattlefieldSource() {
           return;
         }
         
-        if (enemyRef.current && target.hp > 0) {
+        if (enemyRef.current) {
           console.log(`[Animation] ${target.name} → hurt`);
           enemyRef.current.playAnimation('hurt');
         }
       }, 200);
 
-      // Death animation
-      if (target.hp <= 0) {
+      // Death animation (only if enemy just died - check if already dead)
+      // Note: Death animation is already handled in executeHeroAttack, so we skip here to avoid duplicate calls
+      // This is only for cases where enemy dies from other sources (e.g., execute ability)
+      if (target.hp <= 0 && !target.isDead) {
         setTimeout(() => {
           const enemyRef = getEnemySpriteRef(target.id);
           if (enemyRef.current) {
-            console.log(`[Animation] ${target.name} → death`);
+            console.log(`[Animation] ${target.name} → death (from enemy attack context)`);
             enemyRef.current.playAnimation('death');
+            console.log(`[Animation] ✅ Death animation triggered for ${target.name}`);
+          } else {
+            console.warn(`[Animation] ⚠️ Enemy sprite ref not found for ${target.id} (${target.name})`);
           }
-        }, 400);
+        }, 150);
       } else {
         // Hero returns to idle after attack
         // Don't return to idle - let attack animation complete naturally
@@ -4350,57 +4698,109 @@ export default function CleanBattlefieldSource() {
       const currentHeroes = heroesRef.current;
       const currentEnemies = enemiesRef.current;
       
-      const aliveEnemies = currentEnemies.filter(e => e.hp > 0);
+      // CRITICAL: Skip victory check if combat is not in progress (prevents false victories during room transitions)
+      if (!inCombat || !combatInProgress.current) {
+        console.log('[Combat] ⏭️ Skipping victory check - combat not in progress');
+        return;
+      }
+      
+      // Filter out dead enemies (HP <= 0 or isDead flag)
+      const aliveEnemies = currentEnemies.filter(e => e.hp > 0 && !e.isDead);
       const aliveHeroes = currentHeroes.filter(h => h.hp > 0 && !h.isDead);
 
-      console.log(`[Combat] Victory check - ${aliveHeroes.length} heroes, ${aliveEnemies.length} enemies alive`);
+      console.log(`[Combat] Victory check - ${aliveHeroes.length} heroes, ${aliveEnemies.length}/${currentEnemies.length} enemies alive`);
 
+      // Only trigger victory if ALL enemies are dead AND we had enemies to begin with
       if (aliveEnemies.length === 0 && currentEnemies.length > 0) {
         // Victory! Grant XP to all alive heroes
         console.log('[Combat] ✅ Victory! All enemies defeated.');
+        console.log(`[Combat] Victory details: ${currentEnemies.length} total enemies, all defeated`);
         
         // DUNGEON MODE: Check if we need to advance to next room
         if (gameMode === 'dungeon' && instanceData) {
           const currentRoom = instanceData.currentRoom || 0;
-          const totalRooms = instanceData.totalRooms || 5;
+          // Get total rooms from instance data - prioritize maxRooms (set by backend) over rooms.length
+          // CRITICAL: maxRooms is set by backend to the actual number of rooms (e.g., 3 for Goblin Cave)
+          const totalRooms = instanceData.maxRooms || instanceData.totalRooms || (instanceData.rooms?.length || 3);
           
-          console.log(`[Dungeon] Room ${currentRoom + 1}/${totalRooms} cleared!`);
+          console.log(`[Dungeon] ✅ Room ${currentRoom + 1}/${totalRooms} cleared!`);
+          console.log(`[Dungeon] Room check details:`);
+          console.log(`  - currentRoom (0-indexed): ${currentRoom}`);
+          console.log(`  - currentRoom + 1: ${currentRoom + 1}`);
+          console.log(`  - instanceData.maxRooms: ${instanceData.maxRooms}`);
+          console.log(`  - instanceData.totalRooms: ${instanceData.totalRooms}`);
+          console.log(`  - instanceData.rooms?.length: ${instanceData.rooms?.length}`);
+          console.log(`  - final totalRooms: ${totalRooms}`);
+          console.log(`  - Condition: ${currentRoom + 1} < ${totalRooms} = ${currentRoom + 1 < totalRooms}`);
           
           if (currentRoom + 1 < totalRooms) {
-            // Advance to next room
+            // Advance to next room with countdown delay
             console.log(`[Dungeon] 🚪 Advancing to room ${currentRoom + 2}/${totalRooms}...`);
+            console.log(`[Dungeon] Updating Firebase: currentRoom from ${currentRoom} to ${currentRoom + 1}`);
             
-            // Update instance data in Firebase to trigger room change
-            if (instanceData.id) {
-              import('firebase/firestore').then(({ doc, updateDoc }) => {
-                updateDoc(doc(db, 'dungeonInstances', instanceData.id), {
-                  currentRoom: currentRoom + 1,
-                  updatedAt: new Date()
-                }).then(() => {
-                  console.log(`[Dungeon] ✅ Advanced to room ${currentRoom + 2}`);
-                  // Instance listener will detect the change and re-run dungeon setup useEffect
-                }).catch(err => {
-                  console.error('[Dungeon] Failed to advance room:', err);
-                });
-              });
-            }
+            // Show countdown before transitioning (gives time for CSS/scaling to stabilize)
+            let countdown = 5;
+            const centerX = window.innerWidth / 2;
+            const centerY = window.innerHeight / 2;
             
-            // Clear combat state (new room will spawn new enemies)
-            setEnemies([]);
-            enemiesRef.current = [];
-            setInCombat(false);
-            combatInProgress.current = false;
+            // Show initial countdown message
+            addSCT(`Returning to battle in ${countdown}...`, centerX, centerY, 'xp');
+            
+            const countdownInterval = setInterval(() => {
+              countdown--;
+              
+              if (countdown > 0) {
+                // Show countdown SCT in center of screen
+                addSCT(`Returning to battle in ${countdown}...`, centerX, centerY, 'xp');
+              } else {
+                clearInterval(countdownInterval);
+                
+                // Update instance data in Firebase to trigger room change
+                if (instanceData.id) {
+                  import('firebase/firestore').then(({ doc, updateDoc }) => {
+                    const nextRoom = currentRoom + 1;
+                    console.log(`[Dungeon] 🔧 Updating Firebase: currentRoom ${currentRoom} -> ${nextRoom}, status should remain 'active'`);
+                    updateDoc(doc(db, 'dungeonInstances', instanceData.id), {
+                      currentRoom: nextRoom,
+                      status: 'active', // CRITICAL: Preserve status as 'active' so instance listener doesn't lose it
+                      updatedAt: new Date()
+                    }).then(() => {
+                      console.log(`[Dungeon] ✅ Advanced to room ${nextRoom + 1} (currentRoom index: ${nextRoom})`);
+                      console.log(`[Dungeon] 🔍 Status should be 'active' - instance listener should still find this dungeon`);
+                      // Instance listener will detect the change and re-run dungeon setup useEffect
+                    }).catch(err => {
+                      console.error('[Dungeon] Failed to advance room:', err);
+                    });
+                  });
+                }
+                
+                // Clear combat state (new room will spawn new enemies)
+                setEnemies([]);
+                enemiesRef.current = [];
+                setInCombat(false);
+                combatInProgress.current = false;
+              }
+            }, 1000); // Countdown every second
+            
             return; // Don't grant XP/loot yet - wait for next room
           } else {
             // Final room cleared - dungeon complete!
             console.log(`[Dungeon] 🎉 DUNGEON COMPLETE!`);
+            console.log(`[Dungeon] Completed all ${totalRooms} rooms!`);
             
             // QUEST TRACKING: Track dungeon completion for all alive heroes
             aliveHeroes.forEach(hero => {
               trackQuest(hero.id, 'completeDungeons', 1);
             });
             
-            // Mark dungeon as complete in Firebase
+            // Clear combat state immediately (before Firebase update)
+            setEnemies([]);
+            enemiesRef.current = [];
+            setInCombat(false);
+            combatInProgress.current = false;
+            
+            // Mark dungeon as complete in Firebase (this will trigger listener to return to idle)
+            // Backend will reset party status to 'forming' when instance completes
             if (instanceData.id) {
               import('firebase/firestore').then(({ doc, updateDoc }) => {
                 updateDoc(doc(db, 'dungeonInstances', instanceData.id), {
@@ -4408,12 +4808,28 @@ export default function CleanBattlefieldSource() {
                   completedAt: new Date(),
                   currentRoom: currentRoom + 1
                 }).then(() => {
-                  console.log(`[Dungeon] ✅ Marked dungeon as complete`);
-                  // Will return to idle mode after a delay
+                  console.log(`[Dungeon] ✅ Marked dungeon as complete - listener will return to idle mode`);
+                  // Party status will be reset by backend when instance completes
                 }).catch(err => {
                   console.error('[Dungeon] Failed to mark complete:', err);
+                  // Even if Firebase update fails, clear state to prevent hanging
+                  setTimeout(() => {
+                    setEnemies([]);
+                    enemiesRef.current = [];
+                    setInCombat(false);
+                    combatInProgress.current = false;
+                  }, 2000);
                 });
               });
+            } else {
+              // No instance ID - clear state anyway to prevent hanging
+              console.warn('[Dungeon] No instance ID, clearing state anyway');
+              setTimeout(() => {
+                setEnemies([]);
+                enemiesRef.current = [];
+                setInCombat(false);
+                combatInProgress.current = false;
+              }, 2000);
             }
             
             // Grant dungeon completion rewards (from dungeon definition)
@@ -4652,7 +5068,7 @@ export default function CleanBattlefieldSource() {
           console.log(`[Loot] ${enemy.name} drops ${numItems} item(s)`);
           
           for (let i = 0; i < numItems; i++) {
-            // Pick a random alive hero to give loot to
+            // Pick a random alive hero to generate loot for (loot is role-specific)
             const aliveHeroes = currentHeroes.filter(h => !h.isDead && h.hp > 0);
             if (aliveHeroes.length === 0) continue;
             
@@ -4671,22 +5087,52 @@ export default function CleanBattlefieldSource() {
             
             if (!loot) continue;
             
-            console.log(`[Loot] Generated ${loot.rarity} ${loot.name} for ${randomHero.name} (slot: ${loot.slot})`);
+            console.log(`[Loot] Generated ${loot.rarity} ${loot.name} (slot: ${loot.slot})`);
             
-            // Check if better than current item
-            const currentItem = randomHero.equipment?.[loot.slot];
-            const isBetter = isItemBetter(loot, currentItem);
+            // ========================================
+            // AUTOMATED GEAR DISTRIBUTION
+            // ========================================
+            // 1. Check if item is locked (skip if locked - shouldn't happen for new loot, but safety check)
+            if (loot.locked) {
+              console.log(`[Loot] 🔒 Skipping ${loot.name} - item is locked (unexpected for new loot)`);
+              continue;
+            }
             
-            if (isBetter) {
-              // Auto-equip the new item
+            // 2. Find best hero for this item (check ALL heroes, not just randomHero)
+            let bestHero: Hero | null = null;
+            let bestImprovement = 0;
+            
+            for (const hero of aliveHeroes) {
+              // Skip if hero doesn't have this slot or slot is invalid
+              if (!hero.equipment) continue;
+              
+              const currentItem = hero.equipment[loot.slot];
+              
+              // Check if current item is locked (don't replace locked items)
+              if (currentItem?.locked) {
+                console.log(`[Loot] 🔒 Skipping ${hero.name} - current ${loot.slot} is locked`);
+                continue;
+              }
+              
+              // Calculate improvement for this hero (role-specific, considers spell power and set bonuses)
+              const improvement = calculateItemImprovement(loot, currentItem, hero, hero.equipment);
+              
+              if (improvement > bestImprovement) {
+                bestImprovement = improvement;
+                bestHero = hero;
+              }
+            }
+            
+            // 3. Make decision based on best improvement
+            if (bestHero && bestImprovement > 0.1) {
+              // Significantly better (>10% improvement) - auto-equip or auto-gift
+              const currentItem = bestHero.equipment?.[loot.slot];
               const oldPower = currentItem ? calculateItemPower(currentItem) : 0;
               const newPower = calculateItemPower(loot);
               
-              console.log(`[Loot] ✅ ${randomHero.name} equips ${loot.rarity} ${loot.name} (${oldPower} → ${newPower} power)`);
-              
               // Calculate sell value of old item
               let sellGold = 0;
-              if (currentItem) {
+              if (currentItem && !currentItem.locked) {
                 const itemValue = currentItem.attack + currentItem.defense + currentItem.hp;
                 const rarityMult = { common: 1, uncommon: 1.3, rare: 2, epic: 3, legendary: 4 }[currentItem.rarity as string] || 1;
                 sellGold = Math.floor(itemValue * rarityMult * 0.25);
@@ -4696,7 +5142,7 @@ export default function CleanBattlefieldSource() {
               // Update hero with new equipment and gold
               setHeroes(current => {
                 const updated = current.map(h => {
-                  if (h.id === randomHero.id) {
+                  if (h.id === bestHero!.id) {
                     const newEquipment = { ...h.equipment, [loot.slot]: loot };
                     const newGold = (h.gold || 0) + sellGold;
                     return { ...h, equipment: newEquipment, gold: newGold };
@@ -4707,22 +5153,32 @@ export default function CleanBattlefieldSource() {
                 return updated;
               });
               
+              const action = bestHero.id === randomHero.id ? 'equipped' : 'gifted';
+              console.log(`[Loot] ✅ ${loot.rarity} ${loot.name} ${action} to ${bestHero.name} (${oldPower} → ${newPower} power, ${Math.round(bestImprovement * 100)}% improvement)`);
+              
               // Show loot SCT
               setTimeout(() => {
-                const heroElement = document.querySelector(`[data-hero-id="${randomHero.id}"]`);
+                const heroElement = document.querySelector(`[data-hero-id="${bestHero!.id}"]`);
                 if (heroElement) {
                   const rect = heroElement.getBoundingClientRect();
                   const rarityColor = { common: '🔘', uncommon: '🟢', rare: '🔵', epic: '🟣', legendary: '🟠' }[loot.rarity] || '📦';
-                  addSCT(`${rarityColor} ${loot.name}`, rect.left + rect.width / 2, rect.top + 35, 'loot');
+                  const giftIcon = bestHero!.id !== randomHero.id ? '🎁' : '';
+                  addSCT(`${giftIcon}${rarityColor} ${loot.name}`, rect.left + rect.width / 2, rect.top + 35, 'loot');
                 }
               }, 300);
+            } else if (['epic', 'legendary', 'mythic'].includes(loot.rarity)) {
+              // Epic+ items: Keep in inventory even if not better (for potential future use)
+              console.log(`[Loot] 📦 Keeping ${loot.rarity} ${loot.name} in inventory (epic+ item, not better for anyone currently)`);
+              // TODO: Add to hero inventory if inventory system exists
+              // For now, just log - inventory system may need to be implemented
             } else {
-              // Auto-sell (item not better)
+              // Auto-sell (item not better for anyone, and not epic+)
               const itemValue = loot.attack + loot.defense + loot.hp;
               const rarityMult = { common: 1, uncommon: 1.3, rare: 2, epic: 3, legendary: 4 }[loot.rarity as string] || 1;
               const sellGold = Math.floor(itemValue * rarityMult * 0.25);
               
-              console.log(`[Loot] 💰 Auto-sold ${loot.rarity} ${loot.name} for ${sellGold}g (not better)`);
+              // Give gold to random hero (who generated the loot)
+              console.log(`[Loot] 💰 Auto-sold ${loot.rarity} ${loot.name} for ${sellGold}g (not better for anyone)`);
               
               setHeroes(current => {
                 const updated = current.map(h => {
@@ -4780,6 +5236,12 @@ export default function CleanBattlefieldSource() {
           else {
             console.log('[Raid] 🎊 RAID COMPLETE! Returning to idle...');
             
+            // QUEST TRACKING: Track raid completion for all alive heroes
+            const aliveHeroes = currentHeroes.filter(h => !h.isDead && h.hp > 0);
+            aliveHeroes.forEach(hero => {
+              trackQuest(hero.id, 'completeRaids', 1);
+            });
+            
             // Update raid status to "completed" in Firebase to trigger mode switch back to idle
             if (instanceData?.id) {
               import('firebase/firestore').then(({ doc, updateDoc }) => {
@@ -4802,13 +5264,33 @@ export default function CleanBattlefieldSource() {
             }, 5000); // 5s delay to show victory
           }
         }
-        // IDLE MODE: Normal victory
-        else {
+        // IDLE MODE: Normal victory - spawn next wave after loot
+        else if (gameMode === 'idle') {
           setTimeout(() => {
             setEnemies([]);
             enemiesRef.current = [];
             setInCombat(false);
             combatInProgress.current = false;
+            
+            // Spawn next wave after a brief delay using adventureTick
+            console.log('[Idle Mode] ✅ Wave complete! Spawning next wave...');
+            setTimeout(() => {
+              // Use the existing adventureTick function to handle wave progression
+              // This will properly call spawnEnemies, handleTreasure, or handleGathering
+              if (adventureTickRef.current) {
+                adventureTickRef.current();
+              } else {
+                console.warn('[Idle Mode] ⚠️ adventureTick not available, spawning enemies directly');
+                // Fallback: spawn enemies directly if adventureTick not available
+                const isBossWave = (waveCount + 1) % 10 === 0;
+                setWaveCount(prev => prev + 1);
+                setTimeout(() => {
+                  // We need to access spawnEnemies - this is a workaround
+                  // In practice, adventureTickRef should always be available
+                  console.log('[Idle Mode] Using fallback spawn - adventureTick should be set');
+                }, 100);
+              }
+            }, 500); // Brief delay before spawning next wave
           }, 1000);
         }
       } else if (aliveHeroes.length === 0) {
@@ -5079,6 +5561,51 @@ export default function CleanBattlefieldSource() {
             });
           }
         }
+        
+        // AUTO-GATHER BATCH SYNC: Sync pending gathers to backend
+        const timeSinceLastGatherSync = now - lastGatherSyncRef.current;
+        if (pendingGathersRef.current.size > 0 && timeSinceLastGatherSync >= 60000) {
+          console.log('[Gather Sync] Syncing auto-gathers for', pendingGathersRef.current.size, 'heroes...');
+          
+          // Process each hero's pending gathers
+          const gatherPromises: Promise<void>[] = [];
+          
+          pendingGathersRef.current.forEach((gatherCount, heroId) => {
+            const hero = heroes.find(h => h.id === heroId);
+            if (!hero || gatherCount === 0) return;
+            
+            // Call gather API for each gather (or batch if API supports it)
+            // Note: gather API uses userId (heroId), but we need to get the user's Twitch ID
+            // For now, use heroId directly (backend should handle conversion if needed)
+            for (let i = 0; i < gatherCount; i++) {
+              gatherPromises.push(
+                heroAPI.gather(heroId)
+                  .then(() => {
+                    console.log(`[Gather Sync] ✅ Synced gather ${i + 1}/${gatherCount} for hero ${heroId}`);
+                  })
+                  .catch(err => {
+                    console.error(`[Gather Sync] ❌ Failed to sync gather ${i + 1}/${gatherCount} for hero ${heroId}:`, err);
+                  })
+              );
+            }
+          });
+          
+          // Wait for all gathers to complete
+          if (gatherPromises.length > 0) {
+            Promise.all(gatherPromises).then(async () => {
+              console.log('[Gather Sync] ✅ All gathers synced');
+              
+              // Clear pending gathers after successful sync
+              pendingGathersRef.current.clear();
+              lastGatherSyncRef.current = now;
+            }).catch(err => {
+              console.error('[Gather Sync] ❌ Some gathers failed to sync:', err);
+              // Still clear to prevent accumulation, but log error
+              pendingGathersRef.current.clear();
+              lastGatherSyncRef.current = now;
+            });
+          }
+        }
       }
       
       // Hero state sync
@@ -5316,13 +5843,18 @@ export default function CleanBattlefieldSource() {
 
   // Step 12B: HP Regeneration (from gear hpRegen stat)
   useEffect(() => {
-    if (!allHeroes || allHeroes.length === 0) return;
-    
-    // Prevent duplicate regen intervals
+    // Always clear existing interval first to prevent duplicates
     if (regenIntervalRef.current) {
+      clearInterval(regenIntervalRef.current);
+      regenIntervalRef.current = null;
+    }
+    
+    if (!allHeroes || allHeroes.length === 0) {
+      // No heroes, interval already cleared above
       return;
     }
 
+    console.log('[HP Regen] Setting up regen interval');
     const regenInterval = setInterval(() => {
       
       // Regenerate HP for real heroes with hpRegen > 0
@@ -5517,6 +6049,97 @@ export default function CleanBattlefieldSource() {
 
     // Fallback (shouldn't happen)
     return aliveHeroes[0];
+  };
+
+  // Calculate item improvement for a specific hero (role-aware, considers spell power and set bonuses)
+  const calculateItemImprovement = (newItem: any, currentItem: any | null, hero: Hero, heroEquipment: any): number => {
+    if (!currentItem) {
+      // No current item = 100% improvement (infinite improvement)
+      return 1.0;
+    }
+    
+    // Check if current item is locked (don't replace locked items)
+    if (currentItem.locked) {
+      return 0;
+    }
+    
+    // Role-specific stat prioritization
+    const role = hero.role?.toLowerCase() || '';
+    const isTank = ['guardian', 'paladin', 'warden', 'bloodknight', 'vanguard', 'brewmaster'].includes(role);
+    const isHealer = ['cleric', 'atoner', 'druid', 'lightbringer', 'shaman', 'mistweaver', 'chronomancer'].includes(role);
+    const isCaster = ['mage', 'warlock', 'necromancer', 'ranger', 'shadowpriest', 'mooncaller', 'stormcaller', 'frostmage', 'firemage', 'dragonsorcerer'].includes(role);
+    
+    // Calculate current equipment value (with set bonuses)
+    const currentEquipment = { ...heroEquipment };
+    const currentEquipmentWithNew = { ...heroEquipment, [newItem.slot]: newItem };
+    const currentEquipmentWithOld = { ...heroEquipment, [newItem.slot]: currentItem };
+    
+    // Calculate set bonuses for both scenarios
+    const currentSetBonuses = calculateSetBonuses(currentEquipmentWithOld, hero.role || '');
+    const newSetBonuses = calculateSetBonuses(currentEquipmentWithNew, hero.role || '');
+    
+    // Calculate base stats value
+    let currentValue: number;
+    let newValue: number;
+    
+    if (isTank) {
+      // Tanks prioritize defense and HP (2x weight on defense)
+      currentValue = (currentItem.defense || 0) * 2 + (currentItem.hp || 0) + (currentItem.attack || 0) * 0.5;
+      newValue = (newItem.defense || 0) * 2 + (newItem.hp || 0) + (newItem.attack || 0) * 0.5;
+      
+      // Add set bonuses
+      currentValue += (currentSetBonuses.defense || 0) * 2 + (currentSetBonuses.hp || 0) + (currentSetBonuses.attack || 0) * 0.5;
+      newValue += (newSetBonuses.defense || 0) * 2 + (newSetBonuses.hp || 0) + (newSetBonuses.attack || 0) * 0.5;
+    } else if (isHealer) {
+      // Healers prioritize HP, defense, and HEALING POWER (spell power for heals)
+      const currentHealingPower = (currentItem.secondaryStats?.healingPower || 0) + (currentSetBonuses.healingPower || 0);
+      const newHealingPower = (newItem.secondaryStats?.healingPower || 0) + (newSetBonuses.healingPower || 0);
+      
+      // Healing power is very valuable (1 healing power = 1% more healing, max 30%)
+      // Weight healing power highly (10x) since it directly affects healing output
+      currentValue = (currentItem.hp || 0) * 1.5 + (currentItem.defense || 0) + (currentItem.attack || 0) * 0.3 + currentHealingPower * 10;
+      newValue = (newItem.hp || 0) * 1.5 + (newItem.defense || 0) + (newItem.attack || 0) * 0.3 + newHealingPower * 10;
+      
+      // Also consider spell damage for healers (some healer sets give spell damage)
+      const currentSpellDmg = (currentItem.secondaryStats?.spellDamage || 0) + (currentSetBonuses.spellDamage || 0);
+      const newSpellDmg = (newItem.secondaryStats?.spellDamage || 0) + (newSetBonuses.spellDamage || 0);
+      currentValue += currentSpellDmg * 500; // Spell damage is valuable (percentage multiplier)
+      newValue += newSpellDmg * 500;
+    } else if (isCaster) {
+      // Casters prioritize attack and SPELL DAMAGE (spell power for attacks)
+      const currentSpellDmg = (currentItem.secondaryStats?.spellDamage || 0) + (currentSetBonuses.spellDamage || 0);
+      const newSpellDmg = (newItem.secondaryStats?.spellDamage || 0) + (newSetBonuses.spellDamage || 0);
+      
+      // Spell damage is very valuable (percentage multiplier, e.g., 0.10 = 10% more damage)
+      // Weight spell damage highly (500x) since it's a percentage multiplier
+      currentValue = (currentItem.attack || 0) * 2 + (currentItem.defense || 0) + (currentItem.hp || 0) + currentSpellDmg * 500;
+      newValue = (newItem.attack || 0) * 2 + (newItem.defense || 0) + (newItem.hp || 0) + newSpellDmg * 500;
+      
+      // Add set bonuses
+      currentValue += (currentSetBonuses.attack || 0) * 2 + (currentSetBonuses.defense || 0) + (currentSetBonuses.hp || 0);
+      newValue += (newSetBonuses.attack || 0) * 2 + (newSetBonuses.defense || 0) + (newSetBonuses.hp || 0);
+    } else {
+      // Melee DPS prioritize attack (2x weight on attack)
+      currentValue = (currentItem.attack || 0) * 2 + (currentItem.defense || 0) + (currentItem.hp || 0);
+      newValue = (newItem.attack || 0) * 2 + (newItem.defense || 0) + (newItem.hp || 0);
+      
+      // Add set bonuses
+      currentValue += (currentSetBonuses.attack || 0) * 2 + (currentSetBonuses.defense || 0) + (currentSetBonuses.hp || 0);
+      newValue += (newSetBonuses.attack || 0) * 2 + (newSetBonuses.defense || 0) + (newSetBonuses.hp || 0);
+      
+      // Melee damage bonus from sets
+      const currentMeleeDmg = (currentItem.secondaryStats?.meleeDamage || 0) + (currentSetBonuses.meleeDamage || 0);
+      const newMeleeDmg = (newItem.secondaryStats?.meleeDamage || 0) + (newSetBonuses.meleeDamage || 0);
+      currentValue += currentMeleeDmg * 500; // Melee damage is valuable (percentage multiplier)
+      newValue += newMeleeDmg * 500;
+    }
+    
+    if (currentValue === 0) {
+      return newValue > 0 ? 1.0 : 0;
+    }
+    
+    // Return improvement ratio (0.1 = 10% better, 0.5 = 50% better, etc.)
+    return (newValue - currentValue) / currentValue;
   };
 
   // Calculate skill bonuses from skill tree
@@ -5882,12 +6505,17 @@ export default function CleanBattlefieldSource() {
     const screenWidth = 1920;
     const screenHeight = 1080;
     
-    // Boss positioning: aligned with LOWEST hero (935 + 30 stagger = 965px)
-    // Raid/dungeon bosses use special positioning (already handled separately)
+    // Boss positioning: align with hero Y position (same as heroes use)
+    // Heroes use: baseY = 935px with stagger, so lowest is around 965px
+    // But we should use the same base Y as heroes for consistency
     if (isBoss) {
+      const heroBaseY = 935; // Same base Y as heroes
+      const heroStagger = 30; // Same stagger as heroes
+      const bossY = heroBaseY + heroStagger; // 965px - aligned with lowest hero
+      
       return {
         left: '1400px', // Further right for massive Elder Dragon (more space from heroes)
-        top: '965px' // Aligned with lowest hero (moved down ~1/3 inch from 930px)
+        top: `${bossY}px` // Aligned with hero Y position
       };
     }
     
@@ -5909,6 +6537,108 @@ export default function CleanBattlefieldSource() {
     
     // Vertical position - aligned with lowest hero (935 + 30 = 965px, moved down ~1/3 inch from 930px)
     const y = 965;
+    
+    return {
+      left: `${finalX}px`,
+      top: `${y}px`
+    };
+  };
+  
+  // Dungeon-specific positioning (prevents clipping with 2 heroes)
+  const getDungeonHeroPosition = (hero: Hero, index: number, allHeroes: Hero[]) => {
+    const screenHeight = 1080;
+    
+    // Sort heroes: DPS/Healers on left, tanks on RIGHT (closest to enemies)
+    const sortedHeroes = [...allHeroes].sort((a, b) => {
+      const aIsTank = isTankRole(a.role);
+      const bIsTank = isTankRole(b.role);
+      const aIsHealer = isHealerRole(a.role);
+      const bIsHealer = isHealerRole(b.role);
+      
+      if (aIsTank && !bIsTank) return 1; // Tanks to the right
+      if (!aIsTank && bIsTank) return -1;
+      if (aIsHealer && !bIsHealer && !bIsTank) return -1; // Healers before DPS
+      if (!aIsHealer && bIsHealer && !aIsTank) return 1;
+      return 0; // Keep order
+    });
+    
+    const sortedIndex = sortedHeroes.findIndex(h => h.id === hero.id);
+    
+    // Dynamic horizontal spacing - Stay within left 3/5 of screen (1152px max)
+    const screenWidth = 1920;
+    const maxHeroWidth = screenWidth * 0.6; // 1152px - left 3/5 of screen
+    const leftMargin = 60; // Start from left edge
+    const availableWidth = maxHeroWidth - leftMargin - 80; // Reserve 80px buffer on right
+    
+    // Calculate spacing dynamically based on hero count
+    const heroCount = sortedHeroes.length;
+    const spacing = heroCount > 1 ? Math.min(140, availableWidth / (heroCount - 1)) : 140;
+    
+    const x = leftMargin + (sortedIndex * spacing);
+    
+    // Vertical stagger - adjusted for dungeon to prevent clipping with 2 heroes
+    // Sprite height scaled 3.0x ~= 240px, UI above ~= 100px, total ~= 340px
+    // Max safe Y position: 1080 - 240 (sprite) - 20 (buffer) = 820px
+    const spriteHeight = 240;
+    const maxSafeY = 1080 - spriteHeight - 20; // 820px
+    
+    const baseY = 800; // Adjusted for dungeon to prevent clipping
+    const staggerAmount = heroCount > 2 ? 25 : 15; // Smaller stagger for 2 heroes
+    
+    // Calculate Y position with stagger, ensuring it doesn't exceed maxSafeY
+    let y = sortedIndex % 2 === 0 
+      ? baseY - staggerAmount // Even index: slightly higher
+      : baseY + staggerAmount; // Odd index: slightly lower
+    
+    // Ensure we don't exceed screen bounds
+    y = Math.min(y, maxSafeY);
+    
+    return {
+      left: `${x}px`,
+      top: `${y}px`
+    };
+  };
+  
+  // Dungeon-specific enemy positioning (aligned with dungeon heroes)
+  const getDungeonEnemyPosition = (index: number, total: number, isBoss: boolean = false, heroes?: Hero[]) => {
+    const screenWidth = 1920;
+    
+    if (isBoss) {
+      // Align boss with center of hero group
+      let bossY = 800; // Default to baseY
+      if (heroes && heroes.length > 0) {
+        // Calculate average Y position of heroes
+        const heroPositions = heroes.map((hero, idx) => {
+          const position = getDungeonHeroPosition(hero, idx, heroes);
+          // Extract Y value from "XXXpx" string
+          const yValue = parseInt(position.top.replace('px', ''));
+          return yValue;
+        });
+        const avgY = Math.floor(heroPositions.reduce((sum, y) => sum + y, 0) / heroPositions.length);
+        bossY = avgY;
+      }
+      return {
+        left: '1400px',
+        top: `${bossY}px`
+      };
+    }
+    
+    // Regular enemies: right 2/5 of screen
+    const heroZoneEnd = screenWidth * 0.6;
+    const enemyZoneWidth = screenWidth * 0.4;
+    const leftMargin = 80;
+    const rightMargin = 150;
+    const availableEnemyWidth = enemyZoneWidth - leftMargin - rightMargin;
+    
+    const enemyStartX = heroZoneEnd + leftMargin;
+    const spacing = total > 1 ? Math.min(200, availableEnemyWidth / (total - 1)) : 0;
+    const x = enemyStartX + (index * spacing);
+    
+    const maxX = screenWidth - rightMargin;
+    const finalX = Math.min(x, maxX);
+    
+    // Aligned with dungeon hero baseY
+    const y = 800;
     
     return {
       left: `${finalX}px`,
@@ -6056,50 +6786,123 @@ export default function CleanBattlefieldSource() {
     // Reuse the same render logic as idle adventure (just different header)
     
     return (
-      <div style={{ 
-        width: '1920px', 
-        height: '1080px', 
-        position: 'relative', 
-        backgroundColor: darkMode ? '#1a1a1a' : 'transparent', 
-        overflow: 'hidden', 
-        fontFamily: 'Arial, sans-serif',
+      <div className="clean-battlefield-page" style={{
+        width: '1920px',
+        height: '1080px',
+        background: darkMode ? '#1a1a1a' : 'transparent',
+        position: 'relative',
+        overflow: 'hidden',
         opacity: fadeOpacity,
         transition: 'opacity 0.5s ease-in-out'
       }}>
+        
+        {/* Souls-like Boss Health Bar (top-center) - ONLY when boss is active */}
+        {enemies.some(e => e.isBoss) && (() => {
+          const boss = enemies.find(e => e.isBoss);
+          if (!boss) return null;
+          
+          const bossHpPercent = (boss.hp / boss.maxHp) * 100;
+          
+          return (
+            <div style={{
+              position: 'absolute',
+              top: '80px',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              width: '800px', // Narrower to fit on screen better (was 1400px)
+              maxWidth: '90vw', // Ensure it doesn't exceed viewport
+              textAlign: 'center',
+              zIndex: 100
+            }}>
+              {/* Boss Name - Dark Souls style (white, clean) */}
+              <div style={{
+                color: '#e5e5e5',
+                fontSize: '28px',
+                fontWeight: '500',
+                textShadow: '3px 3px 6px rgba(0,0,0,1)',
+                marginBottom: '10px',
+                letterSpacing: '8px',
+                textTransform: 'uppercase',
+                fontFamily: 'Georgia, serif'
+              }}>
+                {boss.name}
+              </div>
+              
+              {/* Boss HP Bar - Dark Souls style (clean, no glow) */}
+              <div style={{
+                width: '100%',
+                height: '60px',
+                backgroundColor: 'rgba(20,20,20,0.95)',
+                border: '3px solid rgba(100,100,100,0.8)',
+                borderRadius: '0px', // Sharp edges like Dark Souls
+                overflow: 'hidden',
+                boxShadow: 'inset 0 4px 8px rgba(0,0,0,0.6)',
+                position: 'relative'
+              }}>
+                <div style={{
+                  width: `${bossHpPercent}%`,
+                  height: '100%',
+                  background: '#dc2626', // Solid red, no gradient
+                  transition: 'width 0.5s ease',
+                  boxShadow: 'inset 0 -4px 8px rgba(0,0,0,0.4)'
+                }} />
+                
+                {/* HP Text - Dark Souls style */}
+                <div style={{
+                  position: 'absolute',
+                  width: '100%',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  color: '#e5e5e5',
+                  fontSize: '20px',
+                  fontWeight: 'normal',
+                  textShadow: '2px 2px 4px rgba(0,0,0,1)',
+                  letterSpacing: '2px',
+                  fontFamily: 'Georgia, serif'
+                }}>
+                  {Math.floor(boss.hp).toLocaleString()}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Dungeon Header */}
         <div style={{
           position: 'absolute',
           top: '20px',
           left: '50%',
           transform: 'translateX(-50%)',
-          zIndex: 1000,
+          zIndex: 100,
           textAlign: 'center',
-          pointerEvents: 'none'
+          color: '#10b981',
+          fontSize: '24px',
+          fontWeight: 'bold',
+          textShadow: '2px 2px 4px rgba(0,0,0,0.8)'
         }}>
-          <div style={{ 
-            color: '#fbbf24', 
-            fontSize: '32px', 
-            fontWeight: 'bold', 
-            textShadow: '3px 3px 6px rgba(0,0,0,0.9)',
-            marginBottom: '8px'
-          }}>
-            🏰 {instanceData.name || 'Dungeon'}
-          </div>
           <div style={{ 
             color: '#10b981', 
             fontSize: '20px', 
             textShadow: '2px 2px 4px rgba(0,0,0,0.8)' 
           }}>
-            Room {((instanceData.currentRoom || 0) + 1)}/{instanceData.totalRooms || 5}
+            Room {((instanceData.currentRoom || 0) + 1)}/{instanceData.maxRooms || instanceData.totalRooms || (instanceData.rooms?.length || 3)}
+          </div>
+          <div style={{ 
+            color: '#e5e5e5', 
+            fontSize: '16px', 
+            marginTop: '4px',
+            textShadow: '2px 2px 4px rgba(0,0,0,0.8)' 
+          }}>
+            {instanceData.dungeonName || 'Dungeon'}
           </div>
         </div>
         
-        {/* Heroes - Use same positioning as idle mode */}
+        {/* Heroes - Use dungeon-specific positioning to prevent clipping */}
         {heroes.map((hero, index) => {
-          const position = getHeroPosition(hero, index, heroes);
+          const position = getDungeonHeroPosition(hero, index, heroes);
           const hpPercent = (hero.hp / hero.maxHp) * 100;
           const hasShield = (hero.shield || 0) > 0;
-          const spriteKey = hero.isDead ? `${hero.id}-dead` : `${hero.id}-alive`;
+          const spriteKey = hero.isDead ? `${hero.id}-${index}-dead` : `${hero.id}-${index}-alive`;
           
           return (
             <div
@@ -6239,9 +7042,9 @@ export default function CleanBattlefieldSource() {
           );
         })}
 
-        {/* Enemies - Use same positioning as idle mode */}
+        {/* Enemies - Use dungeon-specific positioning */}
         {enemies.map((enemy, index) => {
-          const position = getEnemyPosition(index, enemies.length, enemy.isBoss);
+          const position = getDungeonEnemyPosition(index, enemies.length, enemy.isBoss, heroes);
           const hpPercent = (enemy.hp / enemy.maxHp) * 100;
           const hasShield = (enemy.shield || 0) > 0;
           
@@ -6276,7 +7079,7 @@ export default function CleanBattlefieldSource() {
                 </div>
               )}
                 
-              {/* Enemy HP Bar - ONLY for wave mobs, NOT boss */}
+              {/* Enemy HP Bar - ONLY for wave mobs, NOT boss (boss uses bottom bar) */}
               {!enemy.isBoss && (
                 <div style={{
                   width: '150px',
@@ -6397,7 +7200,7 @@ export default function CleanBattlefieldSource() {
         transition: 'opacity 0.5s ease-in-out'
       }}>
         
-        {/* Souls-like Boss Health Bar (bottom-center) - ONLY when boss is active */}
+        {/* Souls-like Boss Health Bar (top-center) - ONLY when boss is active */}
         {enemies.some(e => e.isBoss) && (() => {
           const boss = enemies.find(e => e.isBoss);
           if (!boss) return null;
@@ -6407,21 +7210,21 @@ export default function CleanBattlefieldSource() {
           return (
             <div style={{
               position: 'absolute',
-              bottom: '80px',
+              top: '250px', // Positioned just above combat area, not in middle of screen
               left: '50%',
               transform: 'translateX(-50%)',
-              width: '1400px',
+              width: '700px', // Half of 1400px
               textAlign: 'center',
               zIndex: 100
             }}>
               {/* Boss Name - Dark Souls style (white, clean) */}
               <div style={{
                 color: '#e5e5e5',
-                fontSize: '28px',
+                fontSize: '14px', // Half of 28px
                 fontWeight: '500',
                 textShadow: '3px 3px 6px rgba(0,0,0,1)',
-                marginBottom: '10px',
-                letterSpacing: '8px',
+                marginBottom: '5px', // Half of 10px
+                letterSpacing: '4px', // Half of 8px
                 textTransform: 'uppercase',
                 fontFamily: 'Georgia, serif'
               }}>
@@ -6431,12 +7234,12 @@ export default function CleanBattlefieldSource() {
               {/* Boss HP Bar - Dark Souls style (clean, no glow) */}
               <div style={{
                 width: '100%',
-                height: '60px',
+                height: '30px', // Half of 60px
                 backgroundColor: 'rgba(20,20,20,0.95)',
-                border: '3px solid rgba(100,100,100,0.8)',
+                border: '2px solid rgba(100,100,100,0.8)', // Half of 3px
                 borderRadius: '0px', // Sharp edges like Dark Souls
                 overflow: 'hidden',
-                boxShadow: 'inset 0 4px 8px rgba(0,0,0,0.6)',
+                boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.6)', // Half of 4px 8px
                 position: 'relative'
               }}>
                 <div style={{
@@ -6444,7 +7247,7 @@ export default function CleanBattlefieldSource() {
                   height: '100%',
                   background: '#dc2626', // Solid red, no gradient
                   transition: 'width 0.5s ease',
-                  boxShadow: 'inset 0 -4px 8px rgba(0,0,0,0.4)'
+                  boxShadow: 'inset 0 -2px 4px rgba(0,0,0,0.4)' // Half of 4px 8px
                 }} />
                 
                 {/* HP Text - Dark Souls style */}
@@ -6454,10 +7257,10 @@ export default function CleanBattlefieldSource() {
                   top: '50%',
                   transform: 'translateY(-50%)',
                   color: '#e5e5e5',
-                  fontSize: '20px',
+                  fontSize: '10px', // Half of 20px
                   fontWeight: 'normal',
                   textShadow: '2px 2px 4px rgba(0,0,0,1)',
-                  letterSpacing: '2px',
+                  letterSpacing: '1px', // Half of 2px
                   fontFamily: 'Georgia, serif'
                 }}>
                   {Math.floor(boss.hp).toLocaleString()}
@@ -6517,7 +7320,7 @@ export default function CleanBattlefieldSource() {
           const position = getHeroPosition(hero, index, heroes);
           const hpPercent = (hero.hp / hero.maxHp) * 100;
           const hasShield = (hero.shield || 0) > 0;
-          const spriteKey = hero.isDead ? `${hero.id}-dead` : `${hero.id}-alive`;
+          const spriteKey = hero.isDead ? `${hero.id}-${index}-dead` : `${hero.id}-${index}-alive`;
           
           return (
             <div
@@ -6738,6 +7541,11 @@ export default function CleanBattlefieldSource() {
                 }}
               >
                 {(() => {
+                  // Bosses should NEVER get cultist scale - they need to be huge!
+                  const isCultist = !enemy.isBoss && (enemy.enemyType === 'Cultist' || enemy.enemyType === 'Corrupted High Priest');
+                  const cultistScale = 0.075; // Half of 0.15
+                  const cultistFacing = 'left';
+                  
                   // Map enemy names to sprite folder names
                   const spriteMap: Record<string, string> = {
                     'Baby Dragon': 'Baby Dragon',
@@ -6748,7 +7556,27 @@ export default function CleanBattlefieldSource() {
                   };
                   const mappedType = spriteMap[enemy.name] || enemy.name;
                   
-                  // console.log(`[Sprite Debug] Enemy: ${enemy.name} → Mapped: ${mappedType}`); // REMOVED - Too spammy!
+                  // For raid mode, default facing should be 'right' (opposite of idle/dungeon)
+                  const defaultRaidFacing = 'right';
+                  const defaultFacing = defaultRaidFacing;
+                  
+                  // Boss facing: Corrupted High Priest should face left, others use default
+                  const baseFacing = enemy.isBoss && enemy.enemyType === 'Corrupted High Priest' 
+                    ? 'left' 
+                    : isCultist 
+                      ? cultistFacing 
+                      : (mappedType.startsWith('Dragon_') ? 'left' : getFacingDirection(enemy.enemyType || mappedType, defaultFacing));
+                  
+                  // Boss scale: Corrupted High Priest boss should be smaller than other bosses
+                  const finalScale = enemy.isBoss 
+                    ? (enemy.enemyType === 'Corrupted High Priest' ? 3.0 : 12.0) // Corrupted High Priest boss gets normal enemy scale
+                    : isCultist 
+                      ? cultistScale 
+                      : (mappedType.startsWith('Dragon_') ? 6.0 : 3.0);
+                  
+                  if (enemy.isBoss) {
+                    console.log(`[Raid Boss Scale] ${enemy.name} - enemyType: "${enemy.enemyType}", isBoss: ${enemy.isBoss}, finalScale: ${finalScale}`);
+                  }
                   
                   return (
                     <EnemySpriteJS
@@ -6756,8 +7584,8 @@ export default function CleanBattlefieldSource() {
                       enemyId={enemy.id}
                       enemyType={enemy.enemyType || mappedType}
                       enemyName={enemy.name}
-                      facing={mappedType.startsWith('Dragon_') ? 'left' : 'right'}
-                      scale={enemy.isBoss ? 12.0 : mappedType.startsWith('Dragon_') ? 6.0 : 3.0}
+                      facing={baseFacing}
+                      scale={finalScale}
                     />
                   );
                 })()}
@@ -6827,111 +7655,13 @@ export default function CleanBattlefieldSource() {
       transition: 'opacity 0.5s ease-in-out'
     }}>
 
-      {/* Queue Status Overlay */}
-      {queueStatus?.inQueue && gameMode === 'idle' && (
-        <div style={{
-          position: 'absolute',
-          bottom: '20px',
-          right: '20px',
-          background: 'rgba(0, 0, 0, 0.85)',
-          border: '2px solid #8b5cf6',
-          borderRadius: '12px',
-          padding: '16px 24px',
-          zIndex: 10000,
-          boxShadow: '0 4px 20px rgba(139, 92, 246, 0.5)',
-          minWidth: '280px'
-        }}>
-          <div style={{
-            color: '#8b5cf6',
-            fontSize: '18px',
-            fontWeight: 'bold',
-            marginBottom: '12px',
-            textShadow: '0 0 10px rgba(139, 92, 246, 0.8)'
-          }}>
-            🎯 In Queue
-          </div>
-          
-          <div style={{
-            color: '#fff',
-            fontSize: '24px',
-            fontWeight: 'bold',
-            marginBottom: '12px'
-          }}>
-            {queueStatus.totalInQueue}/5
-          </div>
-          
-          <div style={{
-            fontSize: '14px',
-            color: '#ccc',
-            marginBottom: '8px'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-              <span>Tank:</span>
-              <span style={{ 
-                color: queueStatus.roleCounts.tank >= 1 ? '#10b981' : '#ef4444',
-                fontWeight: 'bold'
-              }}>
-                {queueStatus.roleCounts.tank}/1
-              </span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-              <span>Healer:</span>
-              <span style={{ 
-                color: queueStatus.roleCounts.healer >= 1 ? '#10b981' : '#ef4444',
-                fontWeight: 'bold'
-              }}>
-                {queueStatus.roleCounts.healer}/1
-              </span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span>DPS:</span>
-              <span style={{ 
-                color: queueStatus.roleCounts.dps >= 3 ? '#10b981' : '#ef4444',
-                fontWeight: 'bold'
-              }}>
-                {queueStatus.roleCounts.dps}/3
-              </span>
-            </div>
-          </div>
-          
-          {queueStatus.totalInQueue === 5 && (
-            <div style={{
-              marginTop: '12px',
-              padding: '8px',
-              background: 'rgba(16, 185, 129, 0.2)',
-              border: '1px solid #10b981',
-              borderRadius: '6px',
-              color: '#10b981',
-              fontSize: '13px',
-              fontWeight: 'bold',
-              textAlign: 'center'
-            }}>
-              ✅ Group Ready!
-            </div>
-          )}
-          
-          <div style={{
-            marginTop: '12px',
-            fontSize: '12px',
-            color: '#888',
-            textAlign: 'center'
-          }}>
-            Your Role: <span style={{ 
-              color: '#8b5cf6', 
-              fontWeight: 'bold',
-              textTransform: 'uppercase'
-            }}>{queueStatus.userRole}</span>
-          </div>
-        </div>
-      )}
-
       {/* Heroes (including test healer) */}
       {allHeroes && allHeroes.map((hero, index) => {
         const position = getHeroPosition(hero, index, heroes);
         const hpPercent = (hero.hp / hero.maxHp) * 100;
         
         // Force remount ONLY when resurrected (not on HP change!)
-        const spriteKey = hero.isDead ? `${hero.id}-dead` : `${hero.id}-alive`;
+        const spriteKey = hero.isDead ? `${hero.id}-${index}-dead` : `${hero.id}-${index}-alive`;
 
         const hasShield = (hero.shield || 0) > 0;
 
@@ -7161,16 +7891,48 @@ export default function CleanBattlefieldSource() {
             </div>
 
             {/* Enemy Sprite - Wrap in div for shield glow */}
-            <div className={hasShield ? 'has-shield' : ''}>
-              <EnemySpriteJS
-                ref={getEnemySpriteRef(enemy.id)}
-                enemyId={enemy.id}
-                enemyType={enemy.enemyType || enemy.name}
-                enemyName={enemy.name}
-                facing={getFacingDirection(enemy.name, 'left')}
-                scale={3.0}
-                isTransformed={enemy.isTransformed || false}
-              />
+            <div 
+              className={hasShield ? 'has-shield' : ''}
+              style={{
+                display: 'inline-block',
+                width: 'auto',
+                height: 'auto'
+              }}
+            >
+              {(() => {
+                // Bosses should NEVER get cultist scale
+                const isCultist = !enemy.isBoss && (enemy.enemyType === 'Cultist' || enemy.enemyType === 'Corrupted High Priest');
+                // Scale down: 200x200 sprite -> 48px viewport (0.24x) -> then 0.075x multiplier = ~3.6px final
+                const cultistScale = 0.075; // Half of 0.15
+                const cultistFacing = 'left'; // Sprite faces right by default, so 'left' flips it with scaleX(-1)
+                
+                // For raid mode, default facing should be 'right' (opposite of idle/dungeon)
+                // Most enemies face left by default, but in raid they should face right
+                const defaultRaidFacing = 'right';
+                const defaultFacing = gameMode === 'raid' ? defaultRaidFacing : 'left';
+                
+                // Boss facing: Corrupted High Priest should face left, others use default
+                const baseFacing = enemy.isBoss && enemy.enemyType === 'Corrupted High Priest'
+                  ? 'left'
+                  : isCultist
+                    ? cultistFacing
+                    : getFacingDirection(enemy.enemyType || enemy.name, defaultFacing);
+                
+                // Scale: cultist gets small scale, bosses get normal scale (3.0), others get 3.0
+                const finalScale = isCultist ? cultistScale : 3.0;
+                
+                return (
+                  <EnemySpriteJS
+                    ref={getEnemySpriteRef(enemy.id)}
+                    enemyId={enemy.id}
+                    enemyType={enemy.enemyType || enemy.name}
+                    enemyName={enemy.name}
+                    facing={baseFacing}
+                    scale={finalScale}
+                    isTransformed={enemy.isTransformed || false}
+                  />
+                );
+              })()}
             </div>
           </div>
         );

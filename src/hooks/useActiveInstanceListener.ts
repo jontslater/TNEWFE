@@ -158,9 +158,14 @@ export function useActiveInstanceListener(userId: string | null) {
               instanceId: instance.id
             };
           } else {
-            // No active dungeon - clear dungeon state if we currently have one
+            // No active dungeon found in query - check if status changed or instance was deleted
             if (prev.type === 'dungeon') {
-              console.log(`[ActiveInstance Listener] Dungeon completed/failed, clearing dungeon state`);
+              console.log(`[ActiveInstance Listener] ⚠️ No active dungeon found in query!`);
+              console.log(`[ActiveInstance Listener] This could mean:`);
+              console.log(`  - Dungeon status changed to 'completed' or 'failed'`);
+              console.log(`  - Dungeon was deleted`);
+              console.log(`  - Query filter is too restrictive`);
+              console.log(`[ActiveInstance Listener] Clearing dungeon state`);
               return { type: null, instanceId: null };
             }
             // If we already have null state, keep it

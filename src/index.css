@@ -47,6 +47,30 @@ code {
   will-change: transform; /* Optimize for transform-based frame animation */
 }
 
+/* Tooltip scrollbar styling */
+.tooltip-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.tooltip-content::-webkit-scrollbar-track {
+  background: #1F2937;
+  border-radius: 4px;
+}
+
+.tooltip-content::-webkit-scrollbar-thumb {
+  background: #4B5563;
+  border-radius: 4px;
+}
+
+.tooltip-content::-webkit-scrollbar-thumb:hover {
+  background: #6B7280;
+}
+
+.tooltip-content {
+  scrollbar-width: thin;
+  scrollbar-color: #4B5563 #1F2937;
+}
+
 #root {
   min-height: 100vh;
 }

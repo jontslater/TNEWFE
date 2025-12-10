@@ -36,6 +36,11 @@ export function getEnemyAnimationKey(enemyType: string): string {
     'Dragon_1': 'dragon1',
     'Dragon_2': 'dragon2',
     'Dragon_3': 'dragon3',
+    // Goblins
+    'Goblin': 'goblin',
+    'Goblin Chief': 'goblinChief',
+    'Corrupted High Priest': 'corruptedHighPriest',
+    'Cultist': 'cultist',
   };
   
   const result = mapping[enemyType];
@@ -84,6 +89,8 @@ export function getEnemyAnimations(enemyType: string): Record<string, SpriteAnim
     'Adult Dragon': 'adultDragon',
     'Demon Lord': 'demonLord',
     'Elder Dragon': 'elderDragon',
+    'Goblin': 'goblin',
+    'Goblin Chief': 'goblinChief',
   })) {
     if (mappedType.toLowerCase() === enemyTypeLower) {
       animations = ENEMY_ANIMATIONS[mappedKey];
@@ -535,6 +542,94 @@ export const ENEMY_ANIMATIONS: Record<string, Record<string, SpriteAnimationData
       spriteSheet: "/Sprites/enemies/EnemySprites/Masked Orc 2D Pixel Art/Sprites/DEATH.png",
     },
   },
+  goblin: {
+    idle: {
+      frameCount: 15,
+      frameWidth: 200, // Actual sprite size: 200x200
+      frameHeight: 200,
+      duration: 1500, // 15 frames * 100ms (faster animation)
+      spriteSheet: "/Sprites/enemies/GoblinUnderling/idle/idle_0000.png",
+    },
+    walk: {
+      frameCount: 11,
+      frameWidth: 200, // Actual sprite size: 200x200
+      frameHeight: 200,
+      duration: 1100, // 11 frames * 100ms (faster animation)
+      spriteSheet: "/Sprites/enemies/GoblinUnderling/walk/walk_0000.png",
+    },
+    attack: {
+      frameCount: 21, // Using "smash" as attack
+      frameWidth: 200, // Actual sprite size: 200x200
+      frameHeight: 200,
+      duration: 2100, // 21 frames * 100ms (faster animation)
+      spriteSheet: "/Sprites/enemies/GoblinUnderling/smash/smash_0000.png",
+    },
+    hurt: {
+      frameCount: 18,
+      frameWidth: 200, // Actual sprite size: 200x200
+      frameHeight: 200,
+      duration: 1800, // 18 frames * 100ms (faster animation)
+      spriteSheet: "/Sprites/enemies/GoblinUnderling/hurt/hurt_0000.png",
+    },
+    death: {
+      frameCount: 21,
+      frameWidth: 200, // Actual sprite size: 200x200
+      frameHeight: 200,
+      duration: 2100, // 21 frames * 100ms (faster animation)
+      spriteSheet: "/Sprites/enemies/GoblinUnderling/die/die_0000.png",
+    },
+  },
+  goblinChief: {
+    idle: {
+      frameCount: 9,
+      frameWidth: 200, // Actual sprite size: 200x200
+      frameHeight: 200,
+      duration: 900, // 9 frames * 100ms (faster animation)
+      spriteSheet: "/Sprites/enemies/GoblinBoss/AnotherGoblin/idle/idle_0000.png",
+    },
+    walk: {
+      frameCount: 9,
+      frameWidth: 200, // Actual sprite size: 200x200
+      frameHeight: 200,
+      duration: 900, // 9 frames * 100ms (faster animation)
+      spriteSheet: "/Sprites/enemies/GoblinBoss/AnotherGoblin/walk/walk_0000.png",
+    },
+    run: {
+      frameCount: 9,
+      frameWidth: 200, // Actual sprite size: 200x200
+      frameHeight: 200,
+      duration: 720, // 9 frames * 80ms (faster for run animation)
+      spriteSheet: "/Sprites/enemies/GoblinBoss/AnotherGoblin/run/run_0000.png",
+    },
+    attack: {
+      frameCount: 11, // Using attack1 as primary attack
+      frameWidth: 250, // Actual sprite size: 250x250 (attack1 is larger)
+      frameHeight: 250,
+      duration: 1100, // 11 frames * 100ms (faster animation)
+      spriteSheet: "/Sprites/enemies/GoblinBoss/AnotherGoblin/attack1/attack1_0000.png",
+    },
+    attack2: {
+      frameCount: 10,
+      frameWidth: 200, // Actual sprite size: 200x200
+      frameHeight: 200,
+      duration: 1000, // 10 frames * 100ms (faster animation)
+      spriteSheet: "/Sprites/enemies/GoblinBoss/AnotherGoblin/attack2/attack2_0000.png",
+    },
+    hurt: {
+      frameCount: 4,
+      frameWidth: 200, // Actual sprite size: 200x200
+      frameHeight: 200,
+      duration: 400, // 4 frames * 100ms (faster animation)
+      spriteSheet: "/Sprites/enemies/GoblinBoss/AnotherGoblin/hurt/hurt_0000.png",
+    },
+    death: {
+      frameCount: 11,
+      frameWidth: 200, // Actual sprite size: 200x200
+      frameHeight: 200,
+      duration: 1100, // 11 frames * 100ms (faster animation)
+      spriteSheet: "/Sprites/enemies/GoblinBoss/AnotherGoblin/die/die_0000.png",
+    },
+  },
   werewolf: {
     idle: {
       frameCount: 6,
@@ -980,6 +1075,80 @@ export const ENEMY_ANIMATIONS: Record<string, Record<string, SpriteAnimationData
       frameHeight: 48,
       duration: 1080, // Using pyromancer fire projectile animation
       spriteSheet: "/Sprites/Heroes/HeroSprites/Pyromancer 2D Pixel Art/Fire_projectile.png",
+    },
+  },
+  corruptedHighPriest: {
+    idle: {
+      frameCount: 5, // Only 5 idle frames (idle_1 through idle_5)
+      frameWidth: 200, // Actual sprite size: 200x200
+      frameHeight: 200,
+      duration: 600, // 5 frames * 120ms
+      spriteSheet: "/Sprites/enemies/Cultistpriest/cultist_priest_idle_1.png",
+    },
+    attack: {
+      frameCount: 5,
+      frameWidth: 200, // Actual sprite size: 200x200
+      frameHeight: 200,
+      duration: 600, // 5 frames * 120ms
+      spriteSheet: "/Sprites/enemies/Cultistpriest/cultist_priest_attack_1.png",
+    },
+    hurt: {
+      frameCount: 4,
+      frameWidth: 200, // Actual sprite size: 200x200
+      frameHeight: 200,
+      duration: 480, // 4 frames * 120ms
+      spriteSheet: "/Sprites/enemies/Cultistpriest/cultist_priest_takehit_1.png",
+    },
+    death: {
+      frameCount: 6,
+      frameWidth: 200, // Actual sprite size: 200x200
+      frameHeight: 200,
+      duration: 720, // 6 frames * 120ms
+      spriteSheet: "/Sprites/enemies/Cultistpriest/cultist_priest_die_1.png",
+    },
+    walk: {
+      frameCount: 6,
+      frameWidth: 200, // Actual sprite size: 200x200
+      frameHeight: 200,
+      duration: 720, // 6 frames * 120ms
+      spriteSheet: "/Sprites/enemies/Cultistpriest/cultist_priest_walk_1.png",
+    },
+  },
+  cultist: {
+    idle: {
+      frameCount: 5, // Only 5 idle frames (idle_1 through idle_5)
+      frameWidth: 200, // Actual sprite size: 200x200
+      frameHeight: 200,
+      duration: 600, // 5 frames * 120ms
+      spriteSheet: "/Sprites/enemies/Cultistpriest/cultist_priest_idle_1.png",
+    },
+    attack: {
+      frameCount: 5,
+      frameWidth: 200, // Actual sprite size: 200x200
+      frameHeight: 200,
+      duration: 600, // 5 frames * 120ms
+      spriteSheet: "/Sprites/enemies/Cultistpriest/cultist_priest_attack_1.png",
+    },
+    hurt: {
+      frameCount: 4,
+      frameWidth: 200, // Actual sprite size: 200x200
+      frameHeight: 200,
+      duration: 480, // 4 frames * 120ms
+      spriteSheet: "/Sprites/enemies/Cultistpriest/cultist_priest_takehit_1.png",
+    },
+    death: {
+      frameCount: 6,
+      frameWidth: 200, // Actual sprite size: 200x200
+      frameHeight: 200,
+      duration: 720, // 6 frames * 120ms
+      spriteSheet: "/Sprites/enemies/Cultistpriest/cultist_priest_die_1.png",
+    },
+    walk: {
+      frameCount: 6,
+      frameWidth: 200, // Actual sprite size: 200x200
+      frameHeight: 200,
+      duration: 720, // 6 frames * 120ms
+      spriteSheet: "/Sprites/enemies/Cultistpriest/cultist_priest_walk_1.png",
     },
   },
 };

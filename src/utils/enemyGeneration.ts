@@ -370,7 +370,7 @@ export function generateEnemiesForCombat(
   // Pick appropriate enemies for party level
   let availableEnemies = ENEMY_TEMPLATES.filter(e => scaling.avgLevel >= e.level - 1);
   
-  // EXCLUDE RAID-ONLY BOSSES from idle mode
+  // EXCLUDE RAID-ONLY BOSSES and DUNGEON-ONLY ENEMIES from idle mode
   const RAID_ONLY_BOSSES = [
     'Elder Dragon', 
     'Adult Dragon',
@@ -378,7 +378,13 @@ export function generateEnemiesForCombat(
     'Dragon Guardian',  // Raid wave enemy
     'Dragon Sentinel'   // Raid wave enemy
   ];
-  availableEnemies = availableEnemies.filter(e => !RAID_ONLY_BOSSES.includes(e.name));
+  const DUNGEON_ONLY_ENEMIES = [
+    'Goblin Chief'  // Dungeon-only boss, should not appear in idle mode
+  ];
+  availableEnemies = availableEnemies.filter(e => 
+    !RAID_ONLY_BOSSES.includes(e.name) && 
+    !DUNGEON_ONLY_ENEMIES.includes(e.name)
+  );
   
   // DEBUG MODE: If debug enemy is set, only allow that enemy
   const DEBUG_ENABLED_ENEMY = getDebugEnabledEnemy();
@@ -464,6 +470,7 @@ function generateSingleEnemy(
   return {
     id: enemyId,
     name: template.name,
+    enemyType: template.type, // Set enemyType for sprite lookup (prevents Goblin Chief from appearing in idle)
     level: Math.max(1, Math.floor(scaling.avgLevel)),
     hp: finalHp,
     maxHp: finalHp,

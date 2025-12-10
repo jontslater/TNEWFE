@@ -136,3 +136,4 @@ The party queue system is ready for testing. All core features are implemented:
 2. Verify matchmaking works with party-queued members
 3. Add WebSocket updates for real-time status (optional enhancement)
 
+

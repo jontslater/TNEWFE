@@ -210,6 +210,32 @@ export const ENEMY_SPRITES: Record<string, {
       flying: '/Sprites/enemies/EnemySprites/Demon Boss 2D Pixel Art/Sprites/with_outline/FLYING.png',
       transition: '/Sprites/enemies/EnemySprites/Demon Boss 2D Pixel Art/Sprites/with_outline/TRANSITION.png'
     }
+  },
+  'Corrupted High Priest': {
+    sprite: '/Sprites/enemies/Cultistpriest/cultist_priest_idle_1.png',
+    isAnimated: true,
+    spriteSize: 48,
+    frameCount: { idle: 5, attack: 5, hurt: 4, death: 6, walk: 6 },
+    animations: {
+      idle: '/Sprites/enemies/Cultistpriest/cultist_priest_idle_1.png',
+      attack: '/Sprites/enemies/Cultistpriest/cultist_priest_attack_1.png',
+      hurt: '/Sprites/enemies/Cultistpriest/cultist_priest_takehit_1.png',
+      death: '/Sprites/enemies/Cultistpriest/cultist_priest_die_1.png',
+      walk: '/Sprites/enemies/Cultistpriest/cultist_priest_walk_1.png'
+    }
+  },
+  'Cultist': {
+    sprite: '/Sprites/enemies/Cultistpriest/cultist_priest_idle_1.png',
+    isAnimated: true,
+    spriteSize: 48,
+    frameCount: { idle: 5, attack: 5, hurt: 4, death: 6, walk: 6 },
+    animations: {
+      idle: '/Sprites/enemies/Cultistpriest/cultist_priest_idle_1.png',
+      attack: '/Sprites/enemies/Cultistpriest/cultist_priest_attack_1.png',
+      hurt: '/Sprites/enemies/Cultistpriest/cultist_priest_takehit_1.png',
+      death: '/Sprites/enemies/Cultistpriest/cultist_priest_die_1.png',
+      walk: '/Sprites/enemies/Cultistpriest/cultist_priest_walk_1.png'
+    }
   }
 };
 
@@ -248,7 +274,9 @@ export function getEnemySpriteClass(enemyType: string): string {
     'Minotaur': 'minotaur-sprite',
     'Headless Horseman': 'headless-horseman-sprite',
     'Adult Dragon': 'dragon-sprite',
-    'Demon Lord': 'demon-lord-sprite'
+    'Demon Lord': 'demon-lord-sprite',
+    'Corrupted High Priest': 'corrupted-high-priest-sprite',
+    'Cultist': 'cultist-sprite'
   };
   const spriteClass = nameMap[enemyType];
   if (!spriteClass) {

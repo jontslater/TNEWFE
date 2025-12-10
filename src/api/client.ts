@@ -251,6 +251,34 @@ export const heroAPI = {
     return response.data;
   },
 
+  /**
+   * Create a test hero for testing (dev only)
+   */
+  async createTestHero(userId: string, username: string, heroName: string, role?: string, level?: number): Promise<{
+    success: boolean;
+    message: string;
+    hero: Hero;
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          success: true,
+          message: 'Test hero created successfully',
+          hero: mockHero
+        }), 300);
+      });
+    }
+
+    const response = await apiClient.post('/api/heroes/test/create', {
+      userId,
+      username,
+      heroName,
+      role: role || 'berserker',
+      level: level || 20
+    });
+    return response.data;
+  },
+
   async createHero(classKey: string, twitchUserId?: string, tiktokUserId?: string, paymentMethod?: 'tokens' | 'payment'): Promise<Hero & { heroCount: number; maxHeroes: number }> {
     if (USE_MOCK) {
       return new Promise((resolve) => {
@@ -480,6 +508,44 @@ export const heroAPI = {
     }
     
     const response = await apiClient.post(`/api/heroes/${userId}/expand-storage`, { slots, currency });
+    return response.data;
+  },
+
+  async lockEquipment(userId: string, slot: string): Promise<{
+    success: boolean;
+    message: string;
+    item: any;
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          success: true,
+          message: 'Item locked',
+          item: { locked: true }
+        }), 300);
+      });
+    }
+
+    const response = await apiClient.post(`/api/heroes/${userId}/equipment/${slot}/lock`);
+    return response.data;
+  },
+
+  async unlockEquipment(userId: string, slot: string): Promise<{
+    success: boolean;
+    message: string;
+    item: any;
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          success: true,
+          message: 'Item unlocked',
+          item: { locked: false }
+        }), 300);
+      });
+    }
+
+    const response = await apiClient.post(`/api/heroes/${userId}/equipment/${slot}/unlock`);
     return response.data;
   }
 };
@@ -1160,13 +1226,19 @@ export const loginRewardAPI = {
 
 // Dungeon Finder API
 export const dungeonAPI = {
-  async joinQueue(userId: string, heroId: string, role: 'tank' | 'healer' | 'dps', itemScore: number, dungeonType: 'normal' | 'heroic' | 'mythic' = 'normal') {
+  async getAllDungeons() {
+    const response = await apiClient.get('/api/dungeon/');
+    return response.data;
+  },
+  
+  async joinQueue(userId: string, heroId: string, role: 'tank' | 'healer' | 'dps', itemScore: number, dungeonType: 'normal' | 'heroic' | 'mythic' = 'normal', dungeonId?: string) {
     const response = await apiClient.post('/api/dungeon/queue', {
       userId,
       heroId,
       role,
       itemScore,
-      dungeonType
+      dungeonType,
+      dungeonId // Pass dungeonId for solo dungeon detection
     });
     return response.data;
   },
@@ -1642,7 +1714,7 @@ export const partyAPI = {
   /**
    * Queue entire party for dungeon or raid
    */
-  async queueParty(partyId: string, queueType: 'dungeon' | 'raid', raidId?: string, dungeonType?: string): Promise<{
+  async queueParty(partyId: string, queueType: 'dungeon' | 'raid', raidId?: string, dungeonType?: string, dungeonId?: string, fillParty?: boolean): Promise<{
     success: boolean;
     queued: number;
     total: number;
@@ -1663,7 +1735,9 @@ export const partyAPI = {
     const response = await apiClient.post(`/api/parties/${partyId}/queue`, {
       queueType,
       raidId,
-      dungeonType
+      dungeonType,
+      dungeonId,
+      fillParty
     });
     return response.data;
   },

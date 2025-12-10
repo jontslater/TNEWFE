@@ -401,12 +401,22 @@ export default function GuildRaidsPanel({ hero, guildId }: GuildRaidsPanelProps)
               const tanks = raid.participants?.filter((p: any) => p.role === 'tank').length || 0;
               const healers = raid.participants?.filter((p: any) => p.role === 'healer').length || 0;
               const dps = raid.participants?.filter((p: any) => p.role === 'dps').length || 0;
+              const isAvailable = raid.available !== false; // Default to true if not set
 
               return (
                 <div
                   key={raid.id}
-                  className={`bg-gradient-to-br ${getDifficultyColor(raid.difficulty)} rounded-lg p-6 border-2 shadow-lg transform transition-all hover:scale-105`}
+                  className={`bg-gradient-to-br ${getDifficultyColor(raid.difficulty)} rounded-lg p-6 border-2 shadow-lg transform transition-all hover:scale-105 relative ${!isAvailable ? 'opacity-60' : ''}`}
                 >
+                  {/* Coming Soon Overlay */}
+                  {!isAvailable && (
+                    <div className="absolute inset-0 bg-black bg-opacity-70 rounded-lg flex items-center justify-center z-10">
+                      <div className="text-center">
+                        <div className="text-3xl font-bold text-yellow-400 mb-2">🚧 Coming Soon</div>
+                        <div className="text-white text-sm">We're working on more raids!</div>
+                      </div>
+                    </div>
+                  )}
                   <div className="flex items-start justify-between mb-4">
                     <div>
                       <h4 className="text-2xl font-bold text-white">{raid.name}</h4>
@@ -477,20 +487,31 @@ export default function GuildRaidsPanel({ hero, guildId }: GuildRaidsPanelProps)
                   </div>
 
                   {/* Actions */}
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => navigate(`/raids/guild-signup/${raid.id}`)}
-                      className="flex-1 bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 rounded transition-colors"
-                    >
-                      📅 Schedule Guild Raid
-                    </button>
-                    <button
-                      onClick={() => setSelectedRaid(raid)}
-                      className="bg-gray-700 hover:bg-gray-600 text-white font-bold px-4 py-2 rounded transition-colors"
-                    >
-                      Details
-                    </button>
-                  </div>
+                  {isAvailable ? (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => navigate(`/raids/guild-signup/${raid.id}`)}
+                        className="flex-1 bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 rounded transition-colors"
+                      >
+                        📅 Schedule Guild Raid
+                      </button>
+                      <button
+                        onClick={() => setSelectedRaid(raid)}
+                        className="bg-gray-700 hover:bg-gray-600 text-white font-bold px-4 py-2 rounded transition-colors"
+                      >
+                        Details
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <button
+                        disabled
+                        className="flex-1 bg-gray-600 text-gray-400 font-bold py-2 rounded cursor-not-allowed"
+                      >
+                        Coming Soon
+                      </button>
+                    </div>
+                  )}
                 </div>
               );
             })}

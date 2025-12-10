@@ -198,6 +198,7 @@ export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, 
                     <ItemTooltip item={item} position="above">
                       <div className="hover:bg-gray-600/30 rounded p-1 -m-1 transition-colors pointer-events-auto flex-grow">
                         <div className={`font-semibold mb-1 text-xs ${getRarityColor(item.rarity)} flex items-center gap-1 leading-tight`}>
+                          {(item as any).locked && <span className="text-yellow-400 flex-shrink-0" title="Locked">🔒</span>}
                           <span className="truncate">{item.name}</span>
                           {(item as any).upgradeLevel && (item as any).upgradeLevel > 0 && (
                             <span className="text-amber-400 font-semibold text-[10px] flex-shrink-0">+{(item as any).upgradeLevel}</span>
@@ -341,6 +342,37 @@ export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, 
                   </div>
 
                   <div className="flex flex-wrap gap-1 mt-auto pointer-events-auto relative z-20" onClick={(e) => e.stopPropagation()}>
+                    {/* Lock/Unlock Button */}
+                    {item.id && (
+                      <button
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          if (!hero.id) return;
+                          
+                          const isLocked = (item as any).locked;
+                          try {
+                            if (isLocked) {
+                              await heroAPI.unlockEquipment(hero.id, slot);
+                            } else {
+                              await heroAPI.lockEquipment(hero.id, slot);
+                            }
+                            if (onUpdate) onUpdate();
+                          } catch (error: any) {
+                            console.error('Failed to toggle lock:', error);
+                            alert(error.response?.data?.error || 'Failed to toggle lock');
+                          }
+                        }}
+                        className={`flex-1 min-w-[40px] text-white text-[10px] py-1 rounded font-semibold transition-colors cursor-pointer ${
+                          (item as any).locked
+                            ? 'bg-yellow-600 hover:bg-yellow-700'
+                            : 'bg-gray-600 hover:bg-gray-700'
+                        }`}
+                        title={(item as any).locked ? 'Unlock item (prevent auto-sell/replace)' : 'Lock item (prevent auto-sell/replace)'}
+                      >
+                        {(item as any).locked ? '🔒' : '🔓'}
+                      </button>
+                    )}
                     {onUpgradeItem && item.id && (
                       <button
                         onClick={(e) => {
@@ -378,7 +410,13 @@ export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, 
                         e.preventDefault();
                         handleUnequip(slot);
                       }}
-                      className="flex-1 min-w-[55px] bg-red-600 hover:bg-red-700 text-white text-[10px] py-1 rounded font-semibold transition-colors cursor-pointer"
+                      disabled={(item as any).locked}
+                      className={`flex-1 min-w-[55px] text-white text-[10px] py-1 rounded font-semibold transition-colors ${
+                        (item as any).locked
+                          ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                          : 'bg-red-600 hover:bg-red-700 cursor-pointer'
+                      }`}
+                      title={(item as any).locked ? 'Cannot unequip locked item' : 'Unequip item'}
                     >
                       Unequip
                     </button>
