@@ -735,42 +735,72 @@ export default function CleanBattlefieldSource() {
     });
   }, [heroes]); // Run whenever heroes change
   
-  // SAFETY CHECK: Periodic scan to fix stuck death animations
-  // Catches edge cases where hero has HP > 0 but sprite is stuck in death
+  // IMPROVED SAFETY CHECK: Sync hero sprite animation with HP state
+  // Fixes cases where hero HP > 0 but sprite is stuck in death animation
   useEffect(() => {
     const interval = setInterval(() => {
       heroes.forEach(hero => {
-        // If hero has HP but is marked dead or in death animation, fix it
-        if (hero.hp > 0) {
-          const heroRef = getHeroSpriteRef(hero.id);
-          
-          // Check if marked as dead (state issue)
-          if (hero.isDead) {
-            console.log(`[Safety Check] 🔧 ${hero.name} has HP but isDead flag is true - fixing state`);
-            setHeroes(current => {
-              const updated = current.map(h => 
-                h.id === hero.id ? { ...h, isDead: false } : h
-              );
-              heroesRef.current = updated;
-              return updated;
-            });
-          }
-          
-          // Force sprite to idle if it exists
-          if (heroRef.current) {
+        const heroRef = getHeroSpriteRef(hero.id);
+        
+        // Determine actual death state from HP
+        const isActuallyDead = hero.hp <= 0 || hero.hp === undefined;
+        
+        // Fix state if HP and isDead flag don't match
+        if (isActuallyDead && !hero.isDead) {
+          console.log(`[HP Sync] 💀 ${hero.name} HP is ${hero.hp} but isDead is false - fixing state`);
+          setHeroes(current => {
+            const updated = current.map(h => 
+              h.id === hero.id ? { ...h, isDead: true } : h
+            );
+            heroesRef.current = updated;
+            return updated;
+          });
+        } else if (!isActuallyDead && hero.isDead) {
+          console.log(`[HP Sync] 💚 ${hero.name} HP is ${hero.hp} but isDead is true - fixing state`);
+          setHeroes(current => {
+            const updated = current.map(h => 
+              h.id === hero.id ? { ...h, isDead: false } : h
+            );
+            heroesRef.current = updated;
+            return updated;
+          });
+        }
+        
+        // Fix sprite animation if it doesn't match HP state
+        if (heroRef.current) {
+          try {
+            const sprite = heroRef.current as any;
+            const currentAnimation = 
+              sprite.getCurrentAnimation?.() || 
+              sprite.currentAnimation || 
+              sprite.animationState?.currentAnimation ||
+              'unknown';
+            
+            // If hero is alive but sprite is in death animation, force idle
+            if (!isActuallyDead && currentAnimation === 'death') {
+              console.log(`[HP Sync] 🔧 ${hero.name} (HP: ${hero.hp}) stuck in death animation - forcing idle`);
+              sprite.playAnimation?.('idle');
+            }
+            // If hero is dead but sprite is NOT in death animation, force death
+            else if (isActuallyDead && currentAnimation !== 'death') {
+              console.log(`[HP Sync] 💀 ${hero.name} (HP: ${hero.hp}) should be dead but sprite in ${currentAnimation} - forcing death`);
+              sprite.playAnimation?.('death');
+            }
+          } catch (err) {
+            // If we can't check animation, try to fix based on HP anyway
             try {
-              const currentAnimation = (heroRef.current as any).currentAnimation || 'unknown';
-              if (currentAnimation === 'death') {
-                console.log(`[Safety Check] 🔧 ${hero.name} has HP but in death animation - forcing idle`);
-                heroRef.current.playAnimation('idle');
+              if (!isActuallyDead) {
+                heroRef.current.playAnimation?.('idle');
+              } else {
+                heroRef.current.playAnimation?.('death');
               }
-            } catch (err) {
-              // Silently ignore - sprite ref might not have currentAnimation property
+            } catch (e) {
+              // Silently ignore if sprite ref is invalid
             }
           }
         }
       });
-    }, 3000); // Check every 3 seconds
+    }, 2000); // Check every 2 seconds
     
     return () => clearInterval(interval);
   }, [heroes]); // Re-run when heroes change

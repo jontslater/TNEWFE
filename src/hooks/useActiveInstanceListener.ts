@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { collection, query, where, onSnapshot, QuerySnapshot, DocumentData } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, QuerySnapshot, DocumentData, updateDoc, doc } from 'firebase/firestore';
 import { db } from '../utils/firebase';
 
 export interface ActiveInstance {
@@ -58,7 +58,8 @@ export function useActiveInstanceListener(userId: string | null) {
             
             // Auto-complete the raid
             try {
-              await instance.ref.update({
+              const raidRef = doc(db, 'raidInstances', instance.id);
+              await updateDoc(raidRef, {
                 status: 'completed',
                 completedAt: new Date(),
                 timeoutReason: 'Auto-completed after 2 hour timeout'
@@ -139,7 +140,8 @@ export function useActiveInstanceListener(userId: string | null) {
               console.log(`[ActiveInstance Listener] 🔧 Auto-completing stale dungeon...`);
               
               // Auto-complete the dungeon
-              instance.ref.update({
+              const dungeonRef = doc(db, 'dungeonInstances', instance.id);
+              updateDoc(dungeonRef, {
                 status: 'completed',
                 completedAt: new Date(),
                 timeoutReason: 'Auto-completed after 2 hour timeout'
