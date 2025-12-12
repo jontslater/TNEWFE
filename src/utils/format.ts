@@ -22,6 +22,38 @@ export function formatTime(ms: number): string {
   return `${seconds}s`;
 }
 
+/**
+ * Format time ago (e.g., "2 minutes ago", "1 hour ago")
+ */
+export function formatTimeAgo(timestamp: number | Date | null | undefined): string {
+  if (!timestamp) return 'Never';
+  
+  const now = Date.now();
+  const time = typeof timestamp === 'number' ? timestamp : timestamp.getTime();
+  const diffMs = now - time;
+  
+  if (diffMs < 0) return 'Just now'; // Future time
+  
+  const seconds = Math.floor(diffMs / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+  
+  if (days > 0) {
+    return `${days} ${days === 1 ? 'day' : 'days'} ago`;
+  }
+  if (hours > 0) {
+    return `${hours} ${hours === 1 ? 'hour' : 'hours'} ago`;
+  }
+  if (minutes > 0) {
+    return `${minutes} ${minutes === 1 ? 'minute' : 'minutes'} ago`;
+  }
+  if (seconds > 0) {
+    return `${seconds} ${seconds === 1 ? 'second' : 'seconds'} ago`;
+  }
+  return 'Just now';
+}
+
 export function getRarityColor(rarity: string): string {
   const colors = {
     common: 'text-gray-400',

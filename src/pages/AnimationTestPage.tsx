@@ -4957,7 +4957,7 @@ export default function AnimationTestPage() {
       return;
     }
     // Generate enemies for this wave
-    const waveEnemies = generateRaidWaveEnemies(waveNumber, raid.waves, raid.difficulty);
+    const waveEnemies = generateRaidWaveEnemies(waveNumber, raid.waves, raid.difficulty, raid.id);
     const newEnemies: TestEnemy[] = [];
     waveEnemies.forEach(({ name, count }) => {
       for (let i = 0; i < count; i++) {

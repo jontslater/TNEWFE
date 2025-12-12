@@ -192,6 +192,35 @@ export const heroAPI = {
     return response.data;
   },
 
+  async claimIdleRewards(userId: string): Promise<{
+    success: boolean;
+    message: string;
+    data?: { tokensClaimed: number; totalTokens: number; hoursSinceClaim: number; tokensPerHour: number; lastTokenClaim?: number };
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          success: true,
+          message: 'Claimed 5 idle tokens! (Total: 100 tokens)',
+          data: { tokensClaimed: 5, totalTokens: 100, hoursSinceClaim: 2, tokensPerHour: 2.5 }
+        }), 300);
+      });
+    }
+
+    try {
+      const response = await apiClient.post(`/api/heroes/${userId}/claim-idle-rewards`);
+      return response.data;
+    } catch (error: any) {
+      // Handle 400 responses (like "no tokens available") as valid responses, not errors
+      if (error.response?.status === 400 && error.response?.data) {
+        // Return the response data directly (has success: false and message)
+        return error.response.data;
+      }
+      // Re-throw actual errors
+      throw error;
+    }
+  },
+
   async getSlotInfo(userId: string, twitchUserId?: string, tiktokUserId?: string): Promise<{
     slotsUnlocked: number;
     heroCount: number;
@@ -1188,6 +1217,11 @@ export const achievementAPI = {
   
   async getHeroAchievements(heroId: string) {
     const response = await apiClient.get(`/api/achievements/${heroId}`);
+    return response.data;
+  },
+  
+  async syncAchievementTitles(heroId: string) {
+    const response = await apiClient.post(`/api/achievements/${heroId}/sync-titles`);
     return response.data;
   },
   

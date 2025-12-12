@@ -254,3 +254,7 @@ if (item.locked) {
 - If not better for anyone → auto-sell (common/rare) or keep (epic+)
 - If locked → always keep
 
+
+
+
+

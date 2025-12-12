@@ -137,3 +137,7 @@
 3. **Gathering:** Is automatic gathering already implemented?
 4. **Gear Upgrades:** Do they work in real-time in browser source?
 
+
+
+
+

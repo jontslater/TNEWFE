@@ -23,15 +23,15 @@ interface PartyQueueModalProps {
     heroRole: string;
     heroLevel: number;
   }>;
+  initialSelectedDungeonId?: string;
   onClose: () => void;
   onQueued?: () => void;
 }
 
-export default function PartyQueueModal({ partyId, partyMembers, onClose, onQueued }: PartyQueueModalProps) {
+export default function PartyQueueModal({ partyId, partyMembers, initialSelectedDungeonId, onClose, onQueued }: PartyQueueModalProps) {
   const [queueType, setQueueType] = useState<'dungeon' | 'raid' | null>(null);
   const [selectedRaidId, setSelectedRaidId] = useState<string>('');
-  const [selectedDungeonId, setSelectedDungeonId] = useState<string>('');
-  const [dungeonType, setDungeonType] = useState<string>('normal');
+  const [selectedDungeonId, setSelectedDungeonId] = useState<string>(initialSelectedDungeonId || '');
   const [fillParty, setFillParty] = useState<boolean>(true); // Default: wait for matchmaking to fill party
   const [raids, setRaids] = useState<Raid[]>([]);
   const [dungeons, setDungeons] = useState<Dungeon[]>([]);
@@ -47,14 +47,20 @@ export default function PartyQueueModal({ partyId, partyMembers, onClose, onQueu
   const loadDungeons = async () => {
     try {
       const data = await dungeonAPI.getAllDungeons();
+      console.log('[PartyQueueModal] Loaded dungeons:', data?.length || 0, data);
       setDungeons(data || []);
-      // Set default to first available dungeon
-      const availableDungeon = data?.find((d: Dungeon) => d.available);
-      if (availableDungeon) {
-        setSelectedDungeonId(availableDungeon.id);
+      // Set default to initial selected dungeon if provided, otherwise first available
+      if (initialSelectedDungeonId && data?.find((d: Dungeon) => d.id === initialSelectedDungeonId)) {
+        setSelectedDungeonId(initialSelectedDungeonId);
+      } else {
+        const firstDungeon = data?.[0];
+        if (firstDungeon) {
+          setSelectedDungeonId(firstDungeon.id);
+        }
       }
     } catch (error) {
-      console.error('Failed to load dungeons:', error);
+      console.error('[PartyQueueModal] Failed to load dungeons:', error);
+      setErrors(prev => [...prev, 'Failed to load dungeons. Please refresh the page.']);
     }
   };
 
@@ -124,11 +130,15 @@ export default function PartyQueueModal({ partyId, partyMembers, onClose, onQueu
     setErrors([]);
 
     try {
+      // For dungeons, get the difficulty from the selected dungeon
+      const selectedDungeon = queueType === 'dungeon' ? dungeons.find(d => d.id === selectedDungeonId) : null;
+      const dungeonType = selectedDungeon?.difficulty || 'normal';
+      
       const response = await partyAPI.queueParty(
         partyId,
         queueType!,
         queueType === 'raid' ? selectedRaidId : undefined, // raidId
-        queueType === 'dungeon' ? dungeonType : undefined, // dungeonType
+        queueType === 'dungeon' ? dungeonType : undefined, // dungeonType (from selected dungeon's difficulty)
         queueType === 'dungeon' ? selectedDungeonId : undefined, // dungeonId
         fillParty // fillParty for both dungeons and raids
       );
@@ -200,7 +210,6 @@ export default function PartyQueueModal({ partyId, partyMembers, onClose, onQueu
               <button
                 onClick={() => {
                   setQueueType('raid');
-                  setDungeonType('normal');
                   setErrors([]);
                 }}
                 className={`flex-1 px-4 py-3 rounded font-semibold transition-colors ${
@@ -229,9 +238,7 @@ export default function PartyQueueModal({ partyId, partyMembers, onClose, onQueu
                   className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-amber-400"
                 >
                   <option value="">-- Select Dungeon --</option>
-                  {dungeons
-                    .filter(d => d.available)
-                    .map(dungeon => (
+                  {dungeons.map(dungeon => (
                       <option key={dungeon.id} value={dungeon.id}>
                         {dungeon.name} ({dungeon.difficulty})
                         {dungeon.minLevel && ` - Lv${dungeon.minLevel}+`}
@@ -239,24 +246,17 @@ export default function PartyQueueModal({ partyId, partyMembers, onClose, onQueu
                       </option>
                     ))}
                 </select>
-                {selectedDungeonId && (
-                  <div className="mt-2 text-xs text-gray-400">
-                    {dungeons.find(d => d.id === selectedDungeonId)?.description}
-                  </div>
-                )}
-              </div>
-              
-              <div>
-                <label className="block text-sm text-gray-300 mb-2">Dungeon Difficulty</label>
-                <select
-                  value={dungeonType}
-                  onChange={(e) => setDungeonType(e.target.value)}
-                  className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-amber-400"
-                >
-                  <option value="normal">Normal</option>
-                  <option value="heroic">Heroic</option>
-                  <option value="mythic">Mythic</option>
-                </select>
+                {selectedDungeonId && (() => {
+                  const selectedDungeon = dungeons.find(d => d.id === selectedDungeonId);
+                  return selectedDungeon ? (
+                    <div className="mt-2 text-xs text-gray-400">
+                      <div>{selectedDungeon.description}</div>
+                      <div className="mt-1 text-gray-500">
+                        Difficulty: <span className="font-semibold capitalize">{selectedDungeon.difficulty}</span>
+                      </div>
+                    </div>
+                  ) : null;
+                })()}
               </div>
               
               {/* Fill Party Toggle */}

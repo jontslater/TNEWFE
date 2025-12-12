@@ -65,7 +65,13 @@ interface Hero {
     chainLightning?: number;
     whirlwind?: number;
     bloodthirst?: number;
+    raiseDead?: number; // Necromancer skeleton summon cooldown
   };
+  // Minion properties (for necromancer skeletons)
+  isMinion?: boolean;
+  summonerId?: string; // ID of hero who summoned this minion
+  skeletonType?: 'Yellow' | 'White'; // For sprite selection
+  minionExpiresAt?: number; // Timestamp when minion expires
   xp?: number;
   maxXp?: number;
   attack?: number;
@@ -142,13 +148,14 @@ interface Enemy {
 
 // Combat action type
 interface CombatAction {
-  type: 'hero' | 'enemy';
+  type: 'hero' | 'enemy' | 'heal' | 'resurrect';
   actorId: string;
   actorName: string;
   targetId: string;
   targetName: string;
   initiative: number;
   isHero: boolean;
+  isAOE?: boolean; // Flag for AOE attacks (hits all targets)
 }
 
 // Main component
@@ -257,6 +264,8 @@ export default function CleanBattlefieldSource() {
   const [enemyFlipOverride, setEnemyFlipOverride] = useState<Record<string, 'left' | 'right'>>({});
   const [globalEnemyFlip, setGlobalEnemyFlip] = useState(false);
   const [resurrectionTimers, setResurrectionTimers] = useState<Record<string, number>>({});
+  const corruptedPriestSpawnedRef = useRef<boolean>(false); // Track if skeleton mages have been spawned
+  const corruptedPriestSpawnInProgress = useRef<boolean>(false); // Prevent concurrent spawns
   const [difficultyModifier, setDifficultyModifier] = useState(1.0);
   const [consecutiveWins, setConsecutiveWins] = useState(0);
   const [testHealer, setTestHealer] = useState<Hero | null>(null);
@@ -294,8 +303,40 @@ export default function CleanBattlefieldSource() {
         break;
       
       case 'hero_left_battlefield':
-        console.log(`[WebSocket] 👋 ${message.hero?.name} left!`);
-        // Firebase listener will auto-update
+        const leftHeroId = message.hero?.id || message.heroId;
+        const leftHeroName = message.hero?.name || message.hero?.username || 'Unknown';
+        console.log(`[WebSocket] 👋 ${leftHeroName} (${leftHeroId}) left! Removing immediately...`);
+        
+        // CRITICAL: Remove hero immediately from state (don't wait for Firebase update)
+        if (leftHeroId) {
+          // Remove from combat heroes state
+          setHeroes(current => {
+            const filtered = current.filter(h => h.id !== leftHeroId);
+            if (filtered.length !== current.length) {
+              console.log(`[WebSocket] ✅ Removed ${leftHeroName} from heroes state (${current.length} → ${filtered.length})`);
+              heroesRef.current = filtered;
+            }
+            return filtered;
+          });
+          
+          // Also remove from loadedHeroes if present
+          setLoadedHeroes(current => {
+            const filtered = current.filter(h => h.id !== leftHeroId);
+            if (filtered.length !== current.length) {
+              console.log(`[WebSocket] ✅ Removed ${leftHeroName} from loadedHeroes (${current.length} → ${filtered.length})`);
+            }
+            return filtered;
+          });
+          
+          // Clean up join time tracking
+          heroBattlefieldJoinTime.current.delete(leftHeroId);
+          lastChatTime.current.delete(leftHeroId);
+          
+          // Note: Sprite cleanup will happen automatically when the component unmounts
+          // since the hero is removed from the heroes array that's used for rendering
+        } else {
+          console.warn(`[WebSocket] ⚠️ hero_left_battlefield message missing hero.id:`, message);
+        }
         break;
       
       case 'channel_point_redeem':
@@ -531,7 +572,13 @@ export default function CleanBattlefieldSource() {
         const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/raids/scheduled/battlefield/${battlefieldId}`);
         
         if (!response.ok) {
-          // Endpoint might not exist yet - that's ok
+          // Endpoint might not exist yet (404) - that's ok, suppress error
+          if (response.status === 404) {
+            // Endpoint doesn't exist - this is expected, don't log error
+            return;
+          }
+          // Other errors - log but don't throw
+          console.warn(`[Scheduled Raids] API returned ${response.status}, skipping check`);
           return;
         }
         
@@ -640,30 +687,48 @@ export default function CleanBattlefieldSource() {
   // Resurrection detector: Check for dead heroes who have HP > 0 (healed/resurrected)
   useEffect(() => {
     heroes.forEach(hero => {
-      // Detect resurrection: Hero is marked dead but has HP > 0
-      if (hero.isDead && hero.hp > 0) {
-        console.log(`[Resurrection] 💚 ${hero.name} has been resurrected! (HP: ${hero.hp}/${hero.maxHp})`);
-        
-        // Update hero state to not dead
-        setHeroes(current => {
-          const updated = current.map(h => {
-            if (h.id === hero.id) {
-              return { ...h, isDead: false };
-            }
-            return h;
-          });
-          heroesRef.current = updated;
-          return updated;
-        });
-        
-        // Trigger idle animation to replace death animation
+      // Detect resurrection: Hero has HP > 0 but is marked dead OR sprite is in death animation
+      if (hero.hp > 0) {
         const heroRef = getHeroSpriteRef(hero.id);
-        if (heroRef.current) {
+        
+        // Check if marked as dead (state issue)
+        if (hero.isDead) {
+          console.log(`[Resurrection] 💚 ${hero.name} has HP but isDead flag is true - fixing state`);
+          
+          setHeroes(current => {
+            const updated = current.map(h => {
+              if (h.id === hero.id) {
+                return { ...h, isDead: false };
+              }
+              return h;
+            });
+            heroesRef.current = updated;
+            return updated;
+          });
+          
+          // Trigger idle animation after state update
+          setTimeout(() => {
+            const updatedHeroRef = getHeroSpriteRef(hero.id);
+            if (updatedHeroRef.current) {
+              try {
+                updatedHeroRef.current.playAnimation('idle');
+                console.log(`[Resurrection] 🎬 ${hero.name} returned to idle animation`);
+              } catch (err) {
+                console.warn(`[Resurrection] ⚠️ Could not play idle animation for ${hero.name}:`, err);
+              }
+            }
+          }, 50);
+        } else if (heroRef.current) {
+          // Hero is alive but might be stuck in death animation
           try {
-            heroRef.current.playAnimation('idle');
-            console.log(`[Resurrection] 🎬 ${hero.name} returned to idle animation`);
+            const currentAnimation = (heroRef.current as any).getCurrentAnimation?.() || 
+                                     (heroRef.current as any).currentAnimation || 'unknown';
+            if (currentAnimation === 'death') {
+              console.log(`[Resurrection] 🎬 ${hero.name} has HP but sprite in death animation - forcing idle`);
+              heroRef.current.playAnimation('idle');
+            }
           } catch (err) {
-            console.warn(`[Resurrection] ⚠️ Could not play idle animation for ${hero.name}:`, err);
+            // Silently ignore - sprite ref might not have getCurrentAnimation
           }
         }
       }
@@ -735,6 +800,8 @@ export default function CleanBattlefieldSource() {
         setInstanceData(null);
         setEnemies([]); // Clear raid boss/enemies
         enemiesRef.current = []; // Clear ref too
+        corruptedPriestSpawnedRef.current = false; // Reset spawn flag
+        corruptedPriestSpawnInProgress.current = false; // Reset spawn in-progress flag
         setInCombat(false); // Stop combat
         
         // CRITICAL: Don't clear heroes! They will be preserved by the hero listener
@@ -787,6 +854,14 @@ export default function CleanBattlefieldSource() {
       onSnapshot(instanceRef, (snapshot) => {
         if (snapshot.exists()) {
           const data = { id: snapshot.id, ...snapshot.data() };
+          const oldWave = instanceData?.currentWave;
+          const newWave = data.currentWave;
+          console.log(`[Mode] 📡 Instance snapshot update detected:`, {
+            oldWave,
+            newWave,
+            changed: oldWave !== newWave,
+            status: data.status
+          });
           console.log(`[Mode] Instance data loaded:`, data);
           setInstanceData(data);
           
@@ -797,6 +872,8 @@ export default function CleanBattlefieldSource() {
         } else {
           console.warn(`[Mode] Instance ${instanceId} not found`);
         }
+      }, (error) => {
+        console.error(`[Mode] ❌ onSnapshot error for ${type} instance:`, error);
       });
     } catch (error) {
       console.error(`[Mode] Failed to load ${type} instance:`, error);
@@ -963,7 +1040,7 @@ export default function CleanBattlefieldSource() {
       if (!waveEnemyString) {
         console.log(`[Raid Waves] ⚠️ Wave enemies missing for wave ${currentWave}, generating fallback enemies`);
         const { generateRaidWaveEnemies } = await import('../utils/raidSystem');
-        const generatedEnemies = generateRaidWaveEnemies(currentWave, totalWaves, instanceData.difficulty || 'normal');
+        const generatedEnemies = generateRaidWaveEnemies(currentWave, totalWaves, instanceData.difficulty || 'normal', instanceData.raidId);
         const enemyNames = generatedEnemies.flatMap(e => Array(e.count).fill(e.name));
         waveEnemyString = enemyNames.join(',');
         console.log(`[Raid Waves] ✅ Generated fallback enemies:`, waveEnemyString);
@@ -993,7 +1070,8 @@ export default function CleanBattlefieldSource() {
           'Skeleton Mage': { hp: 5000, attack: 100, defense: 50, xp: 500, level: 22, type: 'Skeleton Mage' },
           'Demon Lord': { hp: 15000, attack: 200, defense: 100, xp: 1500, level: 35, type: 'Demon Lord' },
           'Adult Dragon': { hp: 20000, attack: 250, defense: 120, xp: 2000, level: 40, type: 'Adult Dragon' },
-          'Cultist': { hp: 3500, attack: 70, defense: 35, xp: 350, level: 18, type: 'Cultist' }
+          'Cultist': { hp: 3500, attack: 70, defense: 35, xp: 350, level: 18, type: 'Cultist' },
+          'Mimic': { hp: 4000, attack: 85, defense: 40, xp: 400, level: 19, type: 'Mimic' }
         };
         
         const baseStats = WAVE_STATS[trimmedName] || { hp: 5000, attack: 100, defense: 50, xp: 500, level: 40, type: 'Baby Dragon' };
@@ -1113,7 +1191,9 @@ export default function CleanBattlefieldSource() {
         console.log('[Raid Mode] ⏳ Waiting 1s for sprites to render...');
         setTimeout(() => {
           console.log('[Raid Mode] ⚔️ Starting combat NOW!');
-          setInCombat(true);
+          corruptedPriestSpawnedRef.current = false; // Reset spawn flag
+        corruptedPriestSpawnInProgress.current = false; // Reset spawn in-progress flag for new combat
+        setInCombat(true);
         }, 1000);
       } else {
         console.error('[Raid Mode] ❌ No enemies to fight! Wave might be skipped.');
@@ -1139,10 +1219,23 @@ export default function CleanBattlefieldSource() {
       return;
     }
     
+    // Safety: Don't try to load a room that doesn't exist
+    const maxRooms = instanceData.maxRooms || instanceData.rooms?.length || 3;
+    const currentRoom = instanceData.currentRoom || 0;
+    if (currentRoom >= maxRooms) {
+      console.log('[Dungeon Mode] ⚠️ Skipping dungeon setup - currentRoom exceeds maxRooms', {
+        currentRoom,
+        maxRooms,
+        status: instanceData.status
+      });
+      return;
+    }
+    
     // CRITICAL: Clear enemies first to prevent stale enemy state from previous room
     console.log('[Dungeon Mode] 🧹 Clearing enemies before setting up new room...');
     setEnemies([]);
     enemiesRef.current = [];
+    corruptedPriestSpawnedRef.current = false; // Reset spawn flag
     setInCombat(false);
     combatInProgress.current = false;
     
@@ -1467,7 +1560,9 @@ export default function CleanBattlefieldSource() {
             // Update state to reflect the fixes
             setEnemies([...enemiesRef.current]);
             console.log('[Dungeon Mode] ⚔️ Starting combat NOW!', `Valid enemies: ${validEnemies.length}`);
-            setInCombat(true);
+            corruptedPriestSpawnedRef.current = false; // Reset spawn flag
+        corruptedPriestSpawnInProgress.current = false; // Reset spawn in-progress flag for new combat
+        setInCombat(true);
           } else {
             console.error('[Dungeon Mode] ⚠️ Cannot start combat - enemies are dead or missing!', enemiesRef.current.map(e => ({
               name: e.name,
@@ -1493,7 +1588,9 @@ export default function CleanBattlefieldSource() {
               }
             });
             setEnemies([...enemiesRef.current]);
-            setInCombat(true);
+            corruptedPriestSpawnedRef.current = false; // Reset spawn flag
+        corruptedPriestSpawnInProgress.current = false; // Reset spawn in-progress flag for new combat
+        setInCombat(true);
           }
         }, 1000);
       }
@@ -1754,13 +1851,29 @@ export default function CleanBattlefieldSource() {
       // Calculate stats from equipment for each hero
       const heroesWithStats = loadedHeroes.map(calculateHeroStats);
       
+      // FILTER OUT TEST USERS (test-flow-user, test-user-*, etc.)
+      const nonTestHeroes = heroesWithStats.filter(hero => {
+        const isTestUser = 
+          hero.id?.startsWith('test-') || 
+          hero.twitchUserId?.startsWith('test-') ||
+          hero.name?.toLowerCase().includes('testflow') ||
+          hero.name?.toLowerCase().includes('testuser');
+        
+        if (isTestUser) {
+          console.log(`[CleanBattlefield] 🚫 Filtering out test user: ${hero.name} (${hero.id})`);
+        }
+        
+        return !isTestUser;
+      });
+      
       // DEDUPLICATE by hero ID (prevent duplicate renders!)
-      const uniqueHeroes = heroesWithStats.filter((hero, index, self) => 
+      const uniqueHeroes = nonTestHeroes.filter((hero, index, self) => 
         index === self.findIndex(h => h.id === hero.id)
       );
       
       if (uniqueHeroes.length !== heroesWithStats.length) {
-        console.warn(`[CleanBattlefield] ⚠️ Removed ${heroesWithStats.length - uniqueHeroes.length} duplicate heroes!`);
+        const removed = heroesWithStats.length - uniqueHeroes.length;
+        console.warn(`[CleanBattlefield] ⚠️ Removed ${removed} hero(es) (duplicates + test users)!`);
       }
       
       // ALWAYS store loaded heroes (used by raid setup to find actual hero data)
@@ -1777,7 +1890,7 @@ export default function CleanBattlefieldSource() {
           uniqueHeroes.forEach(firebaseHero => {
             const existingHero = current.find(h => h.id === firebaseHero.id);
             if (existingHero) {
-              // Preserve combat-specific state but update HP, inventory, shield, shopBuffs from Firebase
+              // Preserve combat-specific state but update HP, inventory, shield, shopBuffs, title from Firebase
               heroMap.set(firebaseHero.id, {
                 ...existingHero,
                 hp: firebaseHero.hp,
@@ -1787,7 +1900,14 @@ export default function CleanBattlefieldSource() {
                 inventory: firebaseHero.inventory || [],
                 gold: firebaseHero.gold,
                 level: firebaseHero.level,
-                xp: firebaseHero.xp
+                xp: firebaseHero.xp,
+                // Update cosmetic/display fields from Firebase (title, colors, frames, etc.)
+                activeTitle: firebaseHero.activeTitle !== undefined ? firebaseHero.activeTitle : existingHero.activeTitle,
+                nameColor: firebaseHero.nameColor !== undefined ? firebaseHero.nameColor : existingHero.nameColor,
+                nameFrame: firebaseHero.nameFrame !== undefined ? firebaseHero.nameFrame : existingHero.nameFrame,
+                auraEffect: firebaseHero.auraEffect !== undefined ? firebaseHero.auraEffect : existingHero.auraEffect,
+                auraColor: firebaseHero.auraColor !== undefined ? firebaseHero.auraColor : existingHero.auraColor,
+                founderBadge: firebaseHero.founderBadge !== undefined ? firebaseHero.founderBadge : existingHero.founderBadge
               });
             } else {
               heroMap.set(firebaseHero.id, firebaseHero);
@@ -1810,7 +1930,7 @@ export default function CleanBattlefieldSource() {
           return finalHeroes;
         });
       } else if (gameMode === 'raid' || gameMode === 'dungeon') {
-        // In raid/dungeon, update HP/shield/inventory without resetting combat state
+        // In raid/dungeon, update HP/shield/inventory/title without resetting combat state
         setHeroes(current => {
           return current.map(combatHero => {
             const firebaseHero = uniqueHeroes.find(h => h.id === combatHero.id);
@@ -1821,7 +1941,14 @@ export default function CleanBattlefieldSource() {
                 maxHp: firebaseHero.maxHp,
                 shield: firebaseHero.shield || combatHero.shield || 0,
                 shopBuffs: firebaseHero.shopBuffs || combatHero.shopBuffs || {},
-                inventory: firebaseHero.inventory || combatHero.inventory || []
+                inventory: firebaseHero.inventory || combatHero.inventory || [],
+                // Update title if it changed in Firebase
+                activeTitle: firebaseHero.activeTitle !== undefined ? firebaseHero.activeTitle : combatHero.activeTitle,
+                nameColor: firebaseHero.nameColor !== undefined ? firebaseHero.nameColor : combatHero.nameColor,
+                nameFrame: firebaseHero.nameFrame !== undefined ? firebaseHero.nameFrame : combatHero.nameFrame,
+                auraEffect: firebaseHero.auraEffect !== undefined ? firebaseHero.auraEffect : combatHero.auraEffect,
+                auraColor: firebaseHero.auraColor !== undefined ? firebaseHero.auraColor : combatHero.auraColor,
+                founderBadge: firebaseHero.founderBadge !== undefined ? firebaseHero.founderBadge : combatHero.founderBadge
               };
             }
             return combatHero;
@@ -2066,7 +2193,9 @@ export default function CleanBattlefieldSource() {
     // Adventure tick function
     const adventureTick = () => {
       // Skip if in combat (use refs for current state!)
-      if (combatInProgress.current || enemiesRef.current.length > 0) {
+      // Also check if enemies are actually alive (not just present)
+      const aliveEnemies = enemiesRef.current.filter(e => e.hp > 0 && !e.isDead);
+      if (combatInProgress.current || aliveEnemies.length > 0) {
         console.log('[Adventure] Skipping tick - combat in progress');
         return;
       }
@@ -2334,6 +2463,8 @@ export default function CleanBattlefieldSource() {
       // IMPORTANT: Delay combat start to let enemy sprites appear first!
       setTimeout(() => {
         console.log('[Adventure] ⚔️ Starting combat with', convertedEnemies.length, 'enemies');
+        corruptedPriestSpawnedRef.current = false; // Reset spawn flag
+        corruptedPriestSpawnInProgress.current = false; // Reset spawn in-progress flag for new combat
         setInCombat(true);
       }, 500); // 500ms delay for sprites to render
     };
@@ -2379,6 +2510,7 @@ export default function CleanBattlefieldSource() {
     console.log('[Combat] ✅ Starting combat -', allHeroes.length, 'heroes vs', enemies.length, 'enemies');
     console.log('[Combat] 👥 Heroes:', allHeroes.map(h => `${h.name} (${h.role}, HP: ${h.hp}/${h.maxHp})`));
     console.log('[Combat] 👹 Enemies:', enemies.map(e => `${e.name} (HP: ${e.hp}/${e.maxHp})`));
+    corruptedPriestSpawnedRef.current = false; // Reset spawn flag for new combat
     combatInProgress.current = true;
 
     // Start combat round (SIMPLIFIED - like enemy attacks)
@@ -2386,8 +2518,33 @@ export default function CleanBattlefieldSource() {
       console.log('[Combat] ===== STARTING NEW ROUND =====');
       
       // Use refs for current state (no stale closures!)
-      const currentHeroes = testHealer ? [...heroesRef.current, testHealer] : heroesRef.current;
+      let currentHeroes = testHealer ? [...heroesRef.current, testHealer] : heroesRef.current;
       const currentEnemies = enemiesRef.current;
+      
+      // CRITICAL: Check if all enemies are already dead before starting round
+      const aliveEnemies = currentEnemies.filter(e => e.hp > 0 && !e.isDead);
+      if (aliveEnemies.length === 0 && currentEnemies.length > 0) {
+        console.log('[Combat] ⚠️ All enemies already dead! Skipping round and checking victory...');
+        // Clear combat state and check victory
+        setInCombat(false);
+        combatInProgress.current = false;
+        checkCombatVictory();
+        return;
+      }
+      
+      // Also check if combat should even be running
+      if (!inCombat || !combatInProgress.current) {
+        console.log('[Combat] ⚠️ Combat not in progress, skipping round');
+        return;
+      }
+      
+      // Check if enemies array is empty (might happen after raid wave clear)
+      if (currentEnemies.length === 0) {
+        console.log('[Combat] ⚠️ No enemies in state! Clearing combat...');
+        setInCombat(false);
+        combatInProgress.current = false;
+        return;
+      }
       
       console.log(`[Combat] Current state: ${currentHeroes.length} heroes, ${currentEnemies.length} enemies`);
       
@@ -2524,6 +2681,8 @@ export default function CleanBattlefieldSource() {
                           updatedHero.stats = { totalDamage: 0, totalHealing: 0, damageBlocked: 0 };
                         }
                         updatedHero.stats.damageBlocked = (updatedHero.stats.damageBlocked || 0) + shieldAbsorbed;
+                        // QUEST TRACKING: Track blocked damage
+                        trackQuest(hero.id, 'blockDamage', shieldAbsorbed);
                       }
                       
                       return updatedHero;
@@ -2777,10 +2936,29 @@ export default function CleanBattlefieldSource() {
         }
       });
       
+      // Clean up expired minions first (use existing 'now' variable from startCombatRound)
+      const expiredMinions = currentHeroes.filter(h => (h as any).isMinion && (h as any).minionExpiresAt && (h as any).minionExpiresAt < now);
+      if (expiredMinions.length > 0) {
+        console.log(`[Combat] 🕐 ${expiredMinions.length} skeleton minion(s) expired`);
+        setHeroes(current => {
+          const updated = current.filter(h => !(h as any).isMinion || !(h as any).minionExpiresAt || (h as any).minionExpiresAt >= now);
+          heroesRef.current = updated;
+          return updated;
+        });
+        // Refresh currentHeroes after cleanup
+        const updatedHeroes = testHealer ? [...heroesRef.current, testHealer] : heroesRef.current;
+        currentHeroes = updatedHeroes;
+      }
+      
       // Hero actions (can have multiple actions if Swift procs!)
       currentHeroes.forEach(hero => {
         if (hero.hp <= 0 || hero.isDead) {
           console.log(`[Combat] Skipping ${hero.name} - dead`);
+          return;
+        }
+        
+        // Skip expired minions
+        if ((hero as any).isMinion && (hero as any).minionExpiresAt && (hero as any).minionExpiresAt < now) {
           return;
         }
         
@@ -2927,6 +3105,73 @@ export default function CleanBattlefieldSource() {
           }
         }
         
+        // RAISE DEAD (Necromancer) - Summon skeleton minion
+        if (hero.role === 'necromancer') {
+          const cooldown = hero.cooldowns?.raiseDead || 0;
+          const existingMinions = heroesRef.current.filter(h => (h as any).isMinion && (h as any).summonerId === hero.id);
+          
+          // Can summon if cooldown ready and no existing minion (max 1 minion at a time)
+          if (now >= cooldown && existingMinions.length === 0) {
+            console.log(`[Raise Dead] 💀 ${hero.name} summons a Skeleton Warrior!`);
+            
+            // Randomly choose Yellow or White skeleton
+            const skeletonType = Math.random() < 0.5 ? 'Yellow' : 'White';
+            const skeletonId = `skeleton-minion-${hero.id}-${Date.now()}`;
+            
+            // Create skeleton minion with 40% of necromancer's attack
+            const skeletonAttack = Math.floor((hero.attack || hero.level * 8) * 0.4);
+            const skeletonHp = Math.floor((hero.maxHp || 100) * 0.3); // 30% of necromancer's HP
+            const skeletonMaxHp = skeletonHp;
+            
+            const skeletonMinion: Hero = {
+              id: skeletonId,
+              name: `Skeleton Warrior`,
+              role: `skeleton-minion-${skeletonType.toLowerCase()}` as any, // Use special role for sprite lookup
+              level: hero.level,
+              hp: skeletonMaxHp,
+              maxHp: skeletonMaxHp,
+              attack: skeletonAttack,
+              defense: Math.floor((hero.defense || 0) * 0.2), // 20% of necromancer's defense
+              xp: 0,
+              maxXp: 100,
+              equipment: {},
+              skills: {},
+              isDead: false,
+              currentBattlefieldId: hero.currentBattlefieldId,
+              // Minion-specific properties
+              isMinion: true,
+              summonerId: hero.id,
+              skeletonType: skeletonType, // Store type for sprite lookup
+              minionExpiresAt: now + 30000 // Minion lasts 30 seconds
+            } as any;
+            
+            // Add skeleton to heroes array
+            setHeroes(current => {
+              const updated = [...current, skeletonMinion];
+              heroesRef.current = updated;
+              return updated;
+            });
+            
+            // Set cooldown (70 seconds)
+            setHeroes(current => {
+              const updated = current.map(h => 
+                h.id === hero.id ? { ...h, cooldowns: { ...h.cooldowns, raiseDead: now + 70000 } } : h
+              );
+              heroesRef.current = updated;
+              return updated;
+            });
+            
+            // Show Raise Dead SCT
+            const heroElement = document.querySelector(`[data-hero-id="${hero.id}"]`);
+            if (heroElement) {
+              const rect = heroElement.getBoundingClientRect();
+              addSCT('+Raise Dead', rect.left + rect.width / 2, rect.top + 20, 'loot');
+            }
+            
+            // Don't return - necromancer still attacks this turn, minion will act next round
+          }
+        }
+        
         // WHIRLWIND (Berserker) - AoE if 2+ enemies
         if (hero.role === 'berserker' && aliveEnemies.length >= 2) {
           const cooldown = hero.cooldowns?.whirlwind || 0;
@@ -2984,11 +3229,17 @@ export default function CleanBattlefieldSource() {
       });
 
       // Enemy actions (RAID/DUNGEON: 30% chance for double attack!)
-      currentEnemies.forEach(enemy => {
-        if (enemy.hp <= 0) {
-          console.log(`[Combat] Skipping ${enemy.name} - dead`);
-          return;
-        }
+      // Filter out dead enemies first
+      const aliveEnemiesForActions = currentEnemies.filter(e => e.hp > 0 && !e.isDead);
+      if (aliveEnemiesForActions.length === 0 && currentEnemies.length > 0) {
+        console.log('[Combat] ⚠️ All enemies dead during action generation! Ending combat...');
+        setInCombat(false);
+        combatInProgress.current = false;
+        checkCombatVictory();
+        return;
+      }
+      
+      aliveEnemiesForActions.forEach(enemy => {
 
         // More random initiative for chaos in raids/dungeons
         const baseDex = gameMode === 'raid' || gameMode === 'dungeon' 
@@ -3010,23 +3261,40 @@ export default function CleanBattlefieldSource() {
           console.log(`[Combat] ${enemy.name} targeting tank ${target.name} (${threatMultiplier}x threat, ${Math.floor(hpPercent)}% HP)`);
         }
 
-        // RAID/DUNGEON DIFFICULTY: 30% chance for DOUBLE ATTACK!
-        const numAttacks = (gameMode === 'raid' || gameMode === 'dungeon') && Math.random() < 0.30 ? 2 : 1;
-        
-        if (numAttacks === 2) {
-          console.log(`[Combat] 💥 ${enemy.name} gets DOUBLE ATTACK!`);
-        }
-
-        for (let i = 0; i < numAttacks; i++) {
+        // CORRUPTED HIGH PRIEST: Special AOE shadow damage ability (40% chance)
+        const isCorruptedHighPriest = enemy.enemyType === 'Corrupted High Priest' || enemy.name === 'Corrupted High Priest';
+        if (isCorruptedHighPriest && Math.random() < 0.40) {
+          // AOE attack hits all heroes
+          console.log(`[Combat] 🌑 ${enemy.name} casts AOE Shadow Damage!`);
           actions.push({
             type: 'enemy',
             actorId: enemy.id,
             actorName: enemy.name,
-            targetId: target.id,
-            targetName: target.name,
-            initiative: initiative - i, // Slightly lower for 2nd attack
-            isHero: false
+            targetId: 'all', // Special target ID for AOE
+            targetName: 'All Heroes',
+            initiative: initiative,
+            isHero: false,
+            isAOE: true // Flag for AOE attack
           });
+        } else {
+          // RAID/DUNGEON DIFFICULTY: 30% chance for DOUBLE ATTACK!
+          const numAttacks = (gameMode === 'raid' || gameMode === 'dungeon') && Math.random() < 0.30 ? 2 : 1;
+          
+          if (numAttacks === 2) {
+            console.log(`[Combat] 💥 ${enemy.name} gets DOUBLE ATTACK!`);
+          }
+
+          for (let i = 0; i < numAttacks; i++) {
+            actions.push({
+              type: 'enemy',
+              actorId: enemy.id,
+              actorName: enemy.name,
+              targetId: target.id,
+              targetName: target.name,
+              initiative: initiative - i, // Slightly lower for 2nd attack
+              isHero: false
+            });
+          }
         }
       });
 
@@ -3208,22 +3476,55 @@ export default function CleanBattlefieldSource() {
         healerRef.current.playAnimation('attack');
       }
       
+      // Check if target was dead before healing (for animation fix)
+      const wasDeadBeforeHeal = target.isDead || target.hp <= 0;
+      const newHpAfterHeal = Math.min(target.maxHp, (target.hp > 0 ? target.hp : 0) + healAmount);
+      
       // Apply healing with overheal → shield conversion
       setHeroes(current => {
         const updated = current.map(h => {
           if (h.id === target.id) {
-            const newHp = Math.min(h.maxHp, h.hp + healAmount);
-            const actualHeal = newHp - h.hp;
+            // CRITICAL: If hero was dead but is being healed, clear isDead flag
+            const wasDead = h.isDead || h.hp <= 0;
+            const newHp = Math.min(h.maxHp, (h.hp > 0 ? h.hp : 0) + healAmount);
+            const actualHeal = newHp - (h.hp > 0 ? h.hp : 0);
             const overheal = healAmount - actualHeal;
             const newShield = (h.shield || 0) + overheal;
             
-            return { ...h, hp: newHp, shield: newShield };
+            // Clear isDead flag if hero was dead and now has HP
+            return { 
+              ...h, 
+              hp: newHp, 
+              shield: newShield,
+              isDead: wasDead && newHp > 0 ? false : h.isDead // Clear isDead if was dead and now has HP
+            };
           }
           return h;
         });
         heroesRef.current = updated;
         return updated;
       });
+      
+      // FIX: Move animation call OUTSIDE setHeroes callback, after state update
+      // Check if target was dead and is now alive
+      if (wasDeadBeforeHeal && newHpAfterHeal > 0) {
+        console.log(`[Heal] ✨ ${target.name} was dead but healed to ${newHpAfterHeal} HP - triggering animation`);
+        
+        // Use setTimeout to ensure state has updated and sprite ref is ready
+        setTimeout(() => {
+          const targetRef = getHeroSpriteRef(target.id);
+          if (targetRef.current) {
+            try {
+              targetRef.current.playAnimation('idle');
+              console.log(`[Heal] 🎬 ${target.name} returned to idle animation`);
+            } catch (err) {
+              console.warn(`[Heal] ⚠️ Could not play idle animation for ${target.name}:`, err);
+            }
+          } else {
+            console.warn(`[Heal] ⚠️ Sprite ref not found for ${target.name}`);
+          }
+        }, 100); // Small delay to ensure state update completes
+      }
       
       // Show heal SCT with particles and flash (SAME as idle mode!)
       const targetElement = document.querySelector(`[data-hero-id="${target.id}"]`);
@@ -3674,6 +3975,79 @@ export default function CleanBattlefieldSource() {
         const died = newHp === 0 && !target.isDead;
         updatedEnemies[targetIndex] = { ...target, hp: newHp, shield: newShield, isDead: died || target.isDead };
         
+        // CORRUPTED HIGH PRIEST: Check for skeleton mage spawn at 50% HP (only once!)
+        const isCorruptedHighPriest = target.enemyType === 'Corrupted High Priest' || target.name === 'Corrupted High Priest';
+        if (isCorruptedHighPriest && !died) {
+          // Check if mages already exist in BOTH current and updated arrays (prevents duplicate spawns)
+          const existingMagesInCurrent = currentEnemies.filter(e => e.enemyType === 'Skeleton Mage' && !e.isDead);
+          const existingMagesInUpdated = updatedEnemies.filter(e => e.enemyType === 'Skeleton Mage' && !e.isDead);
+          const magesAlreadyExist = existingMagesInCurrent.length > 0 || existingMagesInUpdated.length > 0;
+          
+          // Only spawn if: flag not set, not in progress, no mages exist, and HP <= 50%
+          if (!corruptedPriestSpawnedRef.current && 
+              !corruptedPriestSpawnInProgress.current && 
+              !magesAlreadyExist) {
+            const hpPercent = (newHp / target.maxHp) * 100;
+            if (hpPercent <= 50) {
+              // Set flags IMMEDIATELY before any async operations to prevent concurrent spawns
+              corruptedPriestSpawnedRef.current = true;
+              corruptedPriestSpawnInProgress.current = true;
+              
+              console.log(`[Combat] 🌑 ${target.name} summons Skeleton Mages at ${hpPercent.toFixed(1)}% HP!`);
+              
+              // Spawn exactly 2 skeleton mages
+              const numMages = 2;
+              const newMages: Enemy[] = [];
+              
+              for (let i = 0; i < numMages; i++) {
+                const mageId = `skeleton-mage-${Date.now()}-${Math.random()}-${i}`;
+                const mageStats = {
+                  hp: 5000,
+                  attack: 100,
+                  defense: 50,
+                  xp: 500,
+                  level: 22
+                };
+                
+                // Apply difficulty scaling if in raid/dungeon
+                const scaledHp = Math.floor(mageStats.hp * difficultyModifier);
+                const scaledAttack = Math.floor(mageStats.attack * difficultyModifier);
+                const scaledDefense = Math.floor(mageStats.defense * difficultyModifier);
+                
+                newMages.push({
+                  id: mageId,
+                  name: 'Skeleton Mage',
+                  hp: scaledHp,
+                  maxHp: scaledHp,
+                  attack: scaledAttack,
+                  defense: scaledDefense,
+                  xp: mageStats.xp,
+                  level: mageStats.level,
+                  isBoss: false,
+                  isDead: false,
+                  enemyType: 'Skeleton Mage',
+                  shield: 0,
+                  activeBuffs: {},
+                  activeDebuffs: {}
+                });
+              }
+              
+              // Add new mages to enemies array (merge with updatedEnemies)
+              updatedEnemies.push(...newMages);
+              
+              // Clear the in-progress flag after a short delay
+              setTimeout(() => {
+                corruptedPriestSpawnInProgress.current = false;
+              }, 100);
+              
+              console.log(`[Combat] ✅ Spawned ${numMages} Skeleton Mages! (Total enemies: ${updatedEnemies.length})`);
+            }
+          } else if (magesAlreadyExist) {
+            // Mages already exist, ensure flag is set
+            corruptedPriestSpawnedRef.current = true;
+          }
+        }
+        
         // Update state immediately so other actions can see this enemy is dead!
         enemiesRef.current = updatedEnemies;
         
@@ -3992,7 +4366,184 @@ export default function CleanBattlefieldSource() {
         return; // Dead enemies don't attack
       }
       
-      // Check if target hero is still alive (allCurrentHeroes declared below, use temp variable)
+      // REMOVED: Spawn check moved to executeHeroAttack where damage is actually applied
+      
+      // Handle AOE attacks (Corrupted High Priest shadow damage)
+      if (action.isAOE && action.targetId === 'all') {
+        const allAliveHeroes = heroesRef.current.filter(h => h.hp > 0 && !h.isDead);
+        if (allAliveHeroes.length === 0) {
+          console.log(`[Combat] ⏭️ Skipping AOE attack - no alive heroes!`);
+          return;
+        }
+        
+        console.log(`[Combat] 🌑 ${enemy.name} casts AOE Shadow Damage on ${allAliveHeroes.length} heroes!`);
+        
+        // Play special animation
+        const enemyRef = getEnemySpriteRef(action.actorId);
+        if (enemyRef.current) {
+          enemyRef.current.playAnimation('attack2'); // Use attack2 for AOE
+        }
+        
+        // Calculate AOE damage (75% of normal attack, but hits everyone)
+        const enemyBaseAttack = enemy.attack || enemy.level * 8;
+        const aoeDamageMultiplier = 0.75; // AOE does 75% of normal damage
+        const variance = enemyBaseAttack * 0.2;
+        let baseDamage = Math.floor((enemyBaseAttack * aoeDamageMultiplier) + (Math.random() * variance * 2) - variance);
+        
+        // Check for WEAKENED debuff
+        if (enemy.activeDebuffs?.weaken) {
+          baseDamage *= 0.7;
+          console.log(`[Debuff] 💔 ${enemy.name} is Weakened (-30% damage)`);
+        }
+        
+        // Apply difficulty modifier
+        baseDamage = Math.floor(baseDamage * difficultyModifier);
+        
+        // Apply shadow damage to all heroes
+        allAliveHeroes.forEach((hero, index) => {
+          setTimeout(() => {
+            // Apply defense (same logic as regular attacks)
+            let defense = hero.defense || 0;
+            
+            // Apply ACTIVE CHATTER BONUS (+0.5% defense per active chatter)
+            if (activeChatterCount > 0) {
+              const bonuses = calculateViewerBonuses();
+              defense = Math.floor(defense * bonuses.defense);
+            }
+            
+            // Apply Defense Buff (+10% DEF)
+            if (hero.shopBuffs?.defenseBuff && hero.shopBuffs.defenseBuff.remainingDuration > 0) {
+              defense = Math.floor(defense * 1.10);
+            }
+            
+            const isTank = isTankRole(hero.role);
+            
+            // Improved defense scaling: Tanks get better mitigation (1/200 divisor instead of 1/250)
+            const defenseDivisor = isTank ? 200 : 250;
+            const damageAfterDefense = baseDamage / (1 + defense / defenseDivisor);
+            
+            // Reduced minimum damage: 10% for tanks, 15% for others (was 25% for all)
+            const minDamagePercent = isTank ? 0.10 : 0.15;
+            const minDamage = Math.max(1, baseDamage * minDamagePercent);
+            let actualDamage = Math.max(minDamage, Math.floor(damageAfterDefense));
+            
+            // Check for VULNERABLE debuff (+40% damage taken)
+            if (hero.activeDebuffs?.vulnerable) {
+              actualDamage = Math.round(actualDamage * 1.4);
+            }
+            
+            // Track blocked damage from abilities
+            let aoeBlockedByAbilities = 0;
+            const damageBeforeAbilities = actualDamage;
+            
+            // Check for Last Stand
+            const hpPercent = hero.hp / hero.maxHp;
+            if (isTankRole(hero.role) && hpPercent < 0.10) {
+              const now = Date.now();
+              if (!hero.activeBuffs?.lastStand?.active || (hero.activeBuffs.lastStand.expiresAt > now)) {
+                actualDamage = Math.floor(actualDamage * 0.25); // 75% reduction
+                aoeBlockedByAbilities += (damageBeforeAbilities - actualDamage);
+                console.log(`[Last Stand] 🛡️ ${hero.name} reduces AOE damage!`);
+              }
+            }
+            
+            // Check for Iron Skin (30% chance)
+            const damageBeforeIronSkin = actualDamage;
+            if (Math.random() < 0.30) {
+              actualDamage = Math.floor(actualDamage * 0.5); // 50% reduction
+              aoeBlockedByAbilities += (damageBeforeIronSkin - actualDamage);
+              console.log(`[Iron Skin] 💎 ${hero.name} reduces AOE damage!`);
+            }
+            
+            // Apply damage
+            let remainingDamage = actualDamage;
+            let newShield = hero.shield || 0;
+            let newHp = hero.hp;
+            let aoeShieldDamage = 0;
+            
+            if (newShield > 0) {
+              if (remainingDamage >= newShield) {
+                aoeShieldDamage = newShield;
+                remainingDamage -= newShield;
+                newShield = 0;
+                newHp = Math.max(0, hero.hp - remainingDamage);
+              } else {
+                aoeShieldDamage = remainingDamage;
+                newShield -= remainingDamage;
+              }
+            } else {
+              newHp = Math.max(0, hero.hp - remainingDamage);
+            }
+            
+            // Update hero
+            const wasAlive = hero.hp > 0 && !hero.isDead;
+            const now = Date.now();
+            
+            setHeroes(current => {
+              const updated = current.map(h => {
+                if (h.id === hero.id) {
+                  const updatedHero = { 
+                    ...h, 
+                    hp: newHp, 
+                    shield: newShield, 
+                    isDead: newHp <= 0,
+                    // CRITICAL: Set deathTime if hero just died
+                    deathTime: (wasAlive && newHp <= 0) ? now : (h.deathTime || undefined)
+                  };
+                  
+                  // Initialize stats if needed
+                  if (!updatedHero.stats) {
+                    updatedHero.stats = { totalDamage: 0, totalHealing: 0, damageBlocked: 0 };
+                  }
+                  
+                  // Track blocked damage for AOE
+                  if (aoeBlockedByAbilities > 0) {
+                    updatedHero.stats.damageBlocked = (updatedHero.stats.damageBlocked || 0) + aoeBlockedByAbilities;
+                    // QUEST TRACKING: Track blocked damage
+                    trackQuest(hero.id, 'blockDamage', aoeBlockedByAbilities);
+                  }
+                  
+                  if (aoeShieldDamage > 0) {
+                    updatedHero.stats.damageBlocked = (updatedHero.stats.damageBlocked || 0) + aoeShieldDamage;
+                    // QUEST TRACKING: Track blocked damage
+                    trackQuest(hero.id, 'blockDamage', aoeShieldDamage);
+                  }
+                  
+                  return updatedHero;
+                }
+                return h;
+              });
+              heroesRef.current = updated;
+              return updated;
+            });
+            
+            // Play hurt animation
+            const heroRef = getHeroSpriteRef(hero.id);
+            if (heroRef.current && newHp > 0) {
+              heroRef.current.playAnimation('hurt');
+            } else if (newHp <= 0) {
+              setTimeout(() => {
+                if (heroRef.current) {
+                  heroRef.current.playAnimation('death');
+                }
+              }, 200);
+            }
+            
+            // Show damage SCT
+            const heroElement = document.querySelector(`[data-hero-id="${hero.id}"]`);
+            if (heroElement) {
+              const rect = heroElement.getBoundingClientRect();
+              addSCT(`-${actualDamage}`, rect.left + rect.width / 2, rect.top + 20, 'damage');
+            }
+            
+            console.log(`[Combat] 🌑 ${enemy.name} → ${hero.name}: ${actualDamage} shadow damage (${newHp}/${hero.maxHp} HP)`);
+          }, index * 100); // Stagger AOE hits slightly
+        });
+        
+        return; // AOE attack complete
+      }
+      
+      // Check if target hero is still alive (for single target attacks)
       const targetHeroCheck = heroesRef.current.find(h => h.id === action.targetId);
       if (!targetHeroCheck || targetHeroCheck.hp <= 0 || targetHeroCheck.isDead) {
         console.log(`[Combat] ⏭️ Skipping enemy attack - target ${action.targetName} is dead!`);
@@ -4497,11 +5048,15 @@ export default function CleanBattlefieldSource() {
           // Track damage blocked by tank abilities
           if (blockedByAbilities > 0) {
             updatedTarget.stats.damageBlocked = (updatedTarget.stats.damageBlocked || 0) + blockedByAbilities;
+            // QUEST TRACKING: Track blocked damage
+            trackQuest(target.id, 'blockDamage', blockedByAbilities);
           }
           
           // Track damage blocked by shields (healer shields)
           if (shieldDamage > 0) {
             updatedTarget.stats.damageBlocked = (updatedTarget.stats.damageBlocked || 0) + shieldDamage;
+            // QUEST TRACKING: Track blocked damage
+            trackQuest(target.id, 'blockDamage', shieldDamage);
           }
           
           updatedHeroes[targetIndex] = updatedTarget;
@@ -4698,10 +5253,28 @@ export default function CleanBattlefieldSource() {
       const currentHeroes = heroesRef.current;
       const currentEnemies = enemiesRef.current;
       
+      console.log(`[Combat] 🎯 checkCombatVictory called - gameMode: ${gameMode}, inCombat: ${inCombat}, combatInProgress: ${combatInProgress.current}`);
+      console.log(`[Combat] Current enemies: ${currentEnemies.length} total`);
+      currentEnemies.forEach((e, i) => {
+        console.log(`[Combat]   Enemy ${i}: ${e.name}, hp: ${e.hp}, isDead: ${e.isDead}`);
+      });
+      
       // CRITICAL: Skip victory check if combat is not in progress (prevents false victories during room transitions)
+      // BUT: In dungeon mode, if all enemies are dead, we should still check (might be a timing issue)
       if (!inCombat || !combatInProgress.current) {
         console.log('[Combat] ⏭️ Skipping victory check - combat not in progress');
-        return;
+        // In dungeon mode, if all enemies are dead, force the check anyway
+        if (gameMode === 'dungeon' && currentEnemies.length > 0) {
+          const aliveEnemies = currentEnemies.filter(e => e.hp > 0 && !e.isDead);
+          if (aliveEnemies.length === 0) {
+            console.log('[Combat] ⚠️ Dungeon mode: All enemies dead but combat not in progress - forcing victory check anyway');
+            // Continue to victory logic below
+          } else {
+            return;
+          }
+        } else {
+          return;
+        }
       }
       
       // Filter out dead enemies (HP <= 0 or isDead flag)
@@ -4757,7 +5330,7 @@ export default function CleanBattlefieldSource() {
                 
                 // Update instance data in Firebase to trigger room change
                 if (instanceData.id) {
-                  import('firebase/firestore').then(({ doc, updateDoc }) => {
+                  import('firebase/firestore').then(({ doc, updateDoc, getDoc }) => {
                     const nextRoom = currentRoom + 1;
                     console.log(`[Dungeon] 🔧 Updating Firebase: currentRoom ${currentRoom} -> ${nextRoom}, status should remain 'active'`);
                     updateDoc(doc(db, 'dungeonInstances', instanceData.id), {
@@ -4767,7 +5340,22 @@ export default function CleanBattlefieldSource() {
                     }).then(() => {
                       console.log(`[Dungeon] ✅ Advanced to room ${nextRoom + 1} (currentRoom index: ${nextRoom})`);
                       console.log(`[Dungeon] 🔍 Status should be 'active' - instance listener should still find this dungeon`);
-                      // Instance listener will detect the change and re-run dungeon setup useEffect
+                      
+                      // Force update instanceData to trigger useEffect immediately
+                      // The onSnapshot listener should also detect this, but this ensures it happens
+                      setTimeout(() => {
+                        console.log(`[Dungeon] 🔄 Manually refreshing instanceData to trigger next room...`);
+                        // Re-fetch the instance to get updated currentRoom
+                        getDoc(doc(db, 'dungeonInstances', instanceData.id)).then((snapshot) => {
+                          if (snapshot.exists()) {
+                            const updatedData = { id: snapshot.id, ...snapshot.data() };
+                            console.log(`[Dungeon] 📥 Updated instanceData with new currentRoom:`, updatedData.currentRoom);
+                            setInstanceData(updatedData);
+                          }
+                        }).catch(err => {
+                          console.error('[Dungeon] Failed to refresh instanceData:', err);
+                        });
+                      }, 500); // Small delay to ensure Firebase write completes
                     }).catch(err => {
                       console.error('[Dungeon] Failed to advance room:', err);
                     });
@@ -4806,7 +5394,7 @@ export default function CleanBattlefieldSource() {
                 updateDoc(doc(db, 'dungeonInstances', instanceData.id), {
                   status: 'completed',
                   completedAt: new Date(),
-                  currentRoom: currentRoom + 1
+                  currentRoom: currentRoom  // Keep currentRoom at the last valid room, don't increment
                 }).then(() => {
                   console.log(`[Dungeon] ✅ Marked dungeon as complete - listener will return to idle mode`);
                   // Party status will be reset by backend when instance completes
@@ -4834,6 +5422,125 @@ export default function CleanBattlefieldSource() {
             
             // Grant dungeon completion rewards (from dungeon definition)
             // TODO: Get rewards from dungeon definition and grant them
+          }
+        }
+        
+        // RAID MODE: Check if we need to advance to next wave or complete raid
+        if (gameMode === 'raid' && instanceData) {
+          const currentWave = instanceData.currentWave || 0;
+          const totalWaves = instanceData.waves || 3;
+          const isBossWave = currentWave === totalWaves - 1;
+          
+          console.log(`[Raid] ✅ Wave ${currentWave + 1}/${totalWaves} cleared!`);
+          
+          if (isBossWave) {
+            // Final wave (boss) defeated - raid complete!
+            console.log(`[Raid] 🎉 RAID COMPLETE!`);
+            
+            // Clear combat state
+            setEnemies([]);
+            enemiesRef.current = [];
+            setInCombat(false);
+            combatInProgress.current = false;
+            
+            // Mark raid as complete in Firebase
+            if (instanceData.id) {
+              import('firebase/firestore').then(({ doc, updateDoc }) => {
+                updateDoc(doc(db, 'raidInstances', instanceData.id), {
+                  status: 'completed',
+                  completedAt: new Date(),
+                  currentWave: currentWave + 1
+                }).then(() => {
+                  console.log(`[Raid] ✅ Marked raid as complete`);
+                }).catch(err => {
+                  console.error('[Raid] Failed to mark complete:', err);
+                  // Clear state anyway to prevent hanging
+                  setTimeout(() => {
+                    setEnemies([]);
+                    enemiesRef.current = [];
+                    setInCombat(false);
+                    combatInProgress.current = false;
+                  }, 2000);
+                });
+              });
+            } else {
+              // No instance ID - clear state anyway
+              console.warn('[Raid] No instance ID, clearing state anyway');
+              setTimeout(() => {
+                setEnemies([]);
+                enemiesRef.current = [];
+                setInCombat(false);
+                combatInProgress.current = false;
+              }, 2000);
+            }
+            
+            return; // Don't grant XP/loot yet - wait for completion
+          } else {
+            // Not final wave - advance to next wave
+            console.log(`[Raid] 🚪 Advancing to wave ${currentWave + 2}/${totalWaves}...`);
+            console.log(`[Raid] Current instanceData:`, { id: instanceData.id, currentWave, totalWaves });
+            console.log(`[Raid] currentInstanceId:`, currentInstanceId);
+            
+            // CRITICAL: Stop combat IMMEDIATELY and clear enemies
+            // This prevents combat from continuing with dead enemies
+            combatInProgress.current = false;
+            setInCombat(false);
+            setEnemies([]);
+            enemiesRef.current = [];
+            
+            // Clear any pending combat rounds
+            if (combatRoundTimeoutRef.current) {
+              clearTimeout(combatRoundTimeoutRef.current);
+              combatRoundTimeoutRef.current = null;
+              console.log('[Raid] 🧹 Cleared pending combat round timeout');
+            }
+            
+            // Update Firebase to advance wave (this will trigger useEffect to spawn next wave)
+            const instanceId = instanceData.id || currentInstanceId;
+            if (instanceId) {
+              import('firebase/firestore').then(({ doc, updateDoc }) => {
+                const nextWave = currentWave + 1;
+                console.log(`[Raid] 🔧 Updating Firebase: currentWave ${currentWave} -> ${nextWave} (instanceId: ${instanceId})`);
+                updateDoc(doc(db, 'raidInstances', instanceId), {
+                  currentWave: nextWave,
+                  status: 'active', // Keep status as active
+                  updatedAt: new Date()
+                }).then(() => {
+                  console.log(`[Raid] ✅ Advanced to wave ${nextWave + 1} (currentWave index: ${nextWave})`);
+                  console.log(`[Raid] ⏳ Waiting for instance listener to detect change and trigger raid setup useEffect...`);
+                  
+                  // Force update instanceData to trigger useEffect immediately
+                  // The onSnapshot listener should also detect this, but this ensures it happens
+                  setTimeout(() => {
+                    console.log(`[Raid] 🔄 Manually refreshing instanceData to trigger next wave...`);
+                    // Re-fetch the instance to get updated currentWave
+                    import('firebase/firestore').then(({ doc, getDoc }) => {
+                      getDoc(doc(db, 'raidInstances', instanceId)).then((snapshot) => {
+                        if (snapshot.exists()) {
+                          const updatedData = { id: snapshot.id, ...snapshot.data() };
+                          console.log(`[Raid] 📥 Updated instanceData with new currentWave:`, updatedData.currentWave);
+                          setInstanceData(updatedData);
+                        }
+                      }).catch(err => {
+                        console.error('[Raid] Failed to refresh instanceData:', err);
+                      });
+                    });
+                  }, 500); // Small delay to ensure Firebase write completes
+                }).catch(err => {
+                  console.error('[Raid] ❌ Failed to advance wave:', err);
+                  // Even if update fails, try to manually trigger next wave after delay
+                  setTimeout(() => {
+                    console.log('[Raid] ⚠️ Firebase update failed, but continuing anyway...');
+                  }, 2000);
+                });
+              });
+            } else {
+              console.error('[Raid] ⚠️ No instance ID available! Cannot advance wave.');
+              console.error('[Raid] instanceData:', instanceData);
+              console.error('[Raid] currentInstanceId:', currentInstanceId);
+            }
+            
+            return; // Don't grant XP/loot yet - wait for next wave
           }
         }
         
@@ -5194,108 +5901,93 @@ export default function CleanBattlefieldSource() {
           }
         });
         
-        // RAID MODE: Check if we need to progress to next wave
-        if (gameMode === 'raid' && instanceData) {
-          const currentWave = instanceData.currentWave || 0;
-          const totalWaves = instanceData.waves || 5;
+        // Note: Raid wave progression is handled above (lines 4849-4929) and returns early
+        // This section is only reached for idle/dungeon modes
+        // IDLE MODE: Normal victory - clear combat state immediately and spawn next wave
+        if (gameMode === 'idle') {
+          // Clear combat state IMMEDIATELY (don't wait for loot animations)
+          console.log('[Idle Mode] ✅ Wave complete! Clearing combat state...');
+          setEnemies([]);
+          enemiesRef.current = [];
+          setInCombat(false);
+          combatInProgress.current = false;
           
-          // If not final wave, progress to next wave
-          if (currentWave < totalWaves - 1) {
-            console.log(`[Raid Waves] ✅ Wave ${currentWave + 1} complete! Moving to wave ${currentWave + 2}...`);
-            
-            // Clear combat state FIRST (remove all wave enemies before boss!)
-            console.log(`[Raid Waves] 🧹 Clearing ${enemiesRef.current.length} enemies before next wave...`);
-            setEnemies([]);
-            enemiesRef.current = [];
-            setInCombat(false);
-            combatInProgress.current = false;
-            
-            console.log('[Raid Waves] ⏳ Enemies cleared! Updating wave in 500ms...');
-            
-            // Update wave in Firebase AFTER clearing (triggers raid setup to create new enemies)
-            setTimeout(() => {
-              // Show wave announcement
-              setShowWaveAnnouncement(true);
-              setTimeout(() => setShowWaveAnnouncement(false), 2000);
-              
-              if (currentInstanceId) {
-                const instanceRef = doc(db, 'raidInstances', currentInstanceId);
-                import('firebase/firestore').then(({ updateDoc }) => {
-                  updateDoc(instanceRef, {
-                    currentWave: currentWave + 1
-                  }).then(() => {
-                    console.log(`[Raid Waves] ✅ Updated to wave ${currentWave + 2} in Firebase - raid setup should trigger!`);
-                  }).catch(err => {
-                    console.error('[Raid Waves] ❌ Failed to update wave:', err);
-                  });
-                });
-              }
-            }, 500);
-          }
-          // Final wave complete - raid victory handled above
-          else {
-            console.log('[Raid] 🎊 RAID COMPLETE! Returning to idle...');
-            
-            // QUEST TRACKING: Track raid completion for all alive heroes
-            const aliveHeroes = currentHeroes.filter(h => !h.isDead && h.hp > 0);
-            aliveHeroes.forEach(hero => {
-              trackQuest(hero.id, 'completeRaids', 1);
-            });
-            
-            // Update raid status to "completed" in Firebase to trigger mode switch back to idle
-            if (instanceData?.id) {
-              import('firebase/firestore').then(({ doc, updateDoc }) => {
-                updateDoc(doc(db, 'raidInstances', instanceData.id), {
-                  status: 'completed',
-                  completedAt: new Date()
-                }).then(() => {
-                  console.log('[Raid] ✅ Raid status updated to "completed" in Firebase');
-                }).catch(err => {
-                  console.error('[Raid] ❌ Failed to update raid status:', err);
-                });
-              });
+          // Spawn next wave after loot animations complete
+          setTimeout(() => {
+            console.log('[Idle Mode] 🎮 Spawning next wave...');
+            // Use the existing adventureTick function to handle wave progression
+            // This will properly call spawnEnemies, handleTreasure, or handleGathering
+            if (adventureTickRef.current) {
+              adventureTickRef.current();
+            } else {
+              console.warn('[Idle Mode] ⚠️ adventureTick not available, spawning enemies directly');
+              // Fallback: spawn enemies directly if adventureTick not available
+              const isBossWave = (waveCount + 1) % 10 === 0;
+              setWaveCount(prev => prev + 1);
+              setTimeout(() => {
+                // We need to access spawnEnemies - this is a workaround
+                // In practice, adventureTickRef should always be available
+                console.log('[Idle Mode] Using fallback spawn - adventureTick should be set');
+              }, 100);
             }
-            
+          }, 2000); // Delay to allow loot animations to complete
+        }
+      } else if (aliveHeroes.length === 0) {
+        // TOTAL PARTY WIPE - Handle differently for raid/dungeon vs idle
+        console.log('[Combat] 💀 TOTAL PARTY WIPE! All heroes died.');
+        
+        // RAID/DUNGEON MODE: Mark instance as failed and return to idle
+        if ((gameMode === 'raid' || gameMode === 'dungeon') && instanceData) {
+          console.log(`[${gameMode === 'raid' ? 'Raid' : 'Dungeon'}] 💀 Party wipe! Marking instance as failed...`);
+          
+          // Clear combat state
+          setEnemies([]);
+          enemiesRef.current = [];
+          setInCombat(false);
+          combatInProgress.current = false;
+          
+          // Mark instance as failed in Firebase (this will trigger listener to return to idle)
+          const instanceId = instanceData.id || currentInstanceId;
+          if (instanceId) {
+            const collection = gameMode === 'raid' ? 'raidInstances' : 'dungeonInstances';
+            import('firebase/firestore').then(({ doc, updateDoc }) => {
+              updateDoc(doc(db, collection, instanceId), {
+                status: 'failed',
+                failedAt: new Date(),
+                failureReason: 'Party wipe - all heroes died'
+              }).then(() => {
+                console.log(`[${gameMode === 'raid' ? 'Raid' : 'Dungeon'}] ✅ Marked as failed - returning to idle mode`);
+                // Instance listener will detect status change and return to idle
+              }).catch(err => {
+                console.error(`[${gameMode === 'raid' ? 'Raid' : 'Dungeon'}] Failed to mark as failed:`, err);
+                // Even if Firebase update fails, clear state and return to idle
+                setTimeout(() => {
+                  setEnemies([]);
+                  enemiesRef.current = [];
+                  setInCombat(false);
+                  combatInProgress.current = false;
+                  setInstanceData(null);
+                  setGameMode('idle');
+                }, 2000);
+              });
+            });
+          } else {
+            // No instance ID - clear state and return to idle anyway
+            console.warn(`[${gameMode === 'raid' ? 'Raid' : 'Dungeon'}] No instance ID, clearing state and returning to idle`);
             setTimeout(() => {
               setEnemies([]);
               enemiesRef.current = [];
               setInCombat(false);
               combatInProgress.current = false;
-            }, 5000); // 5s delay to show victory
+              setInstanceData(null);
+              setGameMode('idle');
+            }, 2000);
           }
+          
+          return; // Don't continue with idle mode wipe logic
         }
-        // IDLE MODE: Normal victory - spawn next wave after loot
-        else if (gameMode === 'idle') {
-          setTimeout(() => {
-            setEnemies([]);
-            enemiesRef.current = [];
-            setInCombat(false);
-            combatInProgress.current = false;
-            
-            // Spawn next wave after a brief delay using adventureTick
-            console.log('[Idle Mode] ✅ Wave complete! Spawning next wave...');
-            setTimeout(() => {
-              // Use the existing adventureTick function to handle wave progression
-              // This will properly call spawnEnemies, handleTreasure, or handleGathering
-              if (adventureTickRef.current) {
-                adventureTickRef.current();
-              } else {
-                console.warn('[Idle Mode] ⚠️ adventureTick not available, spawning enemies directly');
-                // Fallback: spawn enemies directly if adventureTick not available
-                const isBossWave = (waveCount + 1) % 10 === 0;
-                setWaveCount(prev => prev + 1);
-                setTimeout(() => {
-                  // We need to access spawnEnemies - this is a workaround
-                  // In practice, adventureTickRef should always be available
-                  console.log('[Idle Mode] Using fallback spawn - adventureTick should be set');
-                }, 100);
-              }
-            }, 500); // Brief delay before spawning next wave
-          }, 1000);
-        }
-      } else if (aliveHeroes.length === 0) {
-        // TOTAL PARTY WIPE - Resurrect all heroes, clear enemies, lower difficulty
-        console.log('[Combat] 💀 TOTAL PARTY WIPE! All heroes died.');
+        
+        // IDLE MODE: Resurrect all heroes, clear enemies, lower difficulty
         console.log('[Combat] Sending party to camp...');
         
         setTimeout(() => {
@@ -5644,20 +6336,21 @@ export default function CleanBattlefieldSource() {
 
   // Step 8: Hero resurrection system (auto-res after 60 seconds)
   useEffect(() => {
-    if (!heroes || heroes.length === 0) return;
-    
     // Prevent duplicate resurrection intervals
     if (resIntervalRef.current) {
       return;
     }
 
     const resInterval = setInterval(() => {
+      // FIX: Use heroesRef.current instead of heroes state to get latest heroes
+      const currentHeroes = heroesRef.current;
+      if (!currentHeroes || currentHeroes.length === 0) return;
       
       const now = Date.now();
       
       // Update resurrection timers for display
       const newTimers: Record<string, number> = {};
-      heroes.forEach(hero => {
+      currentHeroes.forEach(hero => {
         if (hero.isDead && hero.deathTime) {
           const timeRemaining = Math.max(0, 60000 - (now - hero.deathTime));
           newTimers[hero.id] = timeRemaining;
@@ -5671,7 +6364,7 @@ export default function CleanBattlefieldSource() {
         const updated = currentHeroes.map(hero => {
           // Check if hero is dead and resurrection time has passed
           if (hero.isDead && hero.deathTime && (now - hero.deathTime >= 60000)) {
-            console.log(`[Resurrection] ✨ ${hero.name} resurrected with 50% HP!`);
+            console.log(`[Resurrection] ✨ ${hero.name} auto-resurrected with 50% HP!`);
             anyResurrected = true;
             
             // Resurrect with 50% HP
@@ -5681,24 +6374,23 @@ export default function CleanBattlefieldSource() {
             setTimeout(() => {
               const heroRef = getHeroSpriteRef(hero.id);
               if (heroRef.current) {
-                console.log(`[Resurrection] Playing idle animation for ${hero.name}`);
-                heroRef.current.playAnimation('idle');
+                try {
+                  heroRef.current.playAnimation('idle');
+                  console.log(`[Resurrection] 🎬 ${hero.name} returned to idle animation (auto-res)`);
+                } catch (err) {
+                  console.warn(`[Resurrection] ⚠️ Could not play idle animation for ${hero.name}:`, err);
+                }
               } else {
-                console.warn(`[Resurrection] No sprite ref for ${hero.name}`);
+                console.warn(`[Resurrection] ⚠️ No sprite ref for ${hero.name}`);
               }
             }, 100);
-            
-            // Also try immediate animation reset
-            const heroRef = getHeroSpriteRef(hero.id);
-            if (heroRef.current) {
-              heroRef.current.playAnimation('idle');
-            }
             
             return {
               ...hero,
               isDead: false,
               deathTime: undefined,
-              hp: resHp
+              hp: resHp,
+              activeDebuffs: {} // Clear debuffs on resurrection
             };
           }
           return hero;
@@ -5721,7 +6413,7 @@ export default function CleanBattlefieldSource() {
         resIntervalRef.current = null;
       }
     };
-  }, []); // No dependencies - only runs once on mount
+  }, []); // No dependencies - only runs once on mount, uses heroesRef.current inside
 
   // Buff expiration system (clean up expired buffs)
   useEffect(() => {
@@ -6500,46 +7192,98 @@ export default function CleanBattlefieldSource() {
     };
   };
 
-  // Auto-position enemies horizontally (right side, spread apart)
-  const getEnemyPosition = (index: number, total: number, isBoss: boolean = false) => {
+  // Unified enemy positioning function - works consistently across idle, raid, and dungeon modes
+  const getEnemyPosition = (index: number, total: number, isBoss: boolean = false, enemyType?: string, gameMode?: string, heroes?: Hero[]) => {
     const screenWidth = 1920;
     const screenHeight = 1080;
     
-    // Boss positioning: align with hero Y position (same as heroes use)
-    // Heroes use: baseY = 935px with stagger, so lowest is around 965px
-    // But we should use the same base Y as heroes for consistency
+    // UNIFIED horizontal positioning - same across all modes
+    const heroZoneEnd = screenWidth * 0.6; // 1152px (end of hero zone)
+    const leftMargin = 150; // Consistent distance from hero zone to prevent clipping
+    const rightMargin = 150; // Buffer for sprite width (sprites at 3.0x scale can be ~120px wide)
+    
+    // Idle mode: move enemies further to the right
+    const idleModeOffset = gameMode === 'idle' ? 150 : 0; // Move idle enemies 150px to the right
+    
+    // Calculate horizontal position (spread evenly, never exceed screen bounds)
+    const enemyStartX = heroZoneEnd + leftMargin + idleModeOffset; // 1452px for idle mode (1302px + 150px), 1302px for other modes
+    const maxX = screenWidth - rightMargin; // 1770px max (same for all modes)
+    
+    // Calculate available width based on actual start and end positions
+    // This ensures proper spacing regardless of idle mode offset
+    const availableEnemyWidth = maxX - enemyStartX; // Actual available space for enemies
+    
+    // Spread enemies evenly across the available width
+    // For multiple enemies, space them evenly from start to end
+    const spacing = total > 1 ? availableEnemyWidth / (total - 1) : 0;
+    const x = enemyStartX + (index * spacing);
+    
+    // Ensure enemies don't go off-screen (clamp to safe bounds)
+    const minX = enemyStartX;
+    const clampedX = Math.max(minX, Math.min(x, maxX));
+    
+    // UNIFIED vertical positioning logic
+    const spriteHeight = 240; // Sprite height at 3.0x scale
+    const buffer = 20; // Bottom buffer
+    
+    let y: number;
+    
     if (isBoss) {
-      const heroBaseY = 935; // Same base Y as heroes
-      const heroStagger = 30; // Same stagger as heroes
-      const bossY = heroBaseY + heroStagger; // 965px - aligned with lowest hero
+      // Boss positioning: special handling for Corrupted High Priest
+      const isCorruptedHighPriest = enemyType === 'Corrupted High Priest';
+      
+      // In dungeon mode, align boss lower than regular enemies (1.5 inches = ~144px more down)
+      if (gameMode === 'dungeon') {
+        // Bosses positioned lower than regular enemies (1.5 inches lower)
+        const downOffset = 140 + 144; // 140px (same as regular enemies) + 144px (1.5 inches) = 284px
+        y = screenHeight - spriteHeight - buffer + downOffset; // ~1104px - positioned lower
+      } else if (gameMode === 'idle') {
+        // Idle mode: ALL bosses align with heroes (same as regular enemies)
+        const downOffset = 96; // Same as heroes and regular enemies
+        y = screenHeight - spriteHeight - buffer + downOffset; // ~916px - consistent alignment
+      } else {
+        // Raid mode: Corrupted High Priest aligned with heroes, other bosses lower
+        const downOffset = isCorruptedHighPriest ? 96 : 192;
+        y = screenHeight - spriteHeight - buffer + downOffset; // Corrupted High Priest: ~916px, Others: ~1012px
+      }
+      
+      // Boss horizontal positioning: ensure it's always to the right of hero zone
+      // Use the same enemyStartX calculation as regular enemies to prevent overlap
+      // Bosses are typically positioned further right than regular enemies
+      const bossLeftOffset = 200; // Additional offset for bosses to position them further right
+      const bossX = enemyStartX + bossLeftOffset; // Position boss further right than regular enemies
+      
+      // Ensure boss never overlaps with hero zone (hero zone ends at heroZoneEnd = 1152px)
+      const minBossX = heroZoneEnd + leftMargin; // Minimum safe position: 1302px (or 1452px for idle)
+      const safeBossX = Math.max(bossX, minBossX);
+      
+      // Clamp to screen bounds
+      const clampedBossX = Math.min(safeBossX, screenWidth - rightMargin);
       
       return {
-        left: '1400px', // Further right for massive Elder Dragon (more space from heroes)
-        top: `${bossY}px` // Aligned with hero Y position
+        left: `${clampedBossX}px`, // Boss positioned safely to the right of hero zone
+        top: `${y}px`
       };
     }
     
-    // Regular enemies: right 2/5 of screen (1152px to 1920px = 768px width)
-    const heroZoneEnd = screenWidth * 0.6; // 1152px (end of hero zone)
-    const enemyZoneWidth = screenWidth * 0.4; // 768px (enemy zone)
-    const leftMargin = 80; // Distance from hero zone
-    const rightMargin = 150; // Increased buffer for sprite width (sprites at 3.0x scale can be ~120px wide)
-    const availableEnemyWidth = enemyZoneWidth - leftMargin - rightMargin; // ~538px for enemies
+    // Regular enemies: consistent positioning based on enemy type
+    // NO STAGGER - all enemies align at the same Y position
+    const isCultist = enemyType === 'Cultist';
     
-    // Calculate horizontal position (spread evenly, never exceed screen bounds)
-    const enemyStartX = heroZoneEnd + leftMargin; // 1232px
-    const spacing = total > 1 ? Math.min(200, availableEnemyWidth / (total - 1)) : 0;
-    const x = enemyStartX + (index * spacing);
-    
-    // Safety check: ensure enemy never goes past right edge (with extra buffer for sprite width)
-    const maxX = screenWidth - rightMargin; // 1770px max (ensures sprite doesn't overflow)
-    const finalX = Math.min(x, maxX);
-    
-    // Vertical position - aligned with lowest hero (935 + 30 = 965px, moved down ~1/3 inch from 930px)
-    const y = 965;
+    // For idle mode: all enemies align with heroes (same as hero baseY)
+    // For raid/dungeon: cultists get extra downOffset
+    if (gameMode === 'idle') {
+      // All enemies align with heroes in idle mode - NO STAGGER
+      const downOffset = 96; // Same as heroes
+      y = screenHeight - spriteHeight - buffer + downOffset; // ~916px - consistent for all
+    } else {
+      // Raid/Dungeon: cultists moved down more, regular enemies lowered for dungeon
+      const downOffset = isCultist ? 192 : (gameMode === 'dungeon' ? 140 : 96); // Dungeon: ~960px, Raid: ~916px, Cultists: ~1012px
+      y = screenHeight - spriteHeight - buffer + downOffset;
+    }
     
     return {
-      left: `${finalX}px`,
+      left: `${clampedX}px`,
       top: `${y}px`
     };
   };
@@ -6576,22 +7320,15 @@ export default function CleanBattlefieldSource() {
     
     const x = leftMargin + (sortedIndex * spacing);
     
-    // Vertical stagger - adjusted for dungeon to prevent clipping with 2 heroes
-    // Sprite height scaled 3.0x ~= 240px, UI above ~= 100px, total ~= 340px
-    // Max safe Y position: 1080 - 240 (sprite) - 20 (buffer) = 820px
+    // Vertical positioning - align at bottom (NO STAGGER for dungeon)
+    // Sprite height scaled 3.0x ~= 240px
     const spriteHeight = 240;
-    const maxSafeY = 1080 - spriteHeight - 20; // 820px
+    const buffer = 20;
+    const downOffset = 140; // Lower than idle adventure for better dungeon positioning
+    const baseY = screenHeight - spriteHeight - buffer + downOffset; // ~960px - lowered for dungeon
     
-    const baseY = 800; // Adjusted for dungeon to prevent clipping
-    const staggerAmount = heroCount > 2 ? 25 : 15; // Smaller stagger for 2 heroes
-    
-    // Calculate Y position with stagger, ensuring it doesn't exceed maxSafeY
-    let y = sortedIndex % 2 === 0 
-      ? baseY - staggerAmount // Even index: slightly higher
-      : baseY + staggerAmount; // Odd index: slightly lower
-    
-    // Ensure we don't exceed screen bounds
-    y = Math.min(y, maxSafeY);
+    // NO STAGGER - all heroes align at the same Y position as enemies
+    const y = baseY;
     
     return {
       left: `${x}px`,
@@ -6599,51 +7336,10 @@ export default function CleanBattlefieldSource() {
     };
   };
   
-  // Dungeon-specific enemy positioning (aligned with dungeon heroes)
+  // DEPRECATED: Use getEnemyPosition with gameMode parameter instead
+  // Kept for backward compatibility - redirects to unified function
   const getDungeonEnemyPosition = (index: number, total: number, isBoss: boolean = false, heroes?: Hero[]) => {
-    const screenWidth = 1920;
-    
-    if (isBoss) {
-      // Align boss with center of hero group
-      let bossY = 800; // Default to baseY
-      if (heroes && heroes.length > 0) {
-        // Calculate average Y position of heroes
-        const heroPositions = heroes.map((hero, idx) => {
-          const position = getDungeonHeroPosition(hero, idx, heroes);
-          // Extract Y value from "XXXpx" string
-          const yValue = parseInt(position.top.replace('px', ''));
-          return yValue;
-        });
-        const avgY = Math.floor(heroPositions.reduce((sum, y) => sum + y, 0) / heroPositions.length);
-        bossY = avgY;
-      }
-      return {
-        left: '1400px',
-        top: `${bossY}px`
-      };
-    }
-    
-    // Regular enemies: right 2/5 of screen
-    const heroZoneEnd = screenWidth * 0.6;
-    const enemyZoneWidth = screenWidth * 0.4;
-    const leftMargin = 80;
-    const rightMargin = 150;
-    const availableEnemyWidth = enemyZoneWidth - leftMargin - rightMargin;
-    
-    const enemyStartX = heroZoneEnd + leftMargin;
-    const spacing = total > 1 ? Math.min(200, availableEnemyWidth / (total - 1)) : 0;
-    const x = enemyStartX + (index * spacing);
-    
-    const maxX = screenWidth - rightMargin;
-    const finalX = Math.min(x, maxX);
-    
-    // Aligned with dungeon hero baseY
-    const y = 800;
-    
-    return {
-      left: `${finalX}px`,
-      top: `${y}px`
-    };
+    return getEnemyPosition(index, total, isBoss, undefined, 'dungeon', heroes);
   };
 
   // Auto-position heroes horizontally with vertical stagger
@@ -6651,8 +7347,55 @@ export default function CleanBattlefieldSource() {
   const getHeroPosition = (hero: Hero, index: number, allHeroes: Hero[]) => {
     const screenHeight = 1080;
     
+    // Minions should be positioned near their summoner
+    if ((hero as any).isMinion && (hero as any).summonerId) {
+      const summoner = allHeroes.find(h => h.id === (hero as any).summonerId && !(h as any).isMinion);
+      if (summoner) {
+        // Find summoner's position without recursion (calculate directly)
+        const nonMinionHeroes = allHeroes.filter(h => !(h as any).isMinion);
+        const sortedHeroes = [...nonMinionHeroes].sort((a, b) => {
+          const aIsTank = isTankRole(a.role);
+          const bIsTank = isTankRole(b.role);
+          const aIsHealer = isHealerRole(a.role);
+          const bIsHealer = isHealerRole(b.role);
+          if (aIsTank && !bIsTank) return 1;
+          if (!aIsTank && bIsTank) return -1;
+          if (aIsHealer && !bIsHealer && !bIsTank) return -1;
+          if (!aIsHealer && bIsHealer && !aIsTank) return 1;
+          return 0;
+        });
+        const summonerSortedIndex = sortedHeroes.findIndex(h => h.id === summoner.id);
+        
+        // Calculate summoner position
+        const screenWidth = 1920;
+        const maxHeroWidth = screenWidth * 0.6;
+        const leftMargin = 60;
+        const availableWidth = maxHeroWidth - leftMargin - 80;
+        const heroCount = sortedHeroes.length;
+        const spacing = heroCount > 1 ? Math.min(140, availableWidth / (heroCount - 1)) : 140;
+        const summonerX = leftMargin + (summonerSortedIndex * spacing);
+        
+        const screenHeight = 1080;
+        const spriteHeight = 240;
+        const buffer = 20;
+        const downOffset = 96;
+        const baseY = screenHeight - spriteHeight - buffer + downOffset;
+        const staggerAmount = 30;
+        const summonerY = summonerSortedIndex % 2 === 0 ? baseY : baseY - staggerAmount;
+        
+        // Position minion slightly to the right of summoner
+        const minionLeft = summonerX + 80; // 80px to the right of summoner
+        return {
+          left: `${minionLeft}px`,
+          top: `${summonerY}px` // Same Y position as summoner
+        };
+      }
+    }
+    
     // Sort heroes: DPS/Healers on left, tanks on RIGHT (closest to enemies)
-    const sortedHeroes = [...allHeroes].sort((a, b) => {
+    // Exclude minions from sorting (they'll be positioned relative to summoner)
+    const nonMinionHeroes = allHeroes.filter(h => !(h as any).isMinion);
+    const sortedHeroes = [...nonMinionHeroes].sort((a, b) => {
       const aIsTank = isTankRole(a.role);
       const bIsTank = isTankRole(b.role);
       const aIsHealer = isHealerRole(a.role);
@@ -6679,14 +7422,18 @@ export default function CleanBattlefieldSource() {
     
     const x = leftMargin + (sortedIndex * spacing);
     
-    // Vertical stagger - FEET AT BOTTOM for OBS overlay
-    // Sprite height scaled 3.0x ~= 240px, UI above ~= 100px, total ~= 340px
-    // Positioned to ensure all heroes fit on 1080px canvas
-    const baseY = 935; // Safe bottom position (moved down ~1/3 inch from 900px)
-    const staggerAmount = 30; // Vertical offset (reduced to fit on screen)
+    // Vertical stagger - simple alternating pattern (bottom, higher, bottom, higher...)
+    // Sprite height scaled 3.0x ~= 240px, UI above ~= 100px
+    const spriteHeight = 240; // Sprite height at 3.0x scale
+    const buffer = 20; // Bottom buffer
+    const downOffset = 96; // Move down about 1 inch (same as enemies)
+    const baseY = screenHeight - spriteHeight - buffer + downOffset; // ~916px base position (moved down)
+    
+    // Simple alternating stagger: even index = bottom, odd index = higher
+    const staggerAmount = 30; // Vertical offset between alternating rows
     const y = sortedIndex % 2 === 0 
-      ? baseY - staggerAmount // Even index: slightly higher
-      : baseY + staggerAmount; // Odd index: slightly lower
+      ? baseY // Even index (0, 2, 4...): bottom position
+      : baseY - staggerAmount; // Odd index (1, 3, 5...): higher position
     
     return {
       left: `${x}px`,
@@ -6802,11 +7549,14 @@ export default function CleanBattlefieldSource() {
           if (!boss) return null;
           
           const bossHpPercent = (boss.hp / boss.maxHp) * 100;
+          // Move Corrupted High Priest healthbar down quite a bit
+          const isCorruptedHighPriest = boss.name === 'Corrupted High Priest' || boss.enemyType === 'Corrupted High Priest';
+          const topPosition = isCorruptedHighPriest ? '600px' : '80px';
           
           return (
             <div style={{
               position: 'absolute',
-              top: '80px',
+              top: topPosition,
               left: '50%',
               transform: 'translateX(-50%)',
               width: '800px', // Narrower to fit on screen better (was 1400px)
@@ -7024,8 +7774,23 @@ export default function CleanBattlefieldSource() {
                       }
                     }
                     
+                    // Shield effect (blue glow) - middle layer
+                    if (hasShield) {
+                      filters.push('drop-shadow(0 0 12px rgba(59, 130, 246, 1))');
+                      filters.push('drop-shadow(0 0 24px rgba(59, 130, 246, 0.7))');
+                      filters.push('drop-shadow(0 0 36px rgba(59, 130, 246, 0.4))');
+                    }
+                    
+                    // Enrage effect (red glow) - top layer
+                    if (isEnraged) {
+                      filters.push('drop-shadow(0 0 12px rgba(239, 68, 68, 1))');
+                      filters.push('drop-shadow(0 0 24px rgba(239, 68, 68, 0.8))');
+                    }
+                    
                     return filters.length > 0 ? filters.join(' ') : 'none';
                   })(),
+                  transform: hero.enrageExpiry && hero.enrageExpiry > Date.now() ? 'scale(1.15)' : 'scale(1)',
+                  transition: 'transform 0.3s ease, filter 0.3s ease'
                 }}
               >
                 <HeroSpriteJS
@@ -7042,9 +7807,9 @@ export default function CleanBattlefieldSource() {
           );
         })}
 
-        {/* Enemies - Use dungeon-specific positioning */}
+        {/* Enemies - Use unified positioning with dungeon mode */}
         {enemies.map((enemy, index) => {
-          const position = getDungeonEnemyPosition(index, enemies.length, enemy.isBoss, heroes);
+          const position = getEnemyPosition(index, enemies.length, enemy.isBoss, enemy.enemyType, 'dungeon', heroes);
           const hpPercent = (enemy.hp / enemy.maxHp) * 100;
           const hasShield = (enemy.shield || 0) > 0;
           
@@ -7120,7 +7885,13 @@ export default function CleanBattlefieldSource() {
                 style={{
                   width: enemy.isBoss ? '1200px' : 'auto',
                   overflow: 'visible',
-                  position: 'relative'
+                  position: 'relative',
+                  // For bosses, ensure bottom alignment
+                  ...(enemy.isBoss ? {
+                    display: 'flex',
+                    alignItems: 'flex-end', // Align sprite to bottom of container
+                    justifyContent: 'center'
+                  } : {})
                 }}
               >
                 <EnemySpriteJS
@@ -7206,11 +7977,14 @@ export default function CleanBattlefieldSource() {
           if (!boss) return null;
           
           const bossHpPercent = (boss.hp / boss.maxHp) * 100;
+          // Move Corrupted High Priest healthbar down quite a bit
+          const isCorruptedHighPriest = boss.name === 'Corrupted High Priest' || boss.enemyType === 'Corrupted High Priest';
+          const topPosition = isCorruptedHighPriest ? '800px' : '250px'; // Positioned just above combat area, not in middle of screen
           
           return (
             <div style={{
               position: 'absolute',
-              top: '250px', // Positioned just above combat area, not in middle of screen
+              top: topPosition,
               left: '50%',
               transform: 'translateX(-50%)',
               width: '700px', // Half of 1400px
@@ -7459,9 +8233,9 @@ export default function CleanBattlefieldSource() {
           );
         })}
         
-        {/* Raid Enemies (Wave mobs OR Boss) - SAME AS IDLE MODE */}
+        {/* Raid Enemies (Wave mobs OR Boss) - Use unified positioning */}
         {enemies.map((enemy, index) => {
-          const position = getEnemyPosition(index, enemies.length, enemy.isBoss);
+          const position = getEnemyPosition(index, enemies.length, enemy.isBoss, enemy.enemyType, 'raid');
           const hpPercent = (enemy.hp / enemy.maxHp) * 100;
           const hasShield = (enemy.shield || 0) > 0;
           
@@ -7804,9 +8578,23 @@ export default function CleanBattlefieldSource() {
                     }
                   }
                   
-                  // Shield and enrage handled by CSS classes, but we can add aura filter on top
+                  // Shield effect (blue glow) - middle layer
+                  if (hasShield) {
+                    filters.push('drop-shadow(0 0 12px rgba(59, 130, 246, 1))');
+                    filters.push('drop-shadow(0 0 24px rgba(59, 130, 246, 0.7))');
+                    filters.push('drop-shadow(0 0 36px rgba(59, 130, 246, 0.4))');
+                  }
+                  
+                  // Enrage effect (red glow) - top layer
+                  if (isEnraged) {
+                    filters.push('drop-shadow(0 0 12px rgba(239, 68, 68, 1))');
+                    filters.push('drop-shadow(0 0 24px rgba(239, 68, 68, 0.8))');
+                  }
+                  
                   return filters.length > 0 ? filters.join(' ') : 'none';
                 })(),
+                transform: hero.enrageExpiry && hero.enrageExpiry > Date.now() ? 'scale(1.15)' : 'scale(1)',
+                transition: 'transform 0.3s ease, filter 0.3s ease'
               }}
             >
               <HeroSpriteJS
@@ -7823,9 +8611,9 @@ export default function CleanBattlefieldSource() {
         );
       })}
 
-      {/* Enemies */}
+      {/* Enemies - Use unified positioning */}
       {enemies && enemies.map((enemy, index) => {
-        const position = getEnemyPosition(index, enemies.length);
+        const position = getEnemyPosition(index, enemies.length, enemy.isBoss || false, enemy.enemyType, 'idle');
         const hpPercent = (enemy.hp / enemy.maxHp) * 100;
         const hasShield = (enemy.shield || 0) > 0;
 

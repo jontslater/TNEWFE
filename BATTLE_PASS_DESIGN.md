@@ -271,3 +271,7 @@ A seasonal progression system that rewards players for playing the game (combat,
 - Complements Founder Packs (one-time) with recurring revenue
 - High engagement driver (daily logins)
 
+
+
+
+

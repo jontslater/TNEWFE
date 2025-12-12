@@ -549,8 +549,6 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
               : `scale(${scale})`,
           transformOrigin: "bottom center", // FEET anchor
           imageRendering: "pixelated",
-          imageRendering: "-moz-crisp-edges",
-          imageRendering: "crisp-edges",
         }}
       >
         <div
@@ -567,8 +565,6 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
             animation: "none",
             backgroundRepeat: "no-repeat",
             imageRendering: "pixelated",
-            imageRendering: "-moz-crisp-edges",
-            imageRendering: "crisp-edges",
             overflow: isGoblin ? "visible" : "hidden", // Goblins need visible for death animations, others use hidden
           }}
         />

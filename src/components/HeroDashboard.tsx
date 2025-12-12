@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Hero } from '../types/Hero';
-import { formatNumber, getRarityColor, getRarityBg, getRoleBg, formatTime, getItemScore } from '../utils/format';
+import { formatNumber, getRarityColor, getRarityBg, getRoleBg, formatTime, getItemScore, formatTimeAgo } from '../utils/format';
 import { useAuth } from '../hooks/useAuth';
 import { heroAPI, achievementAPI } from '../api/client';
 import { NAME_FRAMES, NameFrameType } from '../utils/nameFrames';
@@ -92,6 +92,9 @@ export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: Hero
   const [updatingAuraColor, setUpdatingAuraColor] = useState(false);
   const [tempAuraColor, setTempAuraColor] = useState<string | null>(null);
   const [updatingSpellEffect, setUpdatingSpellEffect] = useState(false);
+  const [claimingRewards, setClaimingRewards] = useState(false);
+  const [claimMessage, setClaimMessage] = useState<string | null>(null);
+  const [lastClaimTime, setLastClaimTime] = useState<number | null>(null);
   const spritePreviewRef = useRef<HTMLDivElement>(null);
   const hpPercent = (hero.hp / hero.maxHp) * 100;
   const xpPercent = (Math.floor(hero.xp) / Math.floor(hero.maxXp)) * 100;
@@ -123,8 +126,26 @@ export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: Hero
     setTempAuraColor(hero.auraColor || null);
   }, [hero.auraColor]);
 
+  // Initialize last claim time from hero data
+  useEffect(() => {
+    if (hero.lastTokenClaim) {
+      // Handle both timestamp (number) and Firestore Timestamp
+      const timestamp = (hero.lastTokenClaim as any)?.toMillis?.() || hero.lastTokenClaim;
+      setLastClaimTime(typeof timestamp === 'number' ? timestamp : null);
+    }
+  }, [hero.lastTokenClaim]);
+
   const loadAchievementsData = async () => {
     try {
+      // First, sync achievements to ensure all achievement titles are unlocked
+      try {
+        await achievementAPI.syncAchievementTitles(hero.id);
+        console.log('[HeroDashboard] ✅ Synced achievement titles');
+      } catch (error) {
+        console.warn('[HeroDashboard] Failed to sync achievements (may not be critical):', error);
+      }
+      
+      // Then load achievement data
       const data = await achievementAPI.getHeroAchievements(hero.id);
       
       console.log('[HeroDashboard] 🎯 Achievement Data:');
@@ -137,11 +158,68 @@ export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: Hero
       if (genocideTitle) console.error('[HeroDashboard] ❌ FOUND GENOCIDE:', genocideTitle);
       
       if (data) {
-        setAvailableTitles(data.titles || []);
+        // Sort titles alphabetically
+        const sortedTitles = (data.titles || []).sort((a, b) => a.localeCompare(b));
+        setAvailableTitles(sortedTitles);
         setSelectedTitle(data.activeTitle || null);
       }
     } catch (error) {
       console.error('Failed to load achievement data:', error);
+    }
+  };
+
+  const handleClaimIdleRewards = async () => {
+    setClaimingRewards(true);
+    setClaimMessage(null);
+    
+    try {
+      const result = await heroAPI.claimIdleRewards(hero.id);
+      
+      if (result.success) {
+        setClaimMessage(result.message || `Claimed ${result.data?.tokensClaimed || 0} tokens!`);
+        // Update last claim time from response
+        if (result.data?.lastTokenClaim) {
+          setLastClaimTime(result.data.lastTokenClaim);
+        }
+        // Refresh hero data
+        if (onHeroUpdate) {
+          // The hero should be refetched from the parent component
+          // For now, we'll show the success message
+          setTimeout(() => {
+            setClaimMessage(null);
+          }, 3000);
+        }
+      } else {
+        setClaimMessage(result.message || 'No tokens available yet');
+        setTimeout(() => {
+          setClaimMessage(null);
+        }, 3000);
+      }
+    } catch (error: any) {
+      console.error('Error claiming idle rewards:', error);
+      // Check if it's a 400 with a message (like "no tokens available")
+      if (error.response?.status === 400 && error.response?.data?.message) {
+        setClaimMessage(error.response.data.message);
+      } else {
+        setClaimMessage(error.response?.data?.error || error.response?.data?.message || 'Failed to claim rewards');
+      }
+      setTimeout(() => {
+        setClaimMessage(null);
+      }, 3000);
+    } finally {
+      setClaimingRewards(false);
+      // Trigger hero refetch if callback provided
+      if (onHeroUpdate && hero) {
+        // Wait a moment then refetch
+        setTimeout(async () => {
+          try {
+            const updatedHero = await heroAPI.getHeroById(hero.id);
+            onHeroUpdate(updatedHero);
+          } catch (err) {
+            console.error('Error refetching hero:', err);
+          }
+        }, 500);
+      }
     }
   };
 
@@ -775,6 +853,37 @@ export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: Hero
                 <div className="text-2xl font-bold text-blue-400">{hero.tokens}</div>
                 <div className="text-xs text-gray-400">Tokens</div>
               </div>
+            </div>
+            {/* Claim Idle Rewards Button */}
+            <div className="mt-2">
+              <button
+                onClick={handleClaimIdleRewards}
+                disabled={claimingRewards}
+                className={`w-full px-3 py-2 text-sm font-semibold rounded transition-colors ${
+                  claimingRewards
+                    ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                    : 'bg-blue-600 hover:bg-blue-700 text-white'
+                }`}
+                title="Claim accumulated idle token rewards"
+                style={{ minHeight: '40px', boxSizing: 'border-box' }}
+              >
+                <span className="inline-flex items-center justify-center w-full">
+                  {claimingRewards ? 'Claiming...' : '💎 Claim Idle Rewards'}
+                </span>
+              </button>
+              {claimMessage && (
+                <div className={`mt-1 text-xs text-center ${
+                  claimMessage.includes('claimed') ? 'text-green-400' : 'text-yellow-400'
+                }`}>
+                  {claimMessage}
+                </div>
+              )}
+              {/* Last Claim Time */}
+              {(lastClaimTime || hero.lastTokenClaim) && (
+                <div className="mt-1 text-xs text-center text-gray-500">
+                  Last claimed {formatTimeAgo(lastClaimTime || (hero.lastTokenClaim as any)?.toMillis?.() || hero.lastTokenClaim)}
+                </div>
+              )}
             </div>
             {/* Founder Pack Earning Boosts */}
             {heroTier && (

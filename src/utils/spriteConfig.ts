@@ -358,6 +358,33 @@ export const HERO_SPRITES: Record<string, {
       walk: '/Sprites/Heroes/HeroSprites/Pyromancer 2D Pixel Art/Sprites/WALK.png'
     }
   },
+  // Skeleton minions (necromancer summons)
+  'skeleton-minion-yellow': {
+    sprite: '/Sprites/Heroes/HeroSprites/Skeleton_Sword/Skeleton_Yellow/Skeleton_With_VFX/Skeleton_01_Yellow_Idle.png',
+    isAnimated: true,
+    spriteSize: 48,
+    frameCount: { idle: 4, attack: 6, hurt: 3, death: 10, walk: 6 },
+    animations: {
+      idle: '/Sprites/Heroes/HeroSprites/Skeleton_Sword/Skeleton_Yellow/Skeleton_With_VFX/Skeleton_01_Yellow_Idle.png',
+      attack: '/Sprites/Heroes/HeroSprites/Skeleton_Sword/Skeleton_Yellow/Skeleton_With_VFX/Skeleton_01_Yellow_Attack1.png',
+      hurt: '/Sprites/Heroes/HeroSprites/Skeleton_Sword/Skeleton_Yellow/Skeleton_With_VFX/Skeleton_01_Yellow_Hurt.png',
+      death: '/Sprites/Heroes/HeroSprites/Skeleton_Sword/Skeleton_Yellow/Skeleton_With_VFX/Skeleton_01_Yellow_Die.png',
+      walk: '/Sprites/Heroes/HeroSprites/Skeleton_Sword/Skeleton_Yellow/Skeleton_With_VFX/Skeleton_01_Yellow_Walk.png'
+    }
+  },
+  'skeleton-minion-white': {
+    sprite: '/Sprites/Heroes/HeroSprites/Skeleton_Sword/Skeleton_White/Skeleton_With_VFX/Skeleton_01_White_Idle.png',
+    isAnimated: true,
+    spriteSize: 48,
+    frameCount: { idle: 4, attack: 6, hurt: 3, death: 10, walk: 6 },
+    animations: {
+      idle: '/Sprites/Heroes/HeroSprites/Skeleton_Sword/Skeleton_White/Skeleton_With_VFX/Skeleton_01_White_Idle.png',
+      attack: '/Sprites/Heroes/HeroSprites/Skeleton_Sword/Skeleton_White/Skeleton_With_VFX/Skeleton_01_White_Attack1.png',
+      hurt: '/Sprites/Heroes/HeroSprites/Skeleton_Sword/Skeleton_White/Skeleton_With_VFX/Skeleton_01_White_Hurt.png',
+      death: '/Sprites/Heroes/HeroSprites/Skeleton_Sword/Skeleton_White/Skeleton_With_VFX/Skeleton_01_White_Die.png',
+      walk: '/Sprites/Heroes/HeroSprites/Skeleton_Sword/Skeleton_White/Skeleton_With_VFX/Skeleton_01_White_Walk.png'
+    }
+  },
   ranger: {
     sprite: '/Sprites/Heroes/HeroSprites/Pyromancer 2D Pixel Art/Sprites/IDLE.png',
     isAnimated: true,

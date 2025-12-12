@@ -829,7 +829,6 @@ export default function ChatPanel({ hero, partyId, partyLeaderId, onPartyUpdate 
             'Type world message...'
           }
           disabled={sending || !connected || (activeChannel === 'whisper' && !activeWhisperRecipient)}
-          disabled={sending || !connected}
           maxLength={500}
           className="flex-1 bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
         />

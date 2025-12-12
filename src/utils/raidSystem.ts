@@ -150,24 +150,37 @@ export function calculateBossStats(
 export function generateRaidWaveEnemies(
   waveNumber: number,
   totalWaves: number,
-  difficulty: 'normal' | 'heroic' | 'mythic'
+  difficulty: 'normal' | 'heroic' | 'mythic',
+  raidId?: string
 ): Array<{ name: string; count: number }> {
-  // Enemy pool for raid waves
-  const enemyPool = [
-    { name: 'Goblin', weight: 3 },
-    { name: 'Orc', weight: 2 },
-    { name: 'Skeleton', weight: 2 },
-    { name: 'Imp', weight: 2 },
-    { name: 'Witch', weight: 1 },
-    { name: 'Mage', weight: 1 }
-  ];
+  // Enemy pool for raid waves - raid-specific pools
+  let enemyPool;
   
-  // Heroic and Mythic add more dangerous enemies
-  if (difficulty === 'heroic' || difficulty === 'mythic') {
-    enemyPool.push(
-      { name: 'Demon', weight: 1 },
-      { name: 'Dragon', weight: 0.5 }
-    );
+  // Corrupted Temple: Mimics, Skeleton Mages, Cultists
+  if (raidId === 'corrupted_temple') {
+    enemyPool = [
+      { name: 'Mimic', weight: 3 },
+      { name: 'Skeleton Mage', weight: 3 },
+      { name: 'Cultist', weight: 2 }
+    ];
+  } else {
+    // Default enemy pool for other raids
+    enemyPool = [
+      { name: 'Goblin', weight: 3 },
+      { name: 'Orc', weight: 2 },
+      { name: 'Skeleton', weight: 2 },
+      { name: 'Imp', weight: 2 },
+      { name: 'Witch', weight: 1 },
+      { name: 'Mage', weight: 1 }
+    ];
+    
+    // Heroic and Mythic add more dangerous enemies
+    if (difficulty === 'heroic' || difficulty === 'mythic') {
+      enemyPool.push(
+        { name: 'Demon', weight: 1 },
+        { name: 'Dragon', weight: 0.5 }
+      );
+    }
   }
   
   // Calculate enemy count (scales with wave)
@@ -219,15 +232,3 @@ export function calculateRaidRewards(
     lootCount: 2 + Math.floor(participants / 2) // 2-4 guaranteed loot pieces
   };
 }
-
-
-
-
-
-
-
-
-
-
-
-

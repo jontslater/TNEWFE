@@ -227,7 +227,9 @@ export default function DungeonFinderPage() {
             
             {party && party.status === 'forming' && party.leaderId === (user?.twitchId || user?.id) && (
               <button
-                onClick={() => setShowPartyQueueModal(true)}
+                onClick={() => {
+                  setShowPartyQueueModal(true);
+                }}
                 className="px-6 py-3 bg-purple-600 text-white rounded hover:bg-purple-700"
               >
                 Join as Party
@@ -272,6 +274,7 @@ export default function DungeonFinderPage() {
         <PartyQueueModal
           partyId={party.id}
           partyMembers={party.memberData || []}
+          initialSelectedDungeonId={selectedDungeonId}
           onClose={() => setShowPartyQueueModal(false)}
           onQueued={() => {
             loadParty();

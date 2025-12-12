@@ -295,3 +295,7 @@ Each class needs sprites for:
 - Month 6: Complete sprites enable full skin system
 - Month 7+: Full revenue potential ($2,350-8,000/month)
 
+
+
+
+
