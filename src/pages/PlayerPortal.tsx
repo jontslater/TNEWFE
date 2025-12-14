@@ -265,6 +265,12 @@ export default function PlayerPortal() {
                 <span>In Queue</span>
               </div>
             )}
+            <button
+              onClick={() => navigate('/report-issue')}
+              className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded transition-colors"
+            >
+              Report Issue
+            </button>
             <span className="text-gray-300">Welcome, {user?.twitchUsername}</span>
             <button 
               onClick={logout}
@@ -567,6 +573,16 @@ export default function PlayerPortal() {
             {activeTab === 'hero' && (
               <HeroDashboard 
                 hero={hero} 
+                onHeroUpdate={async (updatedHero: Hero) => {
+                  // Update the current hero if it's the one being updated
+                  if (hero?.id === updatedHero.id) {
+                    // Use selectHero to update and persist the selection
+                    // This will update the hero state and save to localStorage
+                    selectHero(updatedHero.id);
+                    // Then refetch to get the latest data from the backend
+                    await refetchHero();
+                  }
+                }}
                 onHeroDelete={async () => {
                   await refetchHero();
                   // If the deleted hero was the current hero, select the next one

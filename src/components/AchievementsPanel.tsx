@@ -356,11 +356,43 @@ export default function AchievementsPanel({ hero }: AchievementsPanelProps) {
                             Title: "{achievement.rewards.title}"
                           </div>
                         )}
-                {achievement.unlocked && achievement.unlockedAt && (
-                  <div className="text-xs text-gray-500 mt-1">
-                    Unlocked: {new Date(achievement.unlockedAt.seconds * 1000).toLocaleDateString()}
-                  </div>
-                )}
+                {achievement.unlocked && achievement.unlockedAt && (() => {
+                  let date: Date | null = null;
+                  
+                  // Handle different date formats
+                  if (typeof achievement.unlockedAt === 'object' && achievement.unlockedAt !== null) {
+                    // Firestore Timestamp with .seconds property
+                    if ('seconds' in achievement.unlockedAt && typeof achievement.unlockedAt.seconds === 'number') {
+                      date = new Date(achievement.unlockedAt.seconds * 1000);
+                    }
+                    // Firestore Timestamp with .toDate() method
+                    else if ('toDate' in achievement.unlockedAt && typeof achievement.unlockedAt.toDate === 'function') {
+                      date = achievement.unlockedAt.toDate();
+                    }
+                    // Already a Date object
+                    else if (achievement.unlockedAt instanceof Date) {
+                      date = achievement.unlockedAt;
+                    }
+                  }
+                  // String date
+                  else if (typeof achievement.unlockedAt === 'string') {
+                    date = new Date(achievement.unlockedAt);
+                  }
+                  // Number (timestamp in milliseconds)
+                  else if (typeof achievement.unlockedAt === 'number') {
+                    date = new Date(achievement.unlockedAt);
+                  }
+                  
+                  // Only display if we have a valid date
+                  if (date && !isNaN(date.getTime())) {
+                    return (
+                      <div className="text-xs text-gray-500 mt-1">
+                        Unlocked: {date.toLocaleDateString()}
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
                       </div>
                     </td>
 

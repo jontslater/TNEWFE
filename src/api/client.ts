@@ -76,6 +76,29 @@ export const heroAPI = {
     return response.data;
   },
   
+  async renameHero(heroId: string, newName: string): Promise<{
+    success: boolean;
+    message: string;
+    heroId: string;
+    newName: string;
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          success: true,
+          message: 'Hero renamed successfully',
+          heroId,
+          newName
+        }), 300);
+      });
+    }
+
+    const response = await apiClient.patch(`/api/heroes/${heroId}/rename`, {
+      newName
+    });
+    return response.data;
+  },
+
   async getHeroesByTwitchId(twitchUserId: string): Promise<Hero[]> {
     if (USE_MOCK) {
       return new Promise((resolve) => {
@@ -2291,6 +2314,147 @@ export const mailAPI = {
 
     const response = await apiClient.delete(`/api/mail/${mailId}`, {
       data: { userId }
+    });
+    return response.data;
+  }
+};
+
+// Reports API
+export interface Report {
+  id: string;
+  userId: string;
+  username: string;
+  title: string;
+  description: string;
+  category: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  stepsToReproduce?: string;
+  expectedBehavior?: string;
+  actualBehavior?: string;
+  status: 'open' | 'in-progress' | 'resolved' | 'closed';
+  adminNotes?: string;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+export interface SubmitReportData {
+  userId: string;
+  username: string;
+  title: string;
+  description: string;
+  category?: string;
+  severity?: 'low' | 'medium' | 'high' | 'critical';
+  stepsToReproduce?: string;
+  expectedBehavior?: string;
+  actualBehavior?: string;
+}
+
+export const reportsAPI = {
+  /**
+   * Submit a new report
+   */
+  async submitReport(data: SubmitReportData): Promise<{
+    success: boolean;
+    reportId: string;
+    message: string;
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          success: true,
+          reportId: 'mock-report-id',
+          message: 'Report submitted successfully'
+        }), 300);
+      });
+    }
+
+    const response = await apiClient.post('/api/reports', data);
+    return response.data;
+  },
+
+  /**
+   * Get all reports (for admin)
+   */
+  async getAllReports(params?: {
+    status?: string;
+    limit?: number;
+    orderBy?: string;
+    order?: 'asc' | 'desc';
+  }): Promise<{
+    success: boolean;
+    reports: Report[];
+    count: number;
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          success: true,
+          reports: [],
+          count: 0
+        }), 300);
+      });
+    }
+
+    const response = await apiClient.get('/api/reports', { params });
+    return response.data;
+  },
+
+  /**
+   * Get a single report by ID
+   */
+  async getReport(reportId: string): Promise<{
+    success: boolean;
+    report: Report;
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          success: true,
+          report: {
+            id: reportId,
+            userId: 'mock-user',
+            username: 'MockUser',
+            title: 'Mock Report',
+            description: 'Mock description',
+            category: 'general',
+            severity: 'medium',
+            status: 'open',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          }
+        }), 300);
+      });
+    }
+
+    const response = await apiClient.get(`/api/reports/${reportId}`);
+    return response.data;
+  },
+
+  /**
+   * Update report status (for admin)
+   */
+  async updateReportStatus(
+    reportId: string,
+    status: 'open' | 'in-progress' | 'resolved' | 'closed',
+    username: string,
+    adminNotes?: string
+  ): Promise<{
+    success: boolean;
+    message: string;
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          success: true,
+          message: 'Report updated successfully'
+        }), 300);
+      });
+    }
+
+    const response = await apiClient.patch(`/api/reports/${reportId}`, {
+      status,
+      username,
+      adminNotes
     });
     return response.data;
   }

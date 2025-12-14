@@ -95,6 +95,9 @@ export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: Hero
   const [claimingRewards, setClaimingRewards] = useState(false);
   const [claimMessage, setClaimMessage] = useState<string | null>(null);
   const [lastClaimTime, setLastClaimTime] = useState<number | null>(null);
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState<string>('');
+  const [renaming, setRenaming] = useState(false);
   const spritePreviewRef = useRef<HTMLDivElement>(null);
   const hpPercent = (hero.hp / hero.maxHp) * 100;
   const xpPercent = (Math.floor(hero.xp) / Math.floor(hero.maxXp)) * 100;
@@ -237,6 +240,47 @@ export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: Hero
     }
   };
 
+  const handleStartRename = () => {
+    setIsRenaming(true);
+    setRenameValue(hero.name || '');
+  };
+
+  const handleCancelRename = () => {
+    setIsRenaming(false);
+    setRenameValue('');
+  };
+
+  const handleSaveRename = async () => {
+    if (!renameValue.trim() || renameValue.trim() === hero.name) {
+      setIsRenaming(false);
+      setRenameValue('');
+      return;
+    }
+
+    if (renameValue.trim().length > 50) {
+      alert('Hero name cannot exceed 50 characters');
+      return;
+    }
+
+    setRenaming(true);
+    try {
+      await heroAPI.renameHero(hero.id, renameValue.trim());
+      const updatedHero = { ...hero, name: renameValue.trim() };
+      if (onHeroUpdate) {
+        onHeroUpdate(updatedHero as any);
+      }
+      setIsRenaming(false);
+      setRenameValue('');
+      // Don't reload - just update the hero state
+      // The onHeroUpdate callback will handle the state update
+    } catch (error: any) {
+      console.error('Failed to rename hero:', error);
+      alert(error.response?.data?.error || 'Failed to rename hero. Please try again.');
+    } finally {
+      setRenaming(false);
+    }
+  };
+
   const handleBadgeChange = async (badgePath: string | null) => {
     if (updatingBadge || !hero?.id) return;
     
@@ -259,8 +303,7 @@ export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: Hero
       if (onHeroUpdate) {
         onHeroUpdate({ ...hero, founderBadge: badgePath || undefined } as any);
       }
-      // Refresh to show updated badge
-      window.location.reload();
+      // State is updated via onHeroUpdate callback
     } catch (error) {
       console.error('Failed to update badge:', error);
       alert('Failed to update badge. Please try again.');
@@ -284,8 +327,7 @@ export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: Hero
       if (onHeroUpdate) {
         onHeroUpdate({ ...hero, nameColor: color || undefined } as any);
       }
-      // Refresh to show updated color
-      window.location.reload();
+      // State is updated via onHeroUpdate callback
     } catch (error) {
       console.error('Failed to update name color:', error);
       alert('Failed to update name color. Please try again.');
@@ -309,8 +351,7 @@ export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: Hero
       if (onHeroUpdate) {
         onHeroUpdate({ ...hero, nameFrame: frame || undefined } as any);
       }
-      // Refresh to show updated frame
-      window.location.reload();
+      // State is updated via onHeroUpdate callback
     } catch (error) {
       console.error('Failed to update name frame:', error);
       alert('Failed to update name frame. Please try again.');
@@ -334,8 +375,7 @@ export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: Hero
       if (onHeroUpdate) {
         onHeroUpdate({ ...hero, auraEffect: aura || undefined } as any);
       }
-      // Refresh to show updated aura
-      window.location.reload();
+      // State is updated via onHeroUpdate callback
     } catch (error) {
       console.error('Failed to update aura effect:', error);
       alert('Failed to update aura effect. Please try again.');
@@ -352,8 +392,7 @@ export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: Hero
       if (onHeroUpdate) {
         onHeroUpdate({ ...hero, auraColor: color || undefined } as any);
       }
-      // Refresh to show updated aura color
-      window.location.reload();
+      // State is updated via onHeroUpdate callback
     } catch (error) {
       console.error('Failed to update aura color:', error);
       alert('Failed to update aura color. Please try again.');
@@ -422,8 +461,53 @@ export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: Hero
             <div className="w-20 h-20 bg-gray-700 rounded-full flex items-center justify-center text-4xl">
               {hero.isDead ? '💀' : '⚔️'}
             </div>
-            <div>
-              <h2 className="text-3xl font-bold" style={{ color: hero.nameColor || 'white' }}>{hero.name}</h2>
+            <div className="flex-1">
+              {!isRenaming ? (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-3xl font-bold" style={{ color: hero.nameColor || 'white' }}>{hero.name}</h2>
+                  <button
+                    onClick={handleStartRename}
+                    className="text-xs px-2 py-1 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded transition-colors"
+                    title="Rename hero"
+                  >
+                    ✏️ Rename
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <input
+                    type="text"
+                    value={renameValue}
+                    onChange={(e) => setRenameValue(e.target.value)}
+                    maxLength={50}
+                    disabled={renaming}
+                    className="text-3xl font-bold bg-gray-700 text-white px-3 py-1 rounded border border-gray-600 focus:outline-none focus:border-purple-500 disabled:opacity-50"
+                    style={{ color: hero.nameColor || 'white', minWidth: '200px' }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        handleSaveRename();
+                      } else if (e.key === 'Escape') {
+                        handleCancelRename();
+                      }
+                    }}
+                    autoFocus
+                  />
+                  <button
+                    onClick={handleSaveRename}
+                    disabled={renaming || !renameValue.trim() || renameValue.trim() === hero.name}
+                    className="text-xs px-2 py-1 bg-green-600 hover:bg-green-700 text-white rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {renaming ? 'Saving...' : '✓ Save'}
+                  </button>
+                  <button
+                    onClick={handleCancelRename}
+                    disabled={renaming}
+                    className="text-xs px-2 py-1 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded transition-colors disabled:opacity-50"
+                  >
+                    ✕ Cancel
+                  </button>
+                </div>
+              )}
               <div className="flex items-center space-x-2 mt-1 flex-wrap gap-2">
                 <span className={`px-3 py-1 rounded text-sm font-semibold ${getRoleBg(hero.role)} text-white`}>
                   {hero.role}

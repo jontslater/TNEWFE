@@ -31,6 +31,8 @@ import UnifiedBrowserSource from './pages/UnifiedBrowserSource';
 import FoundersPackPage from './pages/FoundersPackPage';
 import FoundersHallPage from './pages/FoundersHallPage';
 import MailPage from './pages/MailPage';
+import ReportIssuePage from './pages/ReportIssuePage';
+import ReportsViewPage from './pages/ReportsViewPage';
 // Old UnifiedBrowserSourcePage kept for reference but route now uses new component
 // import UnifiedBrowserSourcePage from './pages/UnifiedBrowserSourcePage';
 import LoginRewardModal from './components/LoginRewardModal';
@@ -74,6 +76,8 @@ function App() {
         <Route path="/founders-pack" element={<FoundersPackPage />} />
         <Route path="/founders-hall" element={<FoundersHallPage />} />
         <Route path="/mail" element={<MailPage />} />
+        <Route path="/report-issue" element={<ReportIssuePage />} />
+        <Route path="/reports" element={<ReportsViewPage />} />
       </Routes>
     </Router>
   );

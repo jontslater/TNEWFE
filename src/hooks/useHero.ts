@@ -49,8 +49,14 @@ export function useHero(userId: string | null) {
         return 0;
       });
       setHeroes(list);
-      // Default hero: most recently updated (backend returns newest first)
-      setHero(list.length > 0 ? list[0] : null);
+      
+      // Try to restore previously selected hero from localStorage
+      const storageKey = `selectedHeroId_${userId}`;
+      const savedHeroId = localStorage.getItem(storageKey);
+      const savedHero = savedHeroId ? list.find(h => h.id === savedHeroId) : null;
+      
+      // Use saved hero if it exists, otherwise default to first hero
+      setHero(savedHero || (list.length > 0 ? list[0] : null));
       setError(null);
     } catch (err) {
       setError('Failed to load heroes');
@@ -72,6 +78,9 @@ export function useHero(userId: string | null) {
       setHeroes(prev =>
         prev.map(h => (h.id === updated.id ? updated : h))
       );
+      // Ensure the selected hero ID is still persisted
+      const storageKey = `selectedHeroId_${userId}`;
+      localStorage.setItem(storageKey, updated.id);
     } catch (err) {
       setError('Failed to update hero');
       console.error(err);
@@ -105,6 +114,12 @@ export function useHero(userId: string | null) {
   const selectHero = (heroId: string) => {
     const found = heroes.find(h => h.id === heroId) || null;
     setHero(found);
+    
+    // Persist selection to localStorage
+    if (userId && found) {
+      const storageKey = `selectedHeroId_${userId}`;
+      localStorage.setItem(storageKey, heroId);
+    }
   };
 
   return { hero, heroes, loading, error, refetch: loadHeroes, updateHero, deleteHero, selectHero };

@@ -119,6 +119,14 @@ export default function Navigation() {
                   >
                     Leaderboards
                   </button>
+                  {user?.twitchUsername?.toLowerCase() === 'theneverendingwar' && (
+                    <button
+                      onClick={() => navigate('/reports')}
+                      className="text-red-400 hover:text-red-300 transition-colors font-semibold"
+                    >
+                      Reports
+                    </button>
+                  )}
                 </>
               )}
             </div>
