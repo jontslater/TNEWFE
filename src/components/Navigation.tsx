@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { loginWithTwitch } from '../utils/twitchOAuth';
 import { initiateTikTokLogin } from '../services/tiktokOAuth';
-import logo from '../logos/TheNeverEndingWarLogo.png';
+import logo from '../Logos/TheNeverEndingWarLogo.png';
 import { useHeroListener } from '../hooks/useHeroListener';
 import { questAPI } from '../api/client';
 

@@ -9,7 +9,7 @@ import ProfessionPanel from '../components/ProfessionPanel';
 import GuildPanel from '../components/GuildPanel';
 import RaidBrowser from '../components/RaidBrowser';
 import { loginWithTwitch } from '../utils/twitchOAuth';
-import logo from '../logos/TheNeverEndingWarLogo.png';
+import logo from '../Logos/TheNeverEndingWarLogo.png';
 
 export default function HomePage() {
   const { user, isAuthenticated, logout } = useAuth();
