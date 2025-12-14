@@ -12,8 +12,12 @@ export default defineConfig({
   server: {
     port: 3000
   },
+  resolve: {
+    dedupe: ['firebase']
+  },
   optimizeDeps: {
-    include: ['firebase/app', 'firebase/firestore', 'firebase/auth']
+    include: ['firebase/app', 'firebase/firestore', 'firebase/auth'],
+    exclude: []
   },
   build: {
     // Disable source maps in production for smaller bundle
