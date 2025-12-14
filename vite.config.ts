@@ -20,6 +20,10 @@ export default defineConfig({
     sourcemap: false,
     // Optimize chunk size
     chunkSizeWarningLimit: 1000,
+    commonjsOptions: {
+      include: [/node_modules/],
+      transformMixedEsModules: true
+    },
     rollupOptions: {
       output: {
         // Manual chunk splitting for better caching
@@ -29,12 +33,8 @@ export default defineConfig({
             if (id.includes('react') || id.includes('react-dom') || id.includes('react-router')) {
               return 'react-vendor'
             }
-            // Exclude Firebase from manual chunks - let Vite handle it automatically
-            if (id.includes('firebase')) {
-              return 'firebase-vendor'
-            }
-            // Other node_modules
-            return 'vendor'
+            // Don't manually chunk Firebase - let Vite handle it automatically
+            // Firebase v12 uses ES modules and needs special handling
           }
         }
       }
