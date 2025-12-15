@@ -33,6 +33,8 @@ import FoundersHallPage from './pages/FoundersHallPage';
 import MailPage from './pages/MailPage';
 import ReportIssuePage from './pages/ReportIssuePage';
 import ReportsViewPage from './pages/ReportsViewPage';
+import PurchaseSuccessPage from './pages/PurchaseSuccessPage';
+import PurchaseCancelPage from './pages/PurchaseCancelPage';
 // Old UnifiedBrowserSourcePage kept for reference but route now uses new component
 // import UnifiedBrowserSourcePage from './pages/UnifiedBrowserSourcePage';
 import LoginRewardModal from './components/LoginRewardModal';
@@ -78,6 +80,8 @@ function App() {
         <Route path="/mail" element={<MailPage />} />
         <Route path="/report-issue" element={<ReportIssuePage />} />
         <Route path="/reports" element={<ReportsViewPage />} />
+        <Route path="/purchases/success" element={<PurchaseSuccessPage />} />
+        <Route path="/purchases/cancel" element={<PurchaseCancelPage />} />
       </Routes>
     </Router>
   );
