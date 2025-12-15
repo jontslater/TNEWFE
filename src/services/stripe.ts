@@ -48,24 +48,22 @@ export async function createCheckoutSession(purchaseId: string, price: number): 
 
     const data = await response.json();
     const sessionId = data.sessionId;
+    const checkoutUrl = data.url;
 
     if (!sessionId) {
       console.error('[Stripe] No sessionId in response:', data);
       throw new Error('No checkout session ID received');
     }
 
-    // Redirect to Stripe checkout
-    const stripeInstance = await getStripe();
-    if (stripeInstance) {
-      const { error } = await stripeInstance.redirectToCheckout({ sessionId });
-      if (error) {
-        console.error('[Stripe] Checkout redirect error:', error);
-        throw new Error(error.message || 'Failed to redirect to checkout');
-      }
-      // redirectToCheckout redirects automatically, but return sessionId for reference
+    // Redirect to Stripe checkout using the URL directly
+    // Note: redirectToCheckout is deprecated, so we use the URL from the session
+    if (checkoutUrl) {
+      window.location.href = checkoutUrl;
       return sessionId;
     } else {
-      throw new Error('Stripe not initialized. Please check your publishable key.');
+      // Fallback: construct URL from sessionId if URL not provided
+      // This shouldn't happen, but provides a fallback
+      throw new Error('No checkout URL received from server');
     }
   } catch (error: any) {
     console.error('[Stripe] Error in createCheckoutSession:', error);
