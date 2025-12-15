@@ -6203,8 +6203,12 @@ export default function CleanBattlefieldSource() {
     console.log('[Sync] ✅ Starting periodic sync (every 60s) for', heroes.length, 'heroes');
 
     const syncInterval = setInterval(async () => {
-      // Use heroesRef to get the latest heroes state
-      const currentHeroes = heroesRef.current.length > 0 ? heroesRef.current : heroes;
+      // Use heroesRef to get the latest heroes state (it's kept in sync via setHeroes calls)
+      const currentHeroes = heroesRef.current.length > 0 ? heroesRef.current : [];
+      if (currentHeroes.length === 0) {
+        console.log('[Sync] ⚠️ No heroes available to sync');
+        return;
+      }
       console.log('[Sync] Syncing', currentHeroes.length, 'heroes to Firebase...');
       
       // QUEST TRACKING: Batch sync quest progress to backend
