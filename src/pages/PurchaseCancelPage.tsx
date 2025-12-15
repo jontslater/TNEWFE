@@ -51,4 +51,3 @@ export default function PurchaseCancelPage() {
     </div>
   );
 }
-

@@ -266,6 +266,12 @@ export default function PlayerPortal() {
               </div>
             )}
             <button
+              onClick={() => navigate('/purchases/history')}
+              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded transition-colors"
+            >
+              Purchase History
+            </button>
+            <button
               onClick={() => navigate('/report-issue')}
               className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded transition-colors"
             >

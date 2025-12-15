@@ -328,8 +328,19 @@ export default function StorePage() {
         <div className="container mx-auto px-4 py-8">
           {/* Store Header */}
           <div className="text-center mb-8">
-            <h1 className="text-5xl font-bold text-white mb-2">🏪 Hero Store</h1>
-            <p className="text-xl text-gray-400">Enhance your hero with consumables and guaranteed gear</p>
+            <div className="flex justify-between items-center mb-4">
+              <div></div>
+              <div>
+                <h1 className="text-5xl font-bold text-white mb-2">🏪 Hero Store</h1>
+                <p className="text-xl text-gray-400">Enhance your hero with consumables and guaranteed gear</p>
+              </div>
+              <button
+                onClick={() => navigate('/purchases/history')}
+                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded transition-colors"
+              >
+                View Purchase History
+              </button>
+            </div>
           </div>
 
           {/* Hero Currency */}

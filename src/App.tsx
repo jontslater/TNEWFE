@@ -35,6 +35,7 @@ import ReportIssuePage from './pages/ReportIssuePage';
 import ReportsViewPage from './pages/ReportsViewPage';
 import PurchaseSuccessPage from './pages/PurchaseSuccessPage';
 import PurchaseCancelPage from './pages/PurchaseCancelPage';
+import PurchaseHistoryPage from './pages/PurchaseHistoryPage';
 // Old UnifiedBrowserSourcePage kept for reference but route now uses new component
 // import UnifiedBrowserSourcePage from './pages/UnifiedBrowserSourcePage';
 import LoginRewardModal from './components/LoginRewardModal';
@@ -82,6 +83,7 @@ function App() {
         <Route path="/reports" element={<ReportsViewPage />} />
         <Route path="/purchases/success" element={<PurchaseSuccessPage />} />
         <Route path="/purchases/cancel" element={<PurchaseCancelPage />} />
+        <Route path="/purchases/history" element={<PurchaseHistoryPage />} />
       </Routes>
     </Router>
   );

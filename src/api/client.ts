@@ -1494,6 +1494,59 @@ export const foundersPackAPI = {
   },
 
   /**
+   * Get purchase history for a user
+   * @param userId - User's Twitch ID
+   * @returns List of all purchases
+   */
+  async getPurchaseHistory(userId: string): Promise<{
+    purchases: Array<{
+      id: string;
+      userId: string;
+      packTier?: string;
+      packType?: string;
+      heroId?: string;
+      price: number;
+      status: 'pending' | 'completed' | 'failed' | 'cancelled';
+      createdAt: any;
+      completedAt?: any;
+      premiumCurrency?: number;
+      tokens?: number;
+      gold?: number;
+    }>;
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          purchases: []
+        }), 300);
+      });
+    }
+
+    const response = await apiClient.get(`/api/purchases/history/${userId}`);
+    return response.data;
+  },
+
+  /**
+   * Get detailed purchase information including hero details
+   * @param purchaseId - Purchase ID
+   * @returns Purchase details with hero information
+   */
+  async getPurchaseDetails(purchaseId: string): Promise<{
+    purchase: any;
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          purchase: {}
+        }), 300);
+      });
+    }
+
+    const response = await apiClient.get(`/api/purchases/${purchaseId}/details`);
+    return response.data;
+  },
+
+  /**
    * Get all Platinum founders for Founders Hall
    * @returns List of all Platinum tier founders
    */
