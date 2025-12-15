@@ -4,6 +4,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useHero } from '../hooks/useHero';
 import Navigation from '../components/Navigation';
 import { heroAPI, tokenPackAPI } from '../api/client';
+import { createCheckoutSession, isStripeConfigured } from '../services/stripe';
 
 // Shop item definitions (balanced for monetization)
 const GOLD_SHOP_ITEMS = {
@@ -160,6 +161,56 @@ export default function StorePage() {
     } finally {
       setPurchasing(false);
       setSelectedGoldItem(null);
+    }
+  };
+
+  const handleTokenPackPurchase = async (packType: string, heroId: string | null) => {
+    if (!user?.id || !heroId) {
+      alert('Please select a hero to receive the token pack.');
+      return;
+    }
+
+    if (!user.twitchId) {
+      alert('User ID not found. Please log in again.');
+      return;
+    }
+
+    // Check if Stripe is configured
+    if (!isStripeConfigured()) {
+      alert('Payment processing is not yet configured. Please contact support.');
+      return;
+    }
+
+    setPurchasing(true);
+    try {
+      // Initiate purchase to get purchaseId
+      const result = await tokenPackAPI.initiatePurchase(user.twitchId, packType as 'impulse' | 'starter' | 'value' | 'premium', heroId);
+      
+      if (!result.success || !result.purchaseId) {
+        throw new Error(result.message || 'Failed to initiate purchase');
+      }
+
+      // Get pack price
+      const packPrices: Record<string, number> = {
+        impulse: 0.99,
+        starter: 4.99,
+        value: 9.99,
+        premium: 24.99
+      };
+
+      const price = packPrices[packType] || 0;
+
+      // Create Stripe checkout session and redirect
+      await createCheckoutSession(result.purchaseId, price);
+      // Note: createCheckoutSession will redirect to Stripe automatically
+      
+      setSelectedTokenPack(null);
+    } catch (error: any) {
+      const errorMsg = error.message || 'Failed to start purchase process';
+      alert(`Purchase error: ${errorMsg}`);
+      console.error('Token pack purchase error:', error);
+    } finally {
+      setPurchasing(false);
     }
   };
 
