@@ -6245,11 +6245,17 @@ export default function CleanBattlefieldSource() {
         // Send batch quest update to backend
         if (questUpdates.length > 0) {
           try {
-            const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/quests/update-batch-all`, {
+            const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/quests/update-batch-all`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ updates: questUpdates })
             });
+            
+            if (!response.ok) {
+              const errorText = await response.text();
+              console.error('[Quest Sync] ❌ Failed to sync quest progress:', response.status, errorText);
+              return;
+            }
             
             const result = await response.json();
             console.log('[Quest Sync] ✅ Quest progress synced:', result);

@@ -137,7 +137,8 @@ export default function PlayerPortal() {
   useEffect(() => {
     if (isAuthenticated && user?.id) {
       checkDungeonQueue();
-      const interval = setInterval(checkDungeonQueue, 5000);
+      // Poll every 10 seconds (reduced from 5s to minimize server load)
+      const interval = setInterval(checkDungeonQueue, 10000);
       return () => clearInterval(interval);
     }
   }, [isAuthenticated, user]);
@@ -703,7 +704,7 @@ export default function PlayerPortal() {
             {activeTab === 'raids' && <RaidBrowser hero={hero} userId={hero?.id || user?.id} />}
             {activeTab === 'skills' && <SkillsPage hero={hero} userId={user?.id} />}
             {activeTab === 'achievements' && <AchievementsPanel hero={hero} onUpdate={refetchHero} />}
-            {activeTab === 'dungeon' && <DungeonFinderTab hero={hero} userId={user?.id} onQueueChange={checkDungeonQueue} />}
+            {activeTab === 'dungeon' && <DungeonFinderTab hero={hero} userId={user?.id} queueStatus={dungeonQueueStatus} onQueueChange={checkDungeonQueue} />}
             {activeTab === 'browserSource' && (
               <BrowserSourceTab 
                 userId={user?.twitchId || user?.id} 
@@ -898,29 +899,10 @@ export default function PlayerPortal() {
 }
 
 // Dungeon Finder Tab Component
-function DungeonFinderTab({ hero, userId, onQueueChange }: any) {
-  const [queueStatus, setQueueStatus] = useState<any>(null);
-  const [inQueue, setInQueue] = useState(false);
+function DungeonFinderTab({ hero, userId, queueStatus, onQueueChange }: any) {
+  // Use queueStatus from parent (PlayerPortal) to avoid duplicate polling
+  const inQueue = queueStatus?.inQueue || false;
   const [dungeonType, setDungeonType] = useState<'normal' | 'heroic' | 'mythic'>('normal');
-
-  useEffect(() => {
-    if (userId) {
-      checkQueueStatus();
-      const interval = setInterval(checkQueueStatus, 5000);
-      return () => clearInterval(interval);
-    }
-  }, [userId]);
-
-  const checkQueueStatus = async () => {
-    try {
-      const status = await dungeonAPI.getQueueStatus(userId);
-      setQueueStatus(status);
-      setInQueue(status.inQueue || false);
-      onQueueChange?.();
-    } catch (err) {
-      console.error('Failed to check queue status:', err);
-    }
-  };
 
   const handleJoinQueue = async () => {
     if (!hero) return;
@@ -936,8 +918,8 @@ function DungeonFinderTab({ hero, userId, onQueueChange }: any) {
         itemScore,
         dungeonType
       );
-      setInQueue(true);
-      checkQueueStatus();
+      // Trigger parent to refresh queue status
+      onQueueChange?.();
     } catch (err: any) {
       alert(err.response?.data?.error || 'Failed to join queue');
     }
@@ -946,9 +928,8 @@ function DungeonFinderTab({ hero, userId, onQueueChange }: any) {
   const handleLeaveQueue = async () => {
     try {
       await dungeonAPI.leaveQueue(userId);
-      setInQueue(false);
-      setQueueStatus(null);
-      checkQueueStatus();
+      // Trigger parent to refresh queue status
+      onQueueChange?.();
     } catch (err: any) {
       alert(err.response?.data?.error || 'Failed to leave queue');
     }

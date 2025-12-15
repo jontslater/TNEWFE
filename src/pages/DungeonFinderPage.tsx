@@ -32,10 +32,11 @@ export default function DungeonFinderPage() {
       loadDungeons();
       loadParty();
       checkQueueStatus();
+      // Poll every 10 seconds (reduced from 5s to minimize server load)
       const interval = setInterval(() => {
         checkQueueStatus();
         loadParty();
-      }, 5000);
+      }, 10000);
       return () => clearInterval(interval);
     }
   }, [user]);
