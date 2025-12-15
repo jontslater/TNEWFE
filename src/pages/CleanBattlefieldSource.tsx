@@ -1662,6 +1662,7 @@ export default function CleanBattlefieldSource() {
   
   // CRITICAL: Refs to prevent duplicate intervals from React Strict Mode
   const syncIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const syncIntervalInitializedRef = useRef(false);
   const buffCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const regenIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const resIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -6207,7 +6208,9 @@ export default function CleanBattlefieldSource() {
     console.log('[Sync] ✅ Starting periodic sync (every 60s) for', heroes.length, 'heroes');
 
     const syncInterval = setInterval(async () => {
-      console.log('[Sync] Syncing', heroes.length, 'heroes to Firebase...');
+      // Use heroesRef to get the latest heroes state
+      const currentHeroes = heroesRef.current.length > 0 ? heroesRef.current : heroes;
+      console.log('[Sync] Syncing', currentHeroes.length, 'heroes to Firebase...');
       
       // QUEST TRACKING: Batch sync quest progress to backend
       const now = Date.now();
@@ -6219,7 +6222,7 @@ export default function CleanBattlefieldSource() {
         // Log quest progress details for debugging
         questProgressRef.current.forEach((heroProgress, heroId) => {
           const trackingKeys = Array.from(heroProgress.keys());
-          const hero = heroes.find(h => h.id === heroId);
+          const hero = currentHeroes.find(h => h.id === heroId);
           console.log(`[Quest Sync]   Hero ${heroId} (${hero?.name || 'unknown'}): ${trackingKeys.length} tracking keys:`, 
             trackingKeys.map(key => `${key}:${heroProgress.get(key)}`).join(', '));
         });
@@ -6232,7 +6235,7 @@ export default function CleanBattlefieldSource() {
         const questUpdates: Array<{ userId: string; updates: Array<{ trackingKey: string; type: 'daily' | 'weekly' | 'monthly'; increment: number }> }> = [];
         
         questProgressRef.current.forEach((heroProgress, heroId) => {
-          const hero = heroes.find(h => h.id === heroId);
+          const hero = currentHeroes.find(h => h.id === heroId);
           if (!hero) return;
           
           // Get hero's Twitch ID for backend
@@ -6284,7 +6287,7 @@ export default function CleanBattlefieldSource() {
                     console.log(`[Quest Complete] 🎉 ${completedQuest.questName} completed!`);
                     
                     // Show SCT for quest completion
-                    const hero = heroes.find(h => (h as any).twitchUserId === userResult.userId || (h as any).twitchId === userResult.userId);
+                    const hero = currentHeroes.find(h => (h as any).twitchUserId === userResult.userId || (h as any).twitchId === userResult.userId);
                     if (hero) {
                       const heroElement = document.querySelector(`[data-hero-id="${hero.id}"]`);
                       if (heroElement) {
@@ -6303,7 +6306,7 @@ export default function CleanBattlefieldSource() {
             lastQuestSyncRef.current = now;
             
             // AUTO-CLAIM: Claim all completed quests for each hero
-            heroes.forEach(async (hero) => {
+            currentHeroes.forEach(async (hero) => {
               const twitchUserId = (hero as any).twitchUserId || (hero as any).twitchId;
               if (!twitchUserId) return;
               
@@ -6368,7 +6371,7 @@ export default function CleanBattlefieldSource() {
           const purchasePromises: Promise<void>[] = [];
           
           pendingPurchasesRef.current.forEach((purchases, heroId) => {
-            const hero = heroes.find(h => h.id === heroId);
+            const hero = currentHeroes.find(h => h.id === heroId);
             if (!hero || purchases.length === 0) return;
             
             // Group purchases by itemKey and sum quantities
@@ -6421,7 +6424,7 @@ export default function CleanBattlefieldSource() {
           const gatherPromises: Promise<void>[] = [];
           
           pendingGathersRef.current.forEach((gatherCount, heroId) => {
-            const hero = heroes.find(h => h.id === heroId);
+            const hero = currentHeroes.find(h => h.id === heroId);
             if (!hero || gatherCount === 0) return;
             
             // Call gather API for each gather (or batch if API supports it)
@@ -6459,7 +6462,7 @@ export default function CleanBattlefieldSource() {
       }
       
       // Hero state sync
-      heroes.forEach(async (hero) => {
+      currentHeroes.forEach(async (hero) => {
         try {
           await heroAPI.updateHero(hero.id, {
             hp: hero.hp,
