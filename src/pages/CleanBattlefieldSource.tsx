@@ -6193,14 +6193,18 @@ export default function CleanBattlefieldSource() {
 
   // Step 7: Sync hero state to Firebase every 60 seconds (low-cost persistence)
   useEffect(() => {
-    if (heroes.length === 0) return;
+    if (heroes.length === 0) {
+      console.log('[Sync] ⚠️ No heroes loaded yet, skipping sync setup');
+      return;
+    }
     
     // Prevent duplicate sync intervals
     if (syncIntervalRef.current) {
+      console.log('[Sync] ⚠️ Sync interval already running, skipping setup');
       return;
     }
 
-    console.log('[Sync] Starting periodic sync (every 60s) for', heroes.length, 'heroes');
+    console.log('[Sync] ✅ Starting periodic sync (every 60s) for', heroes.length, 'heroes');
 
     const syncInterval = setInterval(async () => {
       console.log('[Sync] Syncing', heroes.length, 'heroes to Firebase...');
@@ -6209,8 +6213,20 @@ export default function CleanBattlefieldSource() {
       const now = Date.now();
       const timeSinceLastSync = now - lastQuestSyncRef.current;
       
+      // Debug logging for quest sync status
+      if (questProgressRef.current.size > 0) {
+        console.log(`[Quest Sync] 🔍 Pending quest progress for ${questProgressRef.current.size} heroes (${Math.floor(timeSinceLastSync / 1000)}s since last sync)`);
+        // Log quest progress details for debugging
+        questProgressRef.current.forEach((heroProgress, heroId) => {
+          const trackingKeys = Array.from(heroProgress.keys());
+          const hero = heroes.find(h => h.id === heroId);
+          console.log(`[Quest Sync]   Hero ${heroId} (${hero?.name || 'unknown'}): ${trackingKeys.length} tracking keys:`, 
+            trackingKeys.map(key => `${key}:${heroProgress.get(key)}`).join(', '));
+        });
+      }
+      
       if (questProgressRef.current.size > 0 && timeSinceLastSync >= 60000) {
-        console.log('[Quest Sync] Syncing quest progress for', questProgressRef.current.size, 'heroes...');
+        console.log('[Quest Sync] ✅ Syncing quest progress for', questProgressRef.current.size, 'heroes...');
         
         // Convert Map to array of updates for batch API
         const questUpdates: Array<{ userId: string; updates: Array<{ trackingKey: string; type: 'daily' | 'weekly' | 'monthly'; increment: number }> }> = [];
@@ -6282,6 +6298,7 @@ export default function CleanBattlefieldSource() {
             }
             
             // Clear quest progress after successful sync
+            console.log('[Quest Sync] 🧹 Clearing quest progress cache after successful sync');
             questProgressRef.current.clear();
             lastQuestSyncRef.current = now;
             
@@ -6469,11 +6486,12 @@ export default function CleanBattlefieldSource() {
 
     return () => {
       if (syncIntervalRef.current) {
+        console.log('[Sync] 🧹 Cleaning up sync interval');
         clearInterval(syncIntervalRef.current);
         syncIntervalRef.current = null;
       }
     };
-  }, []); // No dependencies - only runs once on mount
+  }, [heroes]); // Re-run when heroes change (so it starts after heroes load)
 
   // Step 8: Hero resurrection system (auto-res after 60 seconds)
   useEffect(() => {
