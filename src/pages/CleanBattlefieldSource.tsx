@@ -6194,17 +6194,12 @@ export default function CleanBattlefieldSource() {
 
   // Step 7: Sync hero state to Firebase every 60 seconds (low-cost persistence)
   useEffect(() => {
-    if (heroes.length === 0) {
-      console.log('[Sync] ⚠️ No heroes loaded yet, skipping sync setup');
+    // Only initialize once when heroes first become available
+    if (heroes.length === 0 || syncIntervalInitializedRef.current) {
       return;
     }
     
-    // Prevent duplicate sync intervals
-    if (syncIntervalRef.current) {
-      console.log('[Sync] ⚠️ Sync interval already running, skipping setup');
-      return;
-    }
-
+    syncIntervalInitializedRef.current = true;
     console.log('[Sync] ✅ Starting periodic sync (every 60s) for', heroes.length, 'heroes');
 
     const syncInterval = setInterval(async () => {
@@ -6488,13 +6483,15 @@ export default function CleanBattlefieldSource() {
     syncIntervalRef.current = syncInterval;
 
     return () => {
+      // Only clean up on component unmount, not on heroes change
       if (syncIntervalRef.current) {
-        console.log('[Sync] 🧹 Cleaning up sync interval');
+        console.log('[Sync] 🧹 Component unmounting, cleaning up sync interval');
         clearInterval(syncIntervalRef.current);
         syncIntervalRef.current = null;
+        syncIntervalInitializedRef.current = false;
       }
     };
-  }, [heroes]); // Re-run when heroes change (so it starts after heroes load)
+  }, [heroes.length]); // Only depend on length - initialize when heroes first become available
 
   // Step 8: Hero resurrection system (auto-res after 60 seconds)
   useEffect(() => {
