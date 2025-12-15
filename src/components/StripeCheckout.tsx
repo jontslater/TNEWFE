@@ -37,14 +37,9 @@ export default function StripeCheckout({
 
     setProcessing(true);
     try {
-      const sessionUrl = await createCheckoutSession(purchaseId, price);
-      
-      if (sessionUrl) {
-        // Redirect to Stripe checkout
-        window.location.href = sessionUrl;
-      } else {
-        throw new Error('Failed to create checkout session');
-      }
+      // createCheckoutSession will redirect automatically via Stripe SDK
+      await createCheckoutSession(purchaseId, price);
+      // If we get here without redirect, there was an error (shouldn't happen)
     } catch (error: any) {
       console.error('Checkout error:', error);
       const errorMessage = error.message || 'Failed to start checkout process';
@@ -92,4 +87,3 @@ export default function StripeCheckout({
     </div>
   );
 }
-

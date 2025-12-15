@@ -11,6 +11,7 @@
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
   },
   "dependencies": {
+    "@stripe/stripe-js": "^8.5.3",
     "axios": "^1.6.2",
     "firebase": "^12.5.0",
     "react": "^18.2.0",

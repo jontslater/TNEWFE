@@ -140,6 +140,7 @@ export interface GenerateLootOptions {
   forceSetPiece?: boolean;
   viewerLootBonus?: number; // Viewer bonus multiplier (0-0.3, max 30%)
   isRaidOrDungeon?: boolean; // If true, use stronger mythic (4.0x) instead of token shop mythic (3.5x)
+  allowedSlots?: string[]; // Optional array of allowed slot types (e.g., ['weapon', 'armor'] from dungeon/raid guaranteedLoot)
 }
 
 /**
@@ -149,7 +150,7 @@ export function generateLoot(
   role: string,
   options: GenerateLootOptions = {}
 ): Item | null {
-  const { enemyLevel = 1, waveCount = 0, isBoss = false, forceSetPiece = false, viewerLootBonus = 0, isRaidOrDungeon = false } = options;
+  const { enemyLevel = 1, waveCount = 0, isBoss = false, forceSetPiece = false, viewerLootBonus = 0, isRaidOrDungeon = false, allowedSlots } = options;
   
   // Get category (tank, healer, meleeDps, casterDps)
   const category = getHeroCategory(role);
@@ -204,7 +205,33 @@ export function generateLoot(
   }
   
   // Get available slots
-  const availableSlots = category === 'tank' ? TANK_EQUIPMENT_SLOTS : EQUIPMENT_SLOTS;
+  let availableSlots = category === 'tank' ? TANK_EQUIPMENT_SLOTS : EQUIPMENT_SLOTS;
+  
+  // If allowedSlots is provided (from dungeon/raid guaranteedLoot), filter to only those slots
+  if (allowedSlots && allowedSlots.length > 0) {
+    // Helper function to check if a slot matches an allowed slot (handles 'ring' -> 'ring1'/'ring2')
+    const slotMatches = (slot: string, allowedSlot: string): boolean => {
+      if (slot === allowedSlot) return true;
+      // Handle 'ring' matching both 'ring1' and 'ring2'
+      if (allowedSlot === 'ring' && (slot === 'ring1' || slot === 'ring2')) return true;
+      // Handle reverse: 'ring1' or 'ring2' matching 'ring'
+      if ((slot === 'ring1' || slot === 'ring2') && allowedSlot === 'ring') return true;
+      return false;
+    };
+    
+    availableSlots = availableSlots.filter(slot => 
+      allowedSlots.some(allowedSlot => slotMatches(slot, allowedSlot))
+    );
+    
+    // If filtering resulted in no valid slots, fall back to all slots
+    if (availableSlots.length === 0) {
+      console.warn(`[Loot] No valid slots found for allowedSlots ${allowedSlots.join(', ')}, using all slots`);
+      availableSlots = category === 'tank' ? TANK_EQUIPMENT_SLOTS : EQUIPMENT_SLOTS;
+    } else {
+      console.log(`[Loot] Filtered slots to: ${availableSlots.join(', ')} (from allowedSlots: ${allowedSlots.join(', ')})`);
+    }
+  }
+  
   const slot = availableSlots[Math.floor(Math.random() * availableSlots.length)] as Item['slot'];
   
   // Get template

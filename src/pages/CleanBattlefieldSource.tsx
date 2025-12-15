@@ -1642,6 +1642,7 @@ export default function CleanBattlefieldSource() {
   
   // Auto-gathering tracking state (accumulate gathers, batch sync to backend)
   const lastGatherSyncRef = useRef<number>(Date.now());
+  const dungeonRaidDefCache = useRef<{ id: string; allowedSlots?: string[] } | null>(null);
 
   // SCT (Scrolling Combat Text) state
   type SCTType = 'damage' | 'crit' | 'heal' | 'heal-hot' | 'dot' | 'loot' | 'levelup' | 'questcomplete' | 'xp' | 'miss' | 'gather' | 'profession-xp';
@@ -2558,7 +2559,7 @@ export default function CleanBattlefieldSource() {
         // Clear combat state and check victory
         setInCombat(false);
         combatInProgress.current = false;
-        checkCombatVictory();
+        checkCombatVictory().catch(err => console.error('[Combat] Error in checkCombatVictory:', err));
         return;
       }
       
@@ -3265,7 +3266,7 @@ export default function CleanBattlefieldSource() {
         console.log('[Combat] ⚠️ All enemies dead during action generation! Ending combat...');
         setInCombat(false);
         combatInProgress.current = false;
-        checkCombatVictory();
+        checkCombatVictory().catch(err => console.error('[Combat] Error in checkCombatVictory:', err));
         return;
       }
       
@@ -3335,7 +3336,7 @@ export default function CleanBattlefieldSource() {
 
       if (actions.length === 0) {
         console.log('[Combat] No valid actions, ending combat');
-        checkCombatVictory();
+        checkCombatVictory().catch(err => console.error('[Combat] Error in checkCombatVictory:', err));
         return;
       }
 
@@ -3362,7 +3363,7 @@ export default function CleanBattlefieldSource() {
       const totalDelay = actions.length * 2500 + 1000; // 2.5s per action + 1s buffer
       console.log(`[Combat] Will check victory in ${totalDelay}ms`);
       combatRoundTimeoutRef.current = setTimeout(() => {
-        checkCombatVictory();
+        checkCombatVictory().catch(err => console.error('[Combat] Error in checkCombatVictory:', err));
       }, totalDelay);
     };
 
@@ -4130,14 +4131,14 @@ export default function CleanBattlefieldSource() {
             setTimeout(() => {
               // Ensure combat is still in progress before checking (might have been cleared by room transition)
               if (combatInProgress.current && inCombat) {
-                checkCombatVictory();
+                checkCombatVictory().catch(err => console.error('[Combat] Error in checkCombatVictory:', err));
               } else {
                 console.log('[Combat] Victory check skipped - combat state was cleared (might be room transition or dungeon complete)');
                 // Double-check if all enemies are dead and we're in dungeon mode - might need cleanup
                 const remainingEnemies = enemiesRef.current.filter(e => e.hp > 0 && !e.isDead);
                 if (remainingEnemies.length === 0 && gameMode === 'dungeon') {
                   console.log('[Combat] All enemies dead but combat cleared - forcing victory check anyway');
-                  checkCombatVictory();
+                  checkCombatVictory().catch(err => console.error('[Combat] Error in checkCombatVictory:', err));
                 }
               }
             }, deathAnimationDelay);
@@ -5279,7 +5280,7 @@ export default function CleanBattlefieldSource() {
     };
 
     // Check if combat is over and continue or end (SIMPLIFIED)
-    const checkCombatVictory = () => {
+    const checkCombatVictory = async () => {
       const currentHeroes = heroesRef.current;
       const currentEnemies = enemiesRef.current;
       
@@ -5309,7 +5310,7 @@ export default function CleanBattlefieldSource() {
       
       // Filter out dead enemies (HP <= 0 or isDead flag)
       const aliveEnemies = currentEnemies.filter(e => e.hp > 0 && !e.isDead);
-      const aliveHeroes = currentHeroes.filter(h => h.hp > 0 && !h.isDead);
+      const aliveHeroes = currentHeroes.filter(h => h.hp > 0 && !h.isDead); // Calculate once for use throughout victory logic
 
       console.log(`[Combat] Victory check - ${aliveHeroes.length} heroes, ${aliveEnemies.length}/${currentEnemies.length} enemies alive`);
 
@@ -5579,6 +5580,26 @@ export default function CleanBattlefieldSource() {
           aliveHeroes.forEach(hero => {
             trackQuest(hero.id, 'completeWaves', 1);
           });
+          
+          // SPRITE RESET: Reset all hero sprites to idle after wave victory
+          // This fixes heroes that died and got healed quickly before sprite state synced
+          console.log('[Sprite Reset] 🎬 Resetting hero sprites to idle after wave victory');
+          currentHeroes.forEach(hero => {
+            // Only reset alive heroes (hp > 0) to idle
+            if (hero.hp > 0 && !hero.isDead) {
+              try {
+                const heroRef = getHeroSpriteRef(hero.id);
+                if (heroRef.current) {
+                  // Force sprite to idle animation
+                  heroRef.current.playAnimation('idle');
+                  console.log(`[Sprite Reset] ✅ ${hero.name} reset to idle animation`);
+                }
+              } catch (err) {
+                // Silently ignore if sprite ref is invalid or animation fails
+                console.warn(`[Sprite Reset] ⚠️ Could not reset sprite for ${hero.name}:`, err);
+              }
+            }
+          });
         }
         
         // Check if clean victory (no deaths) for difficulty adjustment
@@ -5790,41 +5811,73 @@ export default function CleanBattlefieldSource() {
         // ========================================
         console.log(`[Loot] Generating loot from ${currentEnemies.length} defeated enemies (${currentEnemies.filter(e => e.isBoss).length} bosses)`);
         
-        // Generate loot for each defeated enemy
-        currentEnemies.forEach(enemy => {
-          // Loot chance: 100% for bosses, 30% for regular enemies
-          const lootChance = enemy.isBoss ? 1.0 : 0.3;
-          if (Math.random() > lootChance) {
-            console.log(`[Loot] No loot from ${enemy.name}`);
-            return;
+        // Calculate viewer bonuses once (outside loops)
+        const viewerBonuses = calculateViewerBonuses();
+        
+        // Note: aliveHeroes is already calculated above (line ~5312) for use in victory logic
+        
+        if (aliveHeroes.length === 0) {
+          console.log(`[Loot] No alive heroes, skipping loot generation`);
+        } else {
+          // Get guaranteedLoot slots from dungeon/raid definition (with caching)
+          let allowedSlots: string[] | undefined = undefined;
+          const isRaidOrDungeon = gameMode === 'raid' || gameMode === 'dungeon';
+          if (isRaidOrDungeon && instanceData) {
+            const cacheKey = gameMode === 'dungeon' ? instanceData.dungeonId : instanceData.raidId;
+            
+            // Check cache first
+            if (dungeonRaidDefCache.current && dungeonRaidDefCache.current.id === cacheKey && dungeonRaidDefCache.current.allowedSlots) {
+              allowedSlots = dungeonRaidDefCache.current.allowedSlots;
+              console.log(`[Loot] Using cached guaranteedLoot slots:`, allowedSlots);
+            } else {
+              try {
+                if (gameMode === 'dungeon' && instanceData.dungeonId) {
+                  // Fetch dungeon definition to get guaranteedLoot
+                  const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/dungeon/${instanceData.dungeonId}`);
+                  if (response.ok) {
+                    const dungeonDef = await response.json();
+                    if (dungeonDef?.rewards?.guaranteedLoot) {
+                      allowedSlots = dungeonDef.rewards.guaranteedLoot;
+                      dungeonRaidDefCache.current = { id: cacheKey, allowedSlots };
+                      console.log(`[Loot] Using dungeon guaranteedLoot slots:`, allowedSlots);
+                    }
+                  } else {
+                    console.warn(`[Loot] Failed to fetch dungeon definition: ${response.status} ${response.statusText}`);
+                  }
+                } else if (gameMode === 'raid' && instanceData.raidId) {
+                  // Fetch raid definition to get guaranteedLoot
+                  const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/raids/${instanceData.raidId}`);
+                  if (response.ok) {
+                    const raidDef = await response.json();
+                    if (raidDef?.rewards?.guaranteedLoot) {
+                      allowedSlots = raidDef.rewards.guaranteedLoot;
+                      dungeonRaidDefCache.current = { id: cacheKey, allowedSlots };
+                      console.log(`[Loot] Using raid guaranteedLoot slots:`, allowedSlots);
+                    }
+                  } else {
+                    console.warn(`[Loot] Failed to fetch raid definition: ${response.status} ${response.statusText}`);
+                  }
+                }
+              } catch (err) {
+                console.warn(`[Loot] Failed to fetch dungeon/raid definition for guaranteedLoot:`, err);
+                // Continue without slot restrictions if fetch fails
+              }
+            }
           }
           
-          // Bosses drop 2-4 items, regular enemies drop 1
-          const numItems = enemy.isBoss ? Math.floor(2 + Math.random() * 3) : 1;
+          // Track which guaranteed slots have dropped (for bosses)
+          const guaranteedSlotsDropped = new Set<string>();
           
-          console.log(`[Loot] ${enemy.name} drops ${numItems} item(s)`);
-          
-          for (let i = 0; i < numItems; i++) {
-            // Pick a random alive hero to generate loot for (loot is role-specific)
-            const aliveHeroes = currentHeroes.filter(h => !h.isDead && h.hp > 0);
-            if (aliveHeroes.length === 0) continue;
-            
-            const randomHero = aliveHeroes[Math.floor(Math.random() * aliveHeroes.length)];
-            
-            // Generate loot for this hero's role (with viewer bonus)
-            const viewerBonuses = calculateViewerBonuses();
-            const isRaidOrDungeon = gameMode === 'raid' || gameMode === 'dungeon';
-            const loot = generateLoot(randomHero.role, {
-              enemyLevel: enemy.level || 1,
-              waveCount: waveCount,
-              isBoss: enemy.isBoss || false,
-              viewerLootBonus: viewerBonuses.loot || 0,
-              isRaidOrDungeon: isRaidOrDungeon // Raids/dungeons get stronger mythic (4.0x vs 3.5x)
-            });
-            
-            if (!loot) continue;
+          // Helper function to process and distribute loot
+          const processLootItem = (loot: any, targetHero: Hero) => {
+            if (!loot) return;
             
             console.log(`[Loot] Generated ${loot.rarity} ${loot.name} (slot: ${loot.slot})`);
+            
+            // Track which guaranteed slots have dropped
+            if (allowedSlots?.includes(loot.slot)) {
+              guaranteedSlotsDropped.add(loot.slot);
+            }
             
             // ========================================
             // AUTOMATED GEAR DISTRIBUTION
@@ -5832,10 +5885,10 @@ export default function CleanBattlefieldSource() {
             // 1. Check if item is locked (skip if locked - shouldn't happen for new loot, but safety check)
             if (loot.locked) {
               console.log(`[Loot] 🔒 Skipping ${loot.name} - item is locked (unexpected for new loot)`);
-              continue;
+              return;
             }
             
-            // 2. Find best hero for this item (check ALL heroes, not just randomHero)
+            // 2. Find best hero for this item (check ALL heroes, not just targetHero)
             let bestHero: Hero | null = null;
             let bestImprovement = 0;
             
@@ -5890,7 +5943,7 @@ export default function CleanBattlefieldSource() {
                 return updated;
               });
               
-              const action = bestHero.id === randomHero.id ? 'equipped' : 'gifted';
+              const action = bestHero.id === targetHero.id ? 'equipped' : 'gifted';
               console.log(`[Loot] ✅ ${loot.rarity} ${loot.name} ${action} to ${bestHero.name} (${oldPower} → ${newPower} power, ${Math.round(bestImprovement * 100)}% improvement)`);
               
               // Show loot SCT
@@ -5899,7 +5952,7 @@ export default function CleanBattlefieldSource() {
                 if (heroElement) {
                   const rect = heroElement.getBoundingClientRect();
                   const rarityColor = { common: '🔘', uncommon: '🟢', rare: '🔵', epic: '🟣', legendary: '🟠' }[loot.rarity] || '📦';
-                  const giftIcon = bestHero!.id !== randomHero.id ? '🎁' : '';
+                  const giftIcon = bestHero!.id !== targetHero.id ? '🎁' : '';
                   addSCT(`${giftIcon}${rarityColor} ${loot.name}`, rect.left + rect.width / 2, rect.top + 35, 'loot');
                 }
               }, 300);
@@ -5919,7 +5972,7 @@ export default function CleanBattlefieldSource() {
               
               setHeroes(current => {
                 const updated = current.map(h => {
-                  if (h.id === randomHero.id) {
+                  if (h.id === targetHero.id) {
                     return { ...h, gold: (h.gold || 0) + sellGold };
                   }
                   return h;
@@ -5928,8 +5981,60 @@ export default function CleanBattlefieldSource() {
                 return updated;
               });
             }
+          };
+          
+          // Generate loot for each defeated enemy
+          for (const enemy of currentEnemies) {
+            // Reset guaranteed slots tracking for each enemy
+            guaranteedSlotsDropped.clear();
+            
+            // Loot chance: 100% for bosses, 30% for regular enemies
+            const lootChance = enemy.isBoss ? 1.0 : 0.3;
+            const shouldDropLoot = Math.random() <= lootChance;
+            
+            if (!shouldDropLoot && (!enemy.isBoss || !allowedSlots || allowedSlots.length === 0)) {
+              console.log(`[Loot] No loot from ${enemy.name}`);
+              continue;
+            }
+            
+            // Bosses drop 2-4 items, regular enemies drop 1
+            let numItems = enemy.isBoss ? Math.floor(2 + Math.random() * 3) : 1;
+            
+            // For bosses with guaranteedLoot, ensure we drop at least one per guaranteed slot
+            if (enemy.isBoss && allowedSlots && allowedSlots.length > 0) {
+              // Ensure we have enough drops to cover all guaranteed slots
+              numItems = Math.max(numItems, allowedSlots.length);
+              console.log(`[Loot] ${enemy.name} (BOSS) will drop ${numItems} item(s) to ensure all guaranteed slots:`, allowedSlots);
+            } else {
+              console.log(`[Loot] ${enemy.name} drops ${numItems} item(s)`);
+            }
+            
+            for (let i = 0; i < numItems; i++) {
+              const randomHero = aliveHeroes[Math.floor(Math.random() * aliveHeroes.length)];
+              
+              // For guaranteed slots that haven't dropped yet, force that slot
+              let slotRestriction = allowedSlots;
+              if (enemy.isBoss && allowedSlots && allowedSlots.length > 0) {
+                const missingSlots = allowedSlots.filter(slot => !guaranteedSlotsDropped.has(slot));
+                if (missingSlots.length > 0 && i < missingSlots.length) {
+                  slotRestriction = [missingSlots[i]]; // Force this specific guaranteed slot
+                  console.log(`[Loot] Forcing guaranteed slot drop: ${missingSlots[i]}`);
+                }
+              }
+              
+              const loot = generateLoot(randomHero.role, {
+                enemyLevel: enemy.level || 1,
+                waveCount: waveCount,
+                isBoss: enemy.isBoss || false,
+                viewerLootBonus: viewerBonuses.loot || 0,
+                isRaidOrDungeon: isRaidOrDungeon, // Raids/dungeons get stronger mythic (4.0x vs 3.5x)
+                allowedSlots: slotRestriction // Restrict to guaranteedLoot slots if available
+              });
+              
+              processLootItem(loot, randomHero);
+            }
           }
-        });
+        }
         
         // Note: Raid wave progression is handled above (lines 4849-4929) and returns early
         // This section is only reached for idle/dungeon modes
@@ -8756,55 +8861,57 @@ export default function CleanBattlefieldSource() {
         );
       })}
 
-      {/* Minimal Status - Bottom Left */}
-      <div style={{
-        position: 'absolute',
-        bottom: '10px',
-        left: '10px',
-        color: 'white',
-        fontSize: '16px',
-        fontFamily: 'monospace',
-        textShadow: '2px 2px 4px rgba(0,0,0,0.9)',
-        zIndex: 1000,
-        lineHeight: '1.5'
-      }}>
-        {/* Status and Wave */}
-        <div style={{ color: isTraveling ? '#fbbf24' : inCombat ? '#ef4444' : '#10b981', fontSize: '18px', marginBottom: '6px' }}>
-          {isTraveling ? 'Travel' : inCombat ? 'Combat' : 'Idle'} {combatWaveCount > 0 && `• W${combatWaveCount}${(combatWaveCount % 10 === 0) ? '👑' : ''}`}
-        </div>
+      {/* Minimal Status - Single Line at Bottom */}
+      {(() => {
+        // Calculate needed classes
+        const aliveHeroes = heroes.filter(h => !h.isDead && h.hp > 0);
+        const tanks = aliveHeroes.filter(h => h.role === 'guardian' || h.role === 'paladin');
+        const healers = aliveHeroes.filter(h => h.role === 'shaman' || h.role === 'monk' || h.role === 'cleric');
+        const dps = aliveHeroes.filter(h => h.role === 'berserker' || h.role === 'mage' || h.role === 'ranger' || h.role === 'rogue' || h.role === 'assassin');
         
-        {/* Viewer Bonus and Difficulty */}
-        <div style={{ display: 'flex', gap: '16px', alignItems: 'center', marginBottom: '6px' }}>
-          <div style={{ color: '#a78bfa', fontSize: '21px', fontWeight: 'bold' }}>
-            {activeChatterCount}👥 +{Math.floor((calculateViewerBonuses().damage - 1) * 100)}%
-          </div>
-          <div style={{ color: '#fbbf24', fontSize: '18px' }}>
-            Difficulty: {Math.floor(difficultyModifier * 100)}%
-          </div>
-        </div>
+        const needed = [];
+        if (tanks.length === 0) needed.push('Tank');
+        if (healers.length === 0) needed.push('Healer');
+        if (dps.length < 2) needed.push('DPS');
         
-        {/* Needed Classes */}
-        {(() => {
-          const aliveHeroes = allHeroes.filter(h => !h.isDead && h.hp > 0);
-          const tanks = aliveHeroes.filter(h => h.role === 'guardian' || h.role === 'paladin');
-          const healers = aliveHeroes.filter(h => h.role === 'shaman' || h.role === 'monk' || h.role === 'cleric');
-          const dps = aliveHeroes.filter(h => h.role === 'berserker' || h.role === 'mage' || h.role === 'ranger' || h.role === 'rogue' || h.role === 'assassin');
-          
-          const needed = [];
-          if (tanks.length === 0) needed.push('Tank');
-          if (healers.length === 0) needed.push('Healer');
-          if (dps.length < 2) needed.push('DPS');
-          
-          if (needed.length > 0) {
-            return (
-              <div style={{ color: '#ef4444', fontSize: '16px' }}>
-                Need: {needed.join(', ')}
-              </div>
-            );
-          }
-          return null;
-        })()}
-      </div>
+        // Build status line
+        const statusParts = [];
+        
+        // Combat status
+        const statusColor = isTraveling ? '#fbbf24' : inCombat ? '#ef4444' : '#10b981';
+        const statusText = isTraveling ? 'Travel' : inCombat ? 'Combat' : 'Idle';
+        const waveText = combatWaveCount > 0 ? ` • W${combatWaveCount}${(combatWaveCount % 10 === 0) ? '👑' : ''}` : '';
+        statusParts.push(<span key="status" style={{ color: statusColor }}>{statusText}{waveText}</span>);
+        
+        // Viewer buffs
+        const viewerBonus = Math.floor((calculateViewerBonuses().damage - 1) * 100);
+        statusParts.push(<span key="viewers" style={{ color: '#a78bfa' }}> • {activeChatterCount}👥 +{viewerBonus}%</span>);
+        
+        // Difficulty
+        statusParts.push(<span key="difficulty" style={{ color: '#fbbf24' }}> • Difficulty: {Math.floor(difficultyModifier * 100)}%</span>);
+        
+        // Needs
+        if (needed.length > 0) {
+          statusParts.push(<span key="needs" style={{ color: '#ef4444' }}> • Need: {needed.join(', ')}</span>);
+        }
+        
+        return (
+          <div style={{
+            position: 'absolute',
+            bottom: '10px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            color: 'white',
+            fontSize: '16px',
+            fontFamily: 'monospace',
+            textShadow: '2px 2px 4px rgba(0,0,0,0.9)',
+            zIndex: 1000,
+            whiteSpace: 'nowrap'
+          }}>
+            {statusParts}
+          </div>
+        );
+      })()}
 
 
       {/* No Heroes Message */}
