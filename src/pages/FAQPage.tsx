@@ -57,6 +57,169 @@ export default function FAQPage() {
           </div>
         </div>
 
+        {/* How It Works */}
+        <div className="bg-gray-800 rounded-lg p-8 mb-8 border-2 border-indigo-600">
+          <h2 className="text-3xl font-bold text-indigo-400 mb-6">🎮 How It Works</h2>
+          
+          <div className="space-y-6 text-gray-300">
+            <div>
+              <h3 className="text-xl font-bold text-white mb-3">Core Gameplay</h3>
+              <p className="mb-3">
+                <strong className="text-indigo-400">The Never Ending War</strong> is an idle RPG where your character automatically fights enemies on the battlefield. 
+                You control your character through chat commands to attack, heal, use abilities, and manage your gear.
+              </p>
+              <ul className="list-disc list-inside space-y-2 ml-4">
+                <li><strong className="text-yellow-400">Idle Adventure:</strong> Your character automatically fights enemies and gains XP/gold when you're not actively commanding</li>
+                <li><strong className="text-yellow-400">Active Combat:</strong> Use chat commands to control your character in real-time during combat</li>
+                <li><strong className="text-yellow-400">Progression:</strong> Level up, collect gear, and improve your character's power over time</li>
+                <li><strong className="text-yellow-400">Persistence:</strong> Your character and progress are saved between streams</li>
+              </ul>
+            </div>
+
+            <div>
+              <h3 className="text-xl font-bold text-white mb-3">Combat System</h3>
+              <div className="bg-gray-900/50 rounded-lg p-4 mb-3">
+                <p className="mb-2">Combat happens automatically, but you can influence it with commands:</p>
+                <ul className="list-disc list-inside space-y-1 ml-4 text-sm">
+                  <li><strong className="text-red-400">Auto-Combat:</strong> Your character attacks enemies automatically every few seconds</li>
+                  <li><strong className="text-red-400">Manual Commands:</strong> Use <code className="bg-gray-800 px-1 rounded">!attack</code>, <code className="bg-gray-800 px-1 rounded">!heal</code>, <code className="bg-gray-800 px-1 rounded">!ability</code> for strategic control</li>
+                  <li><strong className="text-red-400">Cooldowns:</strong> Commands have cooldowns - use them wisely!</li>
+                  <li><strong className="text-red-400">Role-Based:</strong> Tanks protect, Healers support, DPS deal damage</li>
+                </ul>
+              </div>
+              <p className="text-sm text-gray-400">
+                Enemies scale with your level and party size. The more heroes on the battlefield, the stronger enemies become, but you also get better loot!
+              </p>
+            </div>
+
+            <div>
+              <h3 className="text-xl font-bold text-white mb-3">Stats & Progression</h3>
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="bg-gray-900/50 rounded-lg p-4">
+                  <h4 className="font-bold text-cyan-400 mb-2">Core Stats</h4>
+                  <ul className="space-y-1 text-sm">
+                    <li><strong>HP:</strong> Health points - when it reaches 0, you die</li>
+                    <li><strong>Attack:</strong> Damage you deal to enemies</li>
+                    <li><strong>Defense:</strong> Reduces damage taken</li>
+                    <li><strong>Level:</strong> Increases all stats and unlocks abilities</li>
+                  </ul>
+                </div>
+                <div className="bg-gray-900/50 rounded-lg p-4">
+                  <h4 className="font-bold text-purple-400 mb-2">Progression</h4>
+                  <ul className="space-y-1 text-sm">
+                    <li><strong>XP:</strong> Gain from defeating enemies</li>
+                    <li><strong>Gold:</strong> Earned from selling items and combat</li>
+                    <li><strong>Tokens:</strong> Earned from quests, used in shop</li>
+                    <li><strong>Gear Score:</strong> Overall power level of your equipment</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-xl font-bold text-white mb-3">Loot & Equipment</h3>
+              <div className="bg-gray-900/50 rounded-lg p-4">
+                <p className="mb-2">Items drop from defeated enemies with different rarities:</p>
+                <div className="grid md:grid-cols-5 gap-2 text-sm">
+                  <div><span className="text-gray-400">Common</span> - Basic stats</div>
+                  <div><span className="text-green-400">Uncommon</span> - Better stats</div>
+                  <div><span className="text-blue-400">Rare</span> - Good stats</div>
+                  <div><span className="text-purple-400">Epic</span> - Great stats</div>
+                  <div><span className="text-yellow-400">Legendary</span> - Best stats</div>
+                </div>
+                <p className="mt-3 text-sm text-gray-400">
+                  Higher rarity items have better base stats and can be upgraded/enchanted more. 
+                  Use the Portal to manage your inventory and equipment easily.
+                </p>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-xl font-bold text-white mb-3">Viewer Bonuses & Engagement</h3>
+              <div className="bg-gray-900/50 rounded-lg p-4">
+                <p className="mb-2">The game rewards active chat participation:</p>
+                <ul className="list-disc list-inside space-y-1 ml-4 text-sm">
+                  <li><strong className="text-green-400">Active Chatters:</strong> +1% damage and healing per active chatter (users who chatted in last hour)</li>
+                  <li><strong className="text-green-400">Defense Bonus:</strong> +0.5% defense per active chatter</li>
+                  <li><strong className="text-green-400">Rested XP:</strong> Gain bonus XP when you chat (1.5x multiplier)</li>
+                  <li><strong className="text-green-400">Loot Bonus:</strong> More active chatters = better loot chances</li>
+                </ul>
+                <p className="mt-3 text-xs text-gray-400">
+                  The more active your chat is, the stronger your character becomes! Chatting in the stream helps everyone.
+                </p>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-xl font-bold text-white mb-3">Professions & Crafting</h3>
+              <div className="bg-gray-900/50 rounded-lg p-4">
+                <p className="mb-2">Choose one profession to specialize in crafting:</p>
+                <ul className="list-disc list-inside space-y-1 ml-4 text-sm">
+                  <li><strong className="text-green-400">Herbalism:</strong> Craft consumable elixirs and potions for temporary buffs</li>
+                  <li><strong className="text-orange-400">Mining:</strong> Upgrade gear permanently and add gem sockets for stat bonuses</li>
+                  <li><strong className="text-purple-400">Enchanting:</strong> Apply unique enchantments to gear (fire damage, life steal, etc.)</li>
+                </ul>
+                <p className="mt-3 text-xs text-gray-400">
+                  Professions are permanent - choose based on your playstyle. Level up by gathering materials and crafting items.
+                </p>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-xl font-bold text-white mb-3">Raids & Dungeons</h3>
+              <div className="bg-gray-900/50 rounded-lg p-4">
+                <p className="mb-2">Team up with other players for challenging content:</p>
+                <ul className="list-disc list-inside space-y-1 ml-4 text-sm">
+                  <li><strong className="text-red-400">Raids:</strong> Multi-wave boss fights requiring coordination</li>
+                  <li><strong className="text-red-400">Dungeons:</strong> Multi-room adventures with increasing difficulty</li>
+                  <li><strong className="text-red-400">Rewards:</strong> Epic and legendary gear, tokens, and XP</li>
+                  <li><strong className="text-red-400">Coordination:</strong> Use combat commands together with your team</li>
+                </ul>
+                <p className="mt-3 text-xs text-gray-400">
+                  Raids and dungeons scale with party size and level. Work together to defeat powerful bosses!
+                </p>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-xl font-bold text-white mb-3">Auto-Combat Mode</h3>
+              <div className="bg-gray-900/50 rounded-lg p-4">
+                <p className="mb-2">Enable auto-combat for hands-free gameplay:</p>
+                <ul className="list-disc list-inside space-y-1 ml-4 text-sm">
+                  <li>Use <code className="bg-gray-800 px-1 rounded">!auto</code> to toggle auto-combat on/off</li>
+                  <li>Your character will automatically use attacks and abilities</li>
+                  <li>You can still use manual commands for strategic moments</li>
+                  <li>Perfect for when you're away but want to keep progressing</li>
+                </ul>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-xl font-bold text-white mb-3">Tips for Success</h3>
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="bg-gradient-to-br from-purple-900/30 to-blue-900/30 rounded-lg p-4">
+                  <h4 className="font-bold text-purple-400 mb-2">Early Game</h4>
+                  <ul className="space-y-1 text-sm">
+                    <li>• Join with <code className="bg-gray-800 px-1 rounded">!join [class]</code></li>
+                    <li>• Let auto-combat do the work</li>
+                    <li>• Equip better gear as it drops</li>
+                    <li>• Complete daily quests for tokens</li>
+                  </ul>
+                </div>
+                <div className="bg-gradient-to-br from-green-900/30 to-yellow-900/30 rounded-lg p-4">
+                  <h4 className="font-bold text-green-400 mb-2">Mid/Late Game</h4>
+                  <ul className="space-y-1 text-sm">
+                    <li>• Choose a profession and level it up</li>
+                    <li>• Upgrade and enchant your gear</li>
+                    <li>• Join raids for epic loot</li>
+                    <li>• Use the Portal for inventory management</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Combat Commands */}
         <div className="bg-gray-800 rounded-lg p-8 mb-8 border-2 border-red-600">
           <h2 className="text-3xl font-bold text-red-400 mb-6">⚔️ Combat Commands</h2>
