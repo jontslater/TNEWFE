@@ -1665,6 +1665,10 @@ export default function CleanBattlefieldSource() {
   const inventoryChangesRef = useRef<Map<string, any[]>>(new Map()); // heroId -> inventory array (absolute, latest wins)
   const lastInventorySyncRef = useRef<number>(Date.now());
   
+  // Profession materials tracking state (accumulate changes, batch sync to backend)
+  const professionMaterialsRef = useRef<Map<string, any>>(new Map()); // heroId -> profession materials object
+  const lastProfessionMaterialsSyncRef = useRef<number>(Date.now());
+  
   const dungeonRaidDefCache = useRef<{ id: string; allowedSlots?: string[] } | null>(null);
 
   // SCT (Scrolling Combat Text) state
@@ -4207,6 +4211,80 @@ export default function CleanBattlefieldSource() {
           if (target.isBoss) {
             trackQuest(hero.id, 'defeatBosses', 1);
           }
+          
+          // ENCHANTING: Grant essence from enemy defeats (for heroes with enchanting profession)
+          setHeroes(current => {
+            return current.map(h => {
+              if (h.id !== hero.id || h.isDead || !h.profession || h.profession.type !== 'enchanting') return h;
+              
+              const profession = h.profession;
+              const profLevel = profession.level || 1;
+              
+              // Base essence based on enemy level (1-3 essence per kill)
+              const baseEssence = Math.floor(1 + (target.level || 1) / 10) + Math.floor(Math.random() * 2);
+              
+              // Bonus: +5% essence per profession level (capped at +50% at level 10)
+              const essenceBonus = Math.min(1 + (profLevel - 1) * 0.05, 1.5);
+              const essenceAmount = Math.floor(baseEssence * essenceBonus);
+              
+              // Boss bonus: +50% essence
+              const finalEssence = target.isBoss ? Math.floor(essenceAmount * 1.5) : essenceAmount;
+              
+              // Update profession materials
+              const updatedMaterials = {
+                ...(profession.materials || {}),
+                essence: (profession.materials?.essence || 0) + finalEssence
+              };
+              
+              // Track for sync
+              if (!professionMaterialsRef.current.has(h.id)) {
+                professionMaterialsRef.current.set(h.id, {});
+              }
+              const currentMaterials = professionMaterialsRef.current.get(h.id) || {};
+              professionMaterialsRef.current.set(h.id, {
+                ...currentMaterials,
+                essence: (currentMaterials.essence || 0) + finalEssence
+              });
+              
+              // Grant profession XP and check for level-up
+              const professionXp = Math.floor(3 + Math.random() * 3);
+              profession.totalGathered = (profession.totalGathered || 0) + 1;
+              
+              // Update profession
+              const updatedProfession = {
+                ...profession,
+                materials: updatedMaterials,
+                totalGathered: profession.totalGathered
+              };
+              
+              // Check for profession level-up (simplified - full logic in grantProfessionXp)
+              const currentProfXp = profession.xp || 0;
+              const currentProfMaxXp = profession.maxXp || 100;
+              const newProfXp = currentProfXp + professionXp;
+              
+              if (newProfXp >= currentProfMaxXp) {
+                const newProfLevel = profLevel + 1;
+                const newProfMaxXp = 100 + newProfLevel * 10;
+                updatedProfession.level = newProfLevel;
+                updatedProfession.xp = newProfXp - currentProfMaxXp;
+                updatedProfession.maxXp = newProfMaxXp;
+                console.log(`[Enchanting] ✨ ${h.name} profession leveled up! ${profLevel} → ${newProfLevel}`);
+              } else {
+                updatedProfession.xp = newProfXp;
+              }
+              
+              // Show essence SCT
+              const heroElement = document.querySelector(`[data-hero-id="${h.id}"]`);
+              if (heroElement) {
+                const rect = heroElement.getBoundingClientRect();
+                addSCT(`+${finalEssence} Essence`, rect.left + rect.width / 2, rect.top + 25, 'gather');
+              }
+              
+              console.log(`[Enchanting] ${h.name} gained ${finalEssence} essence from ${target.name} (${target.isBoss ? 'boss' : 'enemy'})`);
+              
+              return { ...h, profession: updatedProfession };
+            });
+          });
           
           // INSTANT VICTORY CHECK: If this was the last enemy, end round NOW!
           const remainingEnemies = updatedEnemies.filter(e => e.hp > 0 && !e.isDead);
@@ -6812,6 +6890,78 @@ export default function CleanBattlefieldSource() {
           } else {
             // No changes to sync, but still update timestamp
             lastInventorySyncRef.current = now;
+          }
+        }
+        
+        // PROFESSION MATERIALS BATCH SYNC: Sync accumulated profession materials to backend
+        const timeSinceLastProfessionMaterialsSync = now - lastProfessionMaterialsSyncRef.current;
+        if (professionMaterialsRef.current.size > 0 && timeSinceLastProfessionMaterialsSync >= 60000) {
+          console.log('[Profession Materials Sync] ✅ Syncing profession materials for', professionMaterialsRef.current.size, 'heroes...');
+          
+          // Process each hero's profession materials changes
+          const professionMaterialsSyncPromises: Promise<void>[] = [];
+          
+          professionMaterialsRef.current.forEach((materialChanges, heroId) => {
+            const hero = currentHeroes.find(h => h.id === heroId);
+            if (!hero || !hero.profession) return;
+            
+            // Merge accumulated changes with current profession materials
+            const currentMaterials = hero.profession.materials || {};
+            const updatedMaterials: any = { ...currentMaterials };
+            
+            // Apply material changes (deltas)
+            Object.keys(materialChanges).forEach(materialType => {
+              if (materialType === 'essence') {
+                updatedMaterials.essence = (currentMaterials.essence || 0) + (materialChanges.essence || 0);
+              } else if (materialType === 'herbs') {
+                updatedMaterials.herbs = { ...(currentMaterials.herbs || {}) };
+                Object.keys(materialChanges.herbs || {}).forEach((herbType: string) => {
+                  updatedMaterials.herbs[herbType] = ((currentMaterials.herbs as any)?.[herbType] || 0) + ((materialChanges.herbs as any)?.[herbType] || 0);
+                });
+              } else if (materialType === 'ore') {
+                updatedMaterials.ore = { ...(currentMaterials.ore || {}) };
+                Object.keys(materialChanges.ore || {}).forEach((oreType: string) => {
+                  updatedMaterials.ore[oreType] = ((currentMaterials.ore as any)?.[oreType] || 0) + ((materialChanges.ore as any)?.[oreType] || 0);
+                });
+              }
+            });
+            
+            // Only sync if there are actual changes
+            if (Object.keys(materialChanges).length > 0) {
+              professionMaterialsSyncPromises.push(
+                heroAPI.updateHeroById(heroId, {
+                  profession: {
+                    ...hero.profession,
+                    materials: updatedMaterials
+                  } as any
+                })
+                  .then(() => {
+                    console.log(`[Profession Materials Sync] ✅ Synced materials for ${hero.name} (${Object.keys(materialChanges).join(', ')})`);
+                  })
+                  .catch(err => {
+                    console.error(`[Profession Materials Sync] ❌ Failed to sync materials for ${hero.name}:`, err);
+                  })
+              );
+            }
+          });
+          
+          // Wait for all profession materials syncs to complete
+          if (professionMaterialsSyncPromises.length > 0) {
+            Promise.all(professionMaterialsSyncPromises).then(async () => {
+              console.log('[Profession Materials Sync] ✅ All profession materials synced');
+              
+              // Clear profession materials changes after successful sync
+              professionMaterialsRef.current.clear();
+              lastProfessionMaterialsSyncRef.current = now;
+            }).catch(err => {
+              console.error('[Profession Materials Sync] ❌ Some profession materials syncs failed:', err);
+              // Still clear to prevent accumulation, but log error
+              professionMaterialsRef.current.clear();
+              lastProfessionMaterialsSyncRef.current = now;
+            });
+          } else {
+            // No changes to sync, but still update timestamp
+            lastProfessionMaterialsSyncRef.current = now;
           }
         }
       }

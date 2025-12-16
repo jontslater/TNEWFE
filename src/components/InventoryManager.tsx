@@ -31,6 +31,8 @@ export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, 
   const [gemModalState, setGemModalState] = useState<{ item: Item; socket: any; socketIndex: number; mode: 'insert' | 'remove' } | null>(null);
   const [usingSocket, setUsingSocket] = useState<{ socketItem: Item } | null>(null); // When using a Gem Socket item
   const [usingGem, setUsingGem] = useState<{ gem: Item } | null>(null); // When using a Gem item
+  const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set()); // Selected item IDs for batch operations
+  const [batchMode, setBatchMode] = useState(false); // Toggle batch selection mode
   
 
   // Handle drag start
@@ -874,43 +876,220 @@ export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, 
             {/* Regular Gear/Loot Section */}
             {regularItems.length > 0 && (
               <div>
-                <h4 className="text-lg font-semibold text-blue-400 mb-3">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-lg font-semibold text-blue-400">
                   ⚔️ Gear & Loot ({regularItems.length})
                 </h4>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        setBatchMode(!batchMode);
+                        if (batchMode) setSelectedItems(new Set()); // Clear selection when disabling batch mode
+                      }}
+                      className={`px-3 py-1 rounded text-xs font-semibold transition-colors ${
+                        batchMode
+                          ? 'bg-purple-600 hover:bg-purple-700 text-white'
+                          : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+                      }`}
+                    >
+                      {batchMode ? 'Cancel' : 'Batch Select'}
+                    </button>
+                    {batchMode && selectedItems.size > 0 && (
+                      <>
+                        <button
+                          onClick={async () => {
+                            // Batch sell selected items
+                            const itemsToSell = regularItems.filter(item => item.id && selectedItems.has(item.id));
+                            if (itemsToSell.length === 0) return;
+                            
+                            // Calculate total sell value
+                            let totalGold = 0;
+                            const rarityMult: Record<string, number> = { 
+                              common: 1, 
+                              uncommon: 1.3, 
+                              rare: 2, 
+                              epic: 3, 
+                              legendary: 4,
+                              mythic: 5
+                            };
+                            
+                            itemsToSell.forEach(item => {
+                              if ((item as any).locked) return; // Skip locked items
+                              const itemValue = item.attack + item.defense + item.hp;
+                              const multiplier = rarityMult[item.rarity] || 1;
+                              totalGold += Math.floor(itemValue * multiplier * 0.25);
+                            });
+                            
+                            if (totalGold === 0) {
+                              alert('Selected items are locked or have no value.');
+                              return;
+                            }
+                            
+                            if (!window.confirm(`Sell ${itemsToSell.length} item(s) for ${totalGold}g?`)) return;
+                            
+                            try {
+                              const updatedInventory = (hero.inventory || []).filter(
+                                invItem => !invItem.id || !selectedItems.has(invItem.id) || (invItem as any).locked
+                              );
+                              
+                              if (hero.id) {
+                                await heroAPI.updateHeroById(hero.id, {
+                                  inventory: updatedInventory,
+                                  gold: (hero.gold || 0) + totalGold
+                                });
+                                alert(`✅ Sold ${itemsToSell.length} item(s) for ${totalGold}g!`);
+                                setSelectedItems(new Set());
+                                if (onUpdate) onUpdate();
+                              }
+                            } catch (error: any) {
+                              console.error('Failed to batch sell items:', error);
+                              alert(error.response?.data?.error || 'Failed to sell items');
+                            }
+                          }}
+                          className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs font-semibold transition-colors"
+                        >
+                          Sell Selected ({selectedItems.size})
+                        </button>
+                        <button
+                          onClick={async () => {
+                            // Batch disenchant selected items (only if hero has enchanting profession)
+                            if (!hero.profession || hero.profession.type !== 'enchanting') {
+                              alert('You need the Enchanting profession to disenchant items.');
+                              return;
+                            }
+                            
+                            const itemsToDisenchant = regularItems.filter(item => item.id && selectedItems.has(item.id));
+                            if (itemsToDisenchant.length === 0) return;
+                            
+                            // Calculate total essence
+                            let totalEssence = 0;
+                            const essenceValues: Record<string, number> = {
+                              common: 1,
+                              uncommon: 2,
+                              rare: 5,
+                              epic: 10,
+                              legendary: 20,
+                              mythic: 50
+                            };
+                            
+                            itemsToDisenchant.forEach(item => {
+                              if ((item as any).locked) return; // Skip locked items
+                              const baseEssence = essenceValues[item.rarity] || 1;
+                              // Higher rarity and upgrade level = more essence
+                              const upgradeBonus = ((item as any).upgradeLevel || 0) * 2;
+                              totalEssence += baseEssence + upgradeBonus;
+                            });
+                            
+                            if (totalEssence === 0) {
+                              alert('Selected items are locked or have no value.');
+                              return;
+                            }
+                            
+                            if (!window.confirm(`Disenchant ${itemsToDisenchant.length} item(s) for ${totalEssence} essence?`)) return;
+                            
+                            try {
+                              const updatedInventory = (hero.inventory || []).filter(
+                                invItem => !invItem.id || !selectedItems.has(invItem.id) || (invItem as any).locked
+                              );
+                              
+                              const currentEssence = hero.profession.materials?.essence || 0;
+                              const updatedMaterials = {
+                                ...(hero.profession.materials || {}),
+                                essence: currentEssence + totalEssence
+                              };
+                              
+                              if (hero.id) {
+                                await heroAPI.updateHeroById(hero.id, {
+                                  inventory: updatedInventory,
+                                  profession: {
+                                    ...hero.profession,
+                                    materials: updatedMaterials
+                                  }
+                                });
+                                alert(`✅ Disenchanted ${itemsToDisenchant.length} item(s) for ${totalEssence} essence!`);
+                                setSelectedItems(new Set());
+                                if (onUpdate) onUpdate();
+                              }
+                            } catch (error: any) {
+                              console.error('Failed to disenchant items:', error);
+                              alert(error.response?.data?.error || 'Failed to disenchant items');
+                            }
+                          }}
+                          className="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded text-xs font-semibold transition-colors"
+                          disabled={!hero.profession || hero.profession.type !== 'enchanting'}
+                        >
+                          Disenchant ({selectedItems.size})
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
                 <div 
                   className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4"
                 >
                   {regularItems.map((item, idx) => (
                     <div
-                      key={idx}
+                      key={item.id || idx}
                       onDoubleClick={() => {
                         // Double-click to equip
                         if (item.slot && onEquipChange) {
                           onEquipChange(item.slot, item);
                         }
                       }}
-                      className="bg-gray-700 rounded-lg p-2 border-2 border-gray-600 hover:border-purple-500 transition-colors flex flex-col min-h-[200px]"
+                      className={`bg-gray-700 rounded-lg p-2 border-2 transition-colors flex flex-col min-h-[200px] ${
+                        batchMode && item.id && selectedItems.has(item.id)
+                          ? 'border-purple-400 bg-purple-900/20'
+                          : 'border-gray-600 hover:border-purple-500'
+                      }`}
                     >
+                      {/* Batch selection checkbox */}
+                      {batchMode && item.id && (
+                        <div className="mb-2">
+                          <input
+                            type="checkbox"
+                            checked={selectedItems.has(item.id)}
+                            onChange={(e) => {
+                              if ((item as any).locked) {
+                                alert('Cannot select locked items.');
+                                return;
+                              }
+                              const newSelected = new Set(selectedItems);
+                              if (e.target.checked) {
+                                newSelected.add(item.id!);
+                              } else {
+                                newSelected.delete(item.id!);
+                              }
+                              setSelectedItems(newSelected);
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-4 h-4 rounded"
+                          />
+                        </div>
+                      )}
                       <div
                         draggable
                         onDragStart={() => handleDragStart(item, 'inventory')}
                         className="cursor-move flex-grow pointer-events-auto"
                       >
-                        <ItemTooltip item={item} position="above">
+                        <ItemTooltip 
+                          item={item} 
+                          position="above"
+                          compareWith={item.slot ? (hero.equipment[item.slot as keyof typeof hero.equipment] as Item | null) || null : null}
+                        >
                           <div className="hover:bg-gray-600/30 rounded p-1 -m-1 transition-colors pointer-events-auto flex-grow">
                             <div className={`font-semibold mb-1 text-xs ${getRarityColor(item.rarity)} flex items-center gap-1 leading-tight`}>
                               {(item as any).locked && <span className="text-yellow-400 flex-shrink-0" title="Locked">🔒</span>}
-                              <span className="truncate">{item.name}</span>
-                              {(item as any).upgradeLevel && (item as any).upgradeLevel > 0 && (
-                                <span className="text-amber-400 font-semibold text-[10px] flex-shrink-0">+{(item as any).upgradeLevel}</span>
-                              )}
-                            </div>
+                            <span className="truncate">{item.name}</span>
+                            {(item as any).upgradeLevel && (item as any).upgradeLevel > 0 && (
+                              <span className="text-amber-400 font-semibold text-[10px] flex-shrink-0">+{(item as any).upgradeLevel}</span>
+                            )}
+                          </div>
                             
                             <div className="space-y-0.5 text-[10px] mb-2">
-                              {item.attack > 0 && <div className="text-red-400">+{item.attack} ATK</div>}
-                              {item.defense > 0 && <div className="text-blue-400">+{item.defense} DEF</div>}
-                              {item.hp > 0 && <div className="text-green-400">+{item.hp} HP</div>}
-                            </div>
+                            {item.attack > 0 && <div className="text-red-400">+{item.attack} ATK</div>}
+                            {item.defense > 0 && <div className="text-blue-400">+{item.defense} DEF</div>}
+                            {item.hp > 0 && <div className="text-green-400">+{item.hp} HP</div>}
+                          </div>
 
                             {/* Sockets Display */}
                             {item.slot && (() => {
@@ -1080,49 +1259,49 @@ export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, 
                             {(item as any).locked ? '🔒' : '🔓'}
                           </button>
                         )}
-                        {onUpgradeItem && item.id && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              e.preventDefault();
-                              setUpgradeItem({ item, location: 'inventory' });
-                            }}
-                            disabled={(item.upgradeLevel || 0) >= 2}
+                              {onUpgradeItem && item.id && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    e.preventDefault();
+                                    setUpgradeItem({ item, location: 'inventory' });
+                                  }}
+                                  disabled={(item.upgradeLevel || 0) >= 2}
                             className={`flex-1 min-w-[55px] text-white text-[10px] py-1 rounded font-semibold transition-colors ${
-                              (item.upgradeLevel || 0) >= 2
-                                ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                                    (item.upgradeLevel || 0) >= 2
+                                      ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
                                 : 'bg-amber-600 hover:bg-amber-700 cursor-pointer'
-                            }`}
-                            title={(item.upgradeLevel || 0) >= 2 ? 'Item is fully upgraded (+2)' : 'Upgrade item'}
-                          >
-                            {(item.upgradeLevel || 0) >= 2 ? 'Max' : 'Up'}
-                          </button>
-                        )}
-                        {isRarePlus(item.rarity) && item.id && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              e.preventDefault();
-                              setReforgeItem({ item, location: 'inventory' });
-                            }}
+                                  }`}
+                                  title={(item.upgradeLevel || 0) >= 2 ? 'Item is fully upgraded (+2)' : 'Upgrade item'}
+                                >
+                                  {(item.upgradeLevel || 0) >= 2 ? 'Max' : 'Up'}
+                                </button>
+                              )}
+                              {isRarePlus(item.rarity) && item.id && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    e.preventDefault();
+                                    setReforgeItem({ item, location: 'inventory' });
+                                  }}
                             className="flex-1 min-w-[55px] bg-purple-600 hover:bg-purple-700 text-white text-[10px] py-1 rounded font-semibold transition-colors cursor-pointer"
-                            title="Reforge item (reroll stats)"
-                          >
-                            Ref
-                          </button>
-                        )}
+                                  title="Reforge item (reroll stats)"
+                                >
+                                  Ref
+                                </button>
+                              )}
                         {item.slot && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              e.preventDefault();
-                              if (onEquipChange && item.slot) {
-                                console.log('Equipping item:', item.name, 'to slot:', item.slot);
-                                onEquipChange(item.slot, item);
-                              } else {
-                                console.error('Cannot equip: missing slot or onEquipChange handler', { slot: item.slot, hasHandler: !!onEquipChange });
-                              }
-                            }}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  e.preventDefault();
+                                  if (onEquipChange && item.slot) {
+                                    console.log('Equipping item:', item.name, 'to slot:', item.slot);
+                                    onEquipChange(item.slot, item);
+                                  } else {
+                                    console.error('Cannot equip: missing slot or onEquipChange handler', { slot: item.slot, hasHandler: !!onEquipChange });
+                                  }
+                                }}
                             disabled={(item as any).locked}
                             className={`flex-1 min-w-[55px] text-white text-[10px] py-1 rounded font-semibold transition-colors ${
                               (item as any).locked
@@ -1130,49 +1309,49 @@ export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, 
                                 : 'bg-blue-600 hover:bg-blue-700 cursor-pointer'
                             }`}
                             title={(item as any).locked ? 'Cannot equip locked item' : 'Equip item'}
-                          >
-                            Equip
-                          </button>
+                              >
+                                Equip
+                              </button>
                         )}
-                        <button
-                          onClick={async (e) => {
-                            e.stopPropagation();
+                              <button
+                                onClick={async (e) => {
+                                  e.stopPropagation();
                             e.preventDefault();
                             if ((item as any).locked) {
                               alert('Cannot sell locked item. Unlock it first.');
                               return;
                             }
-                            // Calculate sell value: 25% of item value * rarity multiplier
-                            const itemValue = item.attack + item.defense + item.hp;
-                            const rarityMult: Record<string, number> = { 
-                              common: 1, 
-                              uncommon: 1.3, 
-                              rare: 2, 
-                              epic: 3, 
-                              legendary: 4,
-                              mythic: 5
-                            };
-                            const multiplier = rarityMult[item.rarity] || 1;
-                            const sellValue = Math.floor(itemValue * multiplier * 0.25);
-                            
-                            if (!window.confirm(`Sell ${item.name} for ${sellValue}g?`)) return;
-                            
-                            try {
-                              const updatedInventory = (hero.inventory || []).filter(invItem => invItem.id !== item.id);
-                              
-                              if (hero.id) {
-                                await heroAPI.updateHeroById(hero.id, {
-                                  inventory: updatedInventory,
-                                  gold: (hero.gold || 0) + sellValue
-                                });
-                                alert(`✅ Sold ${item.name} for ${sellValue}g!`);
-                                if (onUpdate) onUpdate();
-                              }
-                            } catch (error: any) {
-                              console.error('Failed to sell item:', error);
-                              alert(error.response?.data?.error || 'Failed to sell item');
-                            }
-                          }}
+                                  // Calculate sell value: 25% of item value * rarity multiplier
+                                  const itemValue = item.attack + item.defense + item.hp;
+                                  const rarityMult: Record<string, number> = { 
+                                    common: 1, 
+                                    uncommon: 1.3, 
+                                    rare: 2, 
+                                    epic: 3, 
+                                    legendary: 4,
+                                    mythic: 5
+                                  };
+                                  const multiplier = rarityMult[item.rarity] || 1;
+                                  const sellValue = Math.floor(itemValue * multiplier * 0.25);
+                                  
+                                  if (!window.confirm(`Sell ${item.name} for ${sellValue}g?`)) return;
+                                  
+                                  try {
+                                    const updatedInventory = (hero.inventory || []).filter(invItem => invItem.id !== item.id);
+                                    
+                                    if (hero.id) {
+                                      await heroAPI.updateHeroById(hero.id, {
+                                        inventory: updatedInventory,
+                                        gold: (hero.gold || 0) + sellValue
+                                      });
+                                      alert(`✅ Sold ${item.name} for ${sellValue}g!`);
+                                      if (onUpdate) onUpdate();
+                                    }
+                                  } catch (error: any) {
+                                    console.error('Failed to sell item:', error);
+                                    alert(error.response?.data?.error || 'Failed to sell item');
+                                  }
+                                }}
                           disabled={(item as any).locked}
                           className={`flex-1 min-w-[55px] text-white text-[10px] py-1 rounded font-semibold transition-colors ${
                             (item as any).locked
@@ -1180,10 +1359,70 @@ export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, 
                               : 'bg-red-600 hover:bg-red-700 cursor-pointer'
                           }`}
                           title={(item as any).locked ? 'Cannot sell locked item' : 'Sell item for gold'}
-                        >
-                          Sell
-                        </button>
-                      </div>
+                              >
+                                Sell
+                              </button>
+                        {hero.profession?.type === 'enchanting' && (
+                              <button
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                              e.preventDefault();
+                              if ((item as any).locked) {
+                                alert('Cannot disenchant locked item. Unlock it first.');
+                                return;
+                              }
+                              
+                              // Calculate essence value
+                              const essenceValues: Record<string, number> = {
+                                    common: 1, 
+                                uncommon: 2,
+                                rare: 5,
+                                epic: 10,
+                                legendary: 20,
+                                mythic: 50
+                              };
+                              const baseEssence = essenceValues[item.rarity] || 1;
+                              const upgradeBonus = ((item as any).upgradeLevel || 0) * 2;
+                              const totalEssence = baseEssence + upgradeBonus;
+                              
+                              if (!window.confirm(`Disenchant ${item.name} for ${totalEssence} essence?`)) return;
+                                  
+                                  try {
+                                    const updatedInventory = (hero.inventory || []).filter(invItem => invItem.id !== item.id);
+                                const currentEssence = hero.profession.materials?.essence || 0;
+                                const updatedMaterials = {
+                                  ...(hero.profession.materials || {}),
+                                  essence: currentEssence + totalEssence
+                                };
+                                    
+                                    if (hero.id) {
+                                      await heroAPI.updateHeroById(hero.id, {
+                                        inventory: updatedInventory,
+                                    profession: {
+                                      ...hero.profession,
+                                      materials: updatedMaterials
+                                    }
+                                      });
+                                  alert(`✅ Disenchanted ${item.name} for ${totalEssence} essence!`);
+                                      if (onUpdate) onUpdate();
+                                    }
+                                  } catch (error: any) {
+                                console.error('Failed to disenchant item:', error);
+                                alert(error.response?.data?.error || 'Failed to disenchant item');
+                              }
+                            }}
+                            disabled={(item as any).locked}
+                            className={`flex-1 min-w-[55px] text-white text-[10px] py-1 rounded font-semibold transition-colors ${
+                              (item as any).locked
+                                ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                                : 'bg-purple-600 hover:bg-purple-700 cursor-pointer'
+                            }`}
+                            title={(item as any).locked ? 'Cannot disenchant locked item' : 'Disenchant item for essence'}
+                          >
+                            Disenchant
+                              </button>
+                          )}
+                        </div>
                     </div>
                   ))}
                 </div>

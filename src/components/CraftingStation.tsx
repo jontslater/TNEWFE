@@ -11,9 +11,15 @@ interface CraftingStationProps {
 
 export default function CraftingStation({ hero, onChooseProfession, onCraft, onUse }: CraftingStationProps) {
   const [selectedRecipe, setSelectedRecipe] = useState<string | null>(null);
-  const [craftQuantity, setCraftQuantity] = useState<number>(1);
+  const [recipeQuantities, setRecipeQuantities] = useState<Record<string, number>>({}); // recipeKey -> quantity
   const [selectedProfession, setSelectedProfession] = useState<'herbalism' | 'mining' | 'enchanting' | null>(null);
   const [showChangeProfession, setShowChangeProfession] = useState(false);
+  
+  // Helper to get quantity for a recipe (defaults to 1)
+  const getQuantity = (recipeKey: string) => recipeQuantities[recipeKey] || 1;
+  const setQuantity = (recipeKey: string, quantity: number) => {
+    setRecipeQuantities(prev => ({ ...prev, [recipeKey]: Math.max(1, quantity) }));
+  };
 
   // Profession details
   const professionDetails = {
@@ -365,14 +371,31 @@ export default function CraftingStation({ hero, onChooseProfession, onCraft, onU
                   </div>
                 </div>
 
-                {/* Craft Button */}
+                {/* Quantity Selector and Craft Button */}
                 {canCraft && meetsLevel ? (
-                  <button 
-                    onClick={() => onCraft(key, recipe.cost, recipe.tier, 1)}
-                    className="w-full bg-green-600 hover:bg-green-700 text-white py-1.5 rounded text-sm font-semibold transition-colors"
-                  >
-                    Craft
-                  </button>
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs text-gray-400">Qty:</label>
+                      <input
+                        type="number"
+                        min="1"
+                        max={maxCraftable}
+                        value={getQuantity(key)}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value) || 1;
+                          setQuantity(key, Math.min(Math.max(1, val), maxCraftable));
+                        }}
+                        className="w-16 px-2 py-1 bg-gray-800 text-white text-xs rounded border border-gray-600 focus:border-green-500 focus:outline-none"
+                      />
+                      <span className="text-xs text-gray-500">/ {maxCraftable}</span>
+                    </div>
+                    <button 
+                      onClick={() => onCraft(key, recipe.cost, recipe.tier, getQuantity(key))}
+                      className="w-full bg-green-600 hover:bg-green-700 text-white py-1.5 rounded text-sm font-semibold transition-colors"
+                    >
+                      Craft {getQuantity(key) > 1 ? `x${getQuantity(key)}` : ''}
+                    </button>
+                  </div>
                 ) : (
                   <div className="text-center text-xs text-gray-500 py-1.5">
                     {!meetsLevel ? `Prof ${recipe.minProfessionLevel}` : 'Need mats'}
@@ -407,6 +430,7 @@ export default function CraftingStation({ hero, onChooseProfession, onCraft, onU
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
                     {recipes.map(([key, recipe]) => {
               let canCraft = profession.materials.ore !== undefined;
+              let maxCraftable = 999;
               
               if (recipe.cost.ore) {
                 Object.entries(recipe.cost.ore).forEach(([mat, amount]) => {
@@ -416,6 +440,10 @@ export default function CraftingStation({ hero, onChooseProfession, onCraft, onU
                   
                   if (have < needed) {
                     canCraft = false;
+                  } else {
+                    // Calculate max craftable based on this material
+                    const possible = Math.floor(have / needed);
+                    maxCraftable = Math.min(maxCraftable, possible);
                   }
                 });
               }
@@ -461,12 +489,29 @@ export default function CraftingStation({ hero, onChooseProfession, onCraft, onU
                   </div>
 
                   {canCraft && meetsLevel ? (
-                    <button 
-                      onClick={() => onCraft(key, recipe.cost, recipe.tier, 1)}
-                      className="w-full bg-orange-600 hover:bg-orange-700 text-white py-1.5 rounded text-sm font-semibold transition-colors"
-                    >
-                      Craft
-                    </button>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs text-gray-400">Qty:</label>
+                        <input
+                          type="number"
+                          min="1"
+                          max={maxCraftable}
+                          value={getQuantity(key)}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value) || 1;
+                            setQuantity(key, Math.min(Math.max(1, val), maxCraftable));
+                          }}
+                          className="w-16 px-2 py-1 bg-gray-800 text-white text-xs rounded border border-gray-600 focus:border-orange-500 focus:outline-none"
+                        />
+                        <span className="text-xs text-gray-500">/ {maxCraftable}</span>
+                      </div>
+                      <button 
+                        onClick={() => onCraft(key, recipe.cost, recipe.tier, getQuantity(key))}
+                        className="w-full bg-orange-600 hover:bg-orange-700 text-white py-1.5 rounded text-sm font-semibold transition-colors"
+                      >
+                        Craft {getQuantity(key) > 1 ? `x${getQuantity(key)}` : ''}
+                      </button>
+                    </div>
                   ) : (
                     <div className="text-center text-xs text-gray-500 py-1.5">
                       {!meetsLevel ? `Prof ${recipe.minProfessionLevel}` : 'Need mats'}
@@ -503,6 +548,7 @@ export default function CraftingStation({ hero, onChooseProfession, onCraft, onU
               const isRune = key.startsWith('rune_');
               
               let canCraft = profession.materials.essence !== undefined;
+              let maxCraftable = 999;
               
               if (recipe.cost.essence) {
                 const have = profession.materials.essence || 0;
@@ -510,6 +556,9 @@ export default function CraftingStation({ hero, onChooseProfession, onCraft, onU
                 
                 if (have < needed) {
                   canCraft = false;
+                } else {
+                  // Calculate max craftable based on essence
+                  maxCraftable = Math.floor(have / needed);
                 }
               }
 
@@ -544,12 +593,29 @@ export default function CraftingStation({ hero, onChooseProfession, onCraft, onU
                   </div>
 
                   {canCraft && meetsLevel ? (
-                    <button 
-                      onClick={() => onCraft(key, recipe.cost, recipe.tier, 1)}
-                      className="w-full bg-purple-600 hover:bg-purple-700 text-white py-1.5 rounded text-sm font-semibold transition-colors"
-                    >
-                      Craft
-                    </button>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs text-gray-400">Qty:</label>
+                        <input
+                          type="number"
+                          min="1"
+                          max={maxCraftable}
+                          value={getQuantity(key)}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value) || 1;
+                            setQuantity(key, Math.min(Math.max(1, val), maxCraftable));
+                          }}
+                          className="w-16 px-2 py-1 bg-gray-800 text-white text-xs rounded border border-gray-600 focus:border-purple-500 focus:outline-none"
+                        />
+                        <span className="text-xs text-gray-500">/ {maxCraftable}</span>
+                      </div>
+                      <button 
+                        onClick={() => onCraft(key, recipe.cost, recipe.tier, getQuantity(key))}
+                        className="w-full bg-purple-600 hover:bg-purple-700 text-white py-1.5 rounded text-sm font-semibold transition-colors"
+                      >
+                        Craft {getQuantity(key) > 1 ? `x${getQuantity(key)}` : ''}
+                      </button>
+                    </div>
                   ) : (
                     <div className="text-center text-xs text-gray-500 py-1.5">
                       {!meetsLevel ? `Prof ${recipe.minProfessionLevel}` : 'Need mats'}
