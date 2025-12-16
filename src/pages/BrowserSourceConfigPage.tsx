@@ -475,7 +475,6 @@ export default function BrowserSourceConfigPage() {
     const healers = ['cleric', 'atoner', 'druid', 'lightbringer', 'shaman', 'mistweaver', 'chronomancer', 'bard'];
     
     if (tanks.includes(role)) return 'huge-knight-sprite sprite-container';
-    if (role === 'bard') return 'bard-sprite sprite-container';
     if (healers.includes(role)) return 'wizard-sprite sprite-container';
     
     const meleeDPS = ['berserker', 'crusader', 'assassin', 'reaper', 'bladedancer', 'monk', 'stormwarrior', 'hunter'];

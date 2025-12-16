@@ -2110,7 +2110,6 @@ export default function BrowserSourcePage() {
           const roleCategory = getRoleCategory(hero.role || 'berserker');
           if (roleCategory === 'tank') return 'huge-knight-sprite sprite-container';
           if (roleCategory === 'healer') {
-            if (hero.role === 'bard') return 'bard-sprite sprite-container';
             return 'wizard-sprite sprite-container';
           }
           if (roleCategory === 'dps') {
