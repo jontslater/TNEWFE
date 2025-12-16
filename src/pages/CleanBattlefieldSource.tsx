@@ -1642,6 +1642,29 @@ export default function CleanBattlefieldSource() {
   
   // Auto-gathering tracking state (accumulate gathers, batch sync to backend)
   const lastGatherSyncRef = useRef<number>(Date.now());
+  
+  // Hero stat change tracking state (accumulate changes, batch sync to backend)
+  interface HeroStatChanges {
+    xp?: number; // Delta XP (can be negative for level ups)
+    gold?: number; // Delta gold
+    level?: number; // New level (absolute, not delta)
+    hp?: number; // Current HP (absolute)
+    maxHp?: number; // New max HP (absolute)
+    attack?: number; // New attack (absolute)
+    defense?: number; // New defense (absolute)
+    stats?: { totalDamage?: number; totalHealing?: number; damageBlocked?: number }; // Stats deltas
+  }
+  const heroStatChangesRef = useRef<Map<string, HeroStatChanges>>(new Map()); // heroId -> stat changes
+  const lastHeroStatSyncRef = useRef<number>(Date.now());
+  
+  // Equipment change tracking state (accumulate changes, batch sync to backend)
+  const equipmentChangesRef = useRef<Map<string, any>>(new Map()); // heroId -> equipment object (absolute, latest wins)
+  const lastEquipmentSyncRef = useRef<number>(Date.now());
+  
+  // Inventory change tracking state (accumulate changes, batch sync to backend)
+  const inventoryChangesRef = useRef<Map<string, any[]>>(new Map()); // heroId -> inventory array (absolute, latest wins)
+  const lastInventorySyncRef = useRef<number>(Date.now());
+  
   const dungeonRaidDefCache = useRef<{ id: string; allowedSlots?: string[] } | null>(null);
 
   // SCT (Scrolling Combat Text) state
@@ -2147,6 +2170,70 @@ export default function CleanBattlefieldSource() {
     }
   };
 
+  // Track hero stat changes (accumulates locally, syncs to backend in batches)
+  const trackHeroStatChange = (heroId: string, changes: HeroStatChanges) => {
+    if (!heroStatChangesRef.current.has(heroId)) {
+      heroStatChangesRef.current.set(heroId, {});
+    }
+    
+    const existing = heroStatChangesRef.current.get(heroId)!;
+    
+    // Merge changes, handling deltas vs absolute values
+    if (changes.xp !== undefined) {
+      // XP is a delta (can be negative on level up)
+      existing.xp = (existing.xp || 0) + changes.xp;
+    }
+    if (changes.gold !== undefined) {
+      // Gold is a delta
+      existing.gold = (existing.gold || 0) + changes.gold;
+    }
+    // Level, HP, maxHp, attack, defense are absolute (take latest)
+    if (changes.level !== undefined) {
+      existing.level = changes.level;
+    }
+    if (changes.hp !== undefined) {
+      existing.hp = changes.hp;
+    }
+    if (changes.maxHp !== undefined) {
+      existing.maxHp = changes.maxHp;
+    }
+    if (changes.attack !== undefined) {
+      existing.attack = changes.attack;
+    }
+    if (changes.defense !== undefined) {
+      existing.defense = changes.defense;
+    }
+    // Stats are deltas
+    if (changes.stats) {
+      if (!existing.stats) {
+        existing.stats = {};
+      }
+      if (changes.stats.totalDamage !== undefined) {
+        existing.stats.totalDamage = (existing.stats.totalDamage || 0) + changes.stats.totalDamage;
+      }
+      if (changes.stats.totalHealing !== undefined) {
+        existing.stats.totalHealing = (existing.stats.totalHealing || 0) + changes.stats.totalHealing;
+      }
+      if (changes.stats.damageBlocked !== undefined) {
+        existing.stats.damageBlocked = (existing.stats.damageBlocked || 0) + changes.stats.damageBlocked;
+      }
+    }
+    
+    heroStatChangesRef.current.set(heroId, existing);
+  };
+
+  // Track equipment changes (accumulates locally, syncs to backend in batches)
+  const trackEquipmentChange = (heroId: string, equipment: any) => {
+    // Equipment is absolute (latest wins - we'll use the current hero's equipment when syncing)
+    equipmentChangesRef.current.set(heroId, equipment);
+  };
+
+  // Track inventory changes (accumulates locally, syncs to backend in batches)
+  const trackInventoryChange = (heroId: string, inventory: any[]) => {
+    // Inventory is absolute (latest wins - we'll use the current hero's inventory when syncing)
+    inventoryChangesRef.current.set(heroId, inventory);
+  };
+
   // Add SCT message with random offset to prevent overlap
   const addSCT = (text: string, x: number, y: number, type: SCTType) => {
     const id = `${Date.now()}-${Math.random()}`;
@@ -2613,6 +2700,12 @@ export default function CleanBattlefieldSource() {
           // Remove potion from inventory
           const updatedInventory = inventory.filter((item: any) => item.id !== healthPotion.id);
           
+          // Track HP and inventory changes for batch sync
+          trackHeroStatChange(hero.id, {
+            hp: Math.round(newHp)
+          });
+          trackInventoryChange(hero.id, updatedInventory);
+          
           // Update local state immediately for combat
           setHeroes(current => {
             const updated = current.map(h => {
@@ -2625,14 +2718,8 @@ export default function CleanBattlefieldSource() {
             return updated;
           });
           
-          // Sync to Firebase (fire and forget - don't block combat)
-          heroAPI.updateHeroById(hero.id, {
-            hp: Math.round(newHp),
-            shield: Math.round(newShield),
-            inventory: updatedInventory
-          }).catch(err => {
-            console.error(`[Auto-Potion] ❌ Failed to sync potion use to Firebase:`, err);
-          });
+          // Note: HP change is tracked via trackHeroStatChange above, will be synced in batch
+          // Inventory changes are synced via Firebase listener automatically
           
           // Show heal SCT
           const heroElement = document.querySelector(`[data-hero-id="${hero.id}"]`);
@@ -2849,6 +2936,13 @@ export default function CleanBattlefieldSource() {
               const actualHeal = Math.round(newHp - h.hp);
               const overheal = Math.round(healAmount - actualHeal);
               const newShield = Math.round((h.shield || 0) + overheal);
+              
+              // Track HP change for sync
+              if (actualHeal > 0) {
+                trackHeroStatChange(h.id, {
+                  hp: newHp
+                });
+              }
               
               // Show heal SCT for each hero
               const heroElement = document.querySelector(`[data-hero-id="${h.id}"]`);
@@ -5082,6 +5176,10 @@ export default function CleanBattlefieldSource() {
             updatedTarget.stats.damageBlocked = (updatedTarget.stats.damageBlocked || 0) + blockedByAbilities;
             // QUEST TRACKING: Track blocked damage
             trackQuest(target.id, 'blockDamage', blockedByAbilities);
+            // STAT SYNC: Track blocked damage
+            trackHeroStatChange(target.id, {
+              stats: { damageBlocked: blockedByAbilities }
+            });
           }
           
           // Track damage blocked by shields (healer shields)
@@ -5089,7 +5187,16 @@ export default function CleanBattlefieldSource() {
             updatedTarget.stats.damageBlocked = (updatedTarget.stats.damageBlocked || 0) + shieldDamage;
             // QUEST TRACKING: Track blocked damage
             trackQuest(target.id, 'blockDamage', shieldDamage);
+            // STAT SYNC: Track blocked damage
+            trackHeroStatChange(target.id, {
+              stats: { damageBlocked: shieldDamage }
+            });
           }
+          
+          // Track HP change for sync
+          trackHeroStatChange(target.id, {
+            hp: newHp
+          });
           
           updatedHeroes[targetIndex] = updatedTarget;
           
@@ -5238,6 +5345,11 @@ export default function CleanBattlefieldSource() {
               
               if (actualHeal > 0) {
                 console.log(`[Enduring] 💚 ${h.name} heals ${actualHeal} HP from proc!`);
+                
+                // Track HP change for sync
+                trackHeroStatChange(h.id, {
+                  hp: newHp
+                });
                 
                 const heroElement = document.querySelector(`[data-hero-id="${h.id}"]`);
                 if (heroElement) {
@@ -5693,6 +5805,12 @@ export default function CleanBattlefieldSource() {
             const newGold = (hero.gold || 0) + goldToGrant;
             let newHero = { ...hero, xp: newXP, gold: newGold };
             
+            // Track XP and gold changes for sync
+            trackHeroStatChange(hero.id, {
+              xp: xpToGrant,
+              gold: goldToGrant
+            });
+            
             // Track for SCT outside setState
             const result = {
               heroId: hero.id,
@@ -5727,6 +5845,16 @@ export default function CleanBattlefieldSource() {
               newHero.hp = Math.floor(newHero.maxHp * hpRatio);
               newHero.xp = leveledHero.xp;
               newHero.maxXp = leveledHero.maxXp;
+              
+              // Track level up and stat changes for sync
+              trackHeroStatChange(hero.id, {
+                level: newLevel,
+                maxHp: newHero.maxHp,
+                attack: newHero.attack,
+                defense: newHero.defense,
+                hp: newHero.hp,
+                xp: -(maxXP) // Subtract the XP used for level up (since we're tracking deltas)
+              });
             }
             
             xpResults.push(result);
@@ -5944,6 +6072,15 @@ export default function CleanBattlefieldSource() {
                 return updated;
               });
               
+              // Track equipment and gold changes for batch sync
+              const updatedHero = heroesRef.current.find(h => h.id === bestHero!.id);
+              if (updatedHero) {
+                trackEquipmentChange(bestHero!.id, updatedHero.equipment);
+                trackHeroStatChange(bestHero!.id, {
+                  gold: updatedHero.gold - (bestHero!.gold || 0) // Track gold delta
+                });
+              }
+              
               const action = bestHero.id === targetHero.id ? 'equipped' : 'gifted';
               console.log(`[Loot] ✅ ${loot.rarity} ${loot.name} ${action} to ${bestHero.name} (${oldPower} → ${newPower} power, ${Math.round(bestImprovement * 100)}% improvement)`);
               
@@ -5960,8 +6097,25 @@ export default function CleanBattlefieldSource() {
             } else if (['epic', 'legendary', 'mythic'].includes(loot.rarity)) {
               // Epic+ items: Keep in inventory even if not better (for potential future use)
               console.log(`[Loot] 📦 Keeping ${loot.rarity} ${loot.name} in inventory (epic+ item, not better for anyone currently)`);
-              // TODO: Add to hero inventory if inventory system exists
-              // For now, just log - inventory system may need to be implemented
+              
+              // Add to hero inventory and sync to backend
+              setHeroes(current => {
+                const updated = current.map(h => {
+                  if (h.id === targetHero.id) {
+                    const updatedInventory = [...(h.inventory || []), loot];
+                    return { ...h, inventory: updatedInventory };
+                  }
+                  return h;
+                });
+                heroesRef.current = updated;
+                return updated;
+              });
+              
+              // Track inventory change for batch sync
+              const updatedHero = heroesRef.current.find(h => h.id === targetHero.id);
+              if (updatedHero) {
+                trackInventoryChange(targetHero.id, updatedHero.inventory);
+              }
             } else {
               // Auto-sell (item not better for anyone, and not epic+)
               const itemValue = loot.attack + loot.defense + loot.hp;
@@ -5981,6 +6135,14 @@ export default function CleanBattlefieldSource() {
                 heroesRef.current = updated;
                 return updated;
               });
+              
+              // Track gold change for batch sync
+              const updatedHero = heroesRef.current.find(h => h.id === targetHero.id);
+              if (updatedHero) {
+                trackHeroStatChange(targetHero.id, {
+                  gold: updatedHero.gold - (targetHero.gold || 0) // Track gold delta
+                });
+              }
             }
           };
           
@@ -6458,30 +6620,201 @@ export default function CleanBattlefieldSource() {
             });
           }
         }
-      }
-      
-      // Hero state sync
-      currentHeroes.forEach(async (hero) => {
-        try {
-          await heroAPI.updateHero(hero.id, {
-            hp: hero.hp,
-            level: hero.level,
-            xp: hero.xp || 0,
-            maxXp: hero.maxXp || 100,
-            maxHp: hero.maxHp,
-            attack: hero.attack,
-            defense: hero.defense,
-            stats: hero.stats || { totalDamage: 0, totalHealing: 0, damageBlocked: 0 }
+        
+        // HERO STAT BATCH SYNC: Sync accumulated hero stat changes to backend
+        const timeSinceLastHeroStatSync = now - lastHeroStatSyncRef.current;
+        if (heroStatChangesRef.current.size > 0 && timeSinceLastHeroStatSync >= 60000) {
+          console.log('[Hero Stat Sync] ✅ Syncing hero stat changes for', heroStatChangesRef.current.size, 'heroes...');
+          
+          // Process each hero's stat changes
+          const statSyncPromises: Promise<void>[] = [];
+          
+          heroStatChangesRef.current.forEach((changes, heroId) => {
+            const hero = currentHeroes.find(h => h.id === heroId);
+            if (!hero) return;
+            
+            // Build update object with current hero state + accumulated changes
+            const updateData: Partial<Hero> = {};
+            
+            // Apply XP delta (add to current XP)
+            if (changes.xp !== undefined && changes.xp !== 0) {
+              const currentXP = hero.xp || 0;
+              updateData.xp = Math.max(0, currentXP + changes.xp);
+            }
+            
+            // Apply gold delta (add to current gold)
+            if (changes.gold !== undefined && changes.gold !== 0) {
+              const currentGold = hero.gold || 0;
+              updateData.gold = Math.max(0, currentGold + changes.gold);
+            }
+            
+            // Apply absolute values (level, HP, maxHp, attack, defense)
+            if (changes.level !== undefined) {
+              updateData.level = changes.level;
+            }
+            if (changes.hp !== undefined) {
+              updateData.hp = changes.hp;
+            }
+            if (changes.maxHp !== undefined) {
+              updateData.maxHp = changes.maxHp;
+            }
+            if (changes.attack !== undefined) {
+              updateData.attack = changes.attack;
+            }
+            if (changes.defense !== undefined) {
+              updateData.defense = changes.defense;
+            }
+            
+            // Apply stats deltas
+            if (changes.stats) {
+              const currentStats = (hero as any).stats || { totalDamage: 0, totalHealing: 0, damageBlocked: 0 };
+              (updateData as any).stats = {
+                totalDamage: currentStats.totalDamage || 0,
+                totalHealing: currentStats.totalHealing || 0,
+                damageBlocked: (currentStats.damageBlocked || 0) + (changes.stats.damageBlocked || 0)
+              };
+              if (changes.stats.totalDamage !== undefined) {
+                (updateData as any).stats.totalDamage = (currentStats.totalDamage || 0) + changes.stats.totalDamage;
+              }
+              if (changes.stats.totalHealing !== undefined) {
+                (updateData as any).stats.totalHealing = (currentStats.totalHealing || 0) + changes.stats.totalHealing;
+              }
+            }
+            
+            // Only sync if there are actual changes
+            if (Object.keys(updateData).length > 0) {
+              statSyncPromises.push(
+                heroAPI.updateHeroById(heroId, updateData)
+                  .then(() => {
+                    console.log(`[Hero Stat Sync] ✅ Synced stats for ${hero.name} (${Object.keys(updateData).join(', ')})`);
+                  })
+                  .catch(err => {
+                    console.error(`[Hero Stat Sync] ❌ Failed to sync stats for ${hero.name}:`, err);
+                  })
+              );
+            }
           });
-          console.log(`[Sync] ✅ Synced ${hero.name} (HP: ${hero.hp}/${hero.maxHp})`);
-        } catch (error: any) {
-          if (error?.response?.status === 404) {
-            console.warn(`[Sync] ⚠️ Hero ${hero.id} not found in database`);
+          
+          // Wait for all stat syncs to complete
+          if (statSyncPromises.length > 0) {
+            Promise.all(statSyncPromises).then(async () => {
+              console.log('[Hero Stat Sync] ✅ All hero stat changes synced');
+              
+              // Clear stat changes after successful sync
+              heroStatChangesRef.current.clear();
+              lastHeroStatSyncRef.current = now;
+            }).catch(err => {
+              console.error('[Hero Stat Sync] ❌ Some hero stat syncs failed:', err);
+              // Still clear to prevent accumulation, but log error
+              heroStatChangesRef.current.clear();
+              lastHeroStatSyncRef.current = now;
+            });
           } else {
-            console.error(`[Sync] ❌ Failed to sync ${hero.name}:`, error?.message);
+            // No changes to sync, but still update timestamp
+            lastHeroStatSyncRef.current = now;
           }
         }
-      });
+        
+        // EQUIPMENT BATCH SYNC: Sync accumulated equipment changes to backend
+        const timeSinceLastEquipmentSync = now - lastEquipmentSyncRef.current;
+        if (equipmentChangesRef.current.size > 0 && timeSinceLastEquipmentSync >= 60000) {
+          console.log('[Equipment Sync] ✅ Syncing equipment changes for', equipmentChangesRef.current.size, 'heroes...');
+          
+          // Process each hero's equipment changes
+          const equipmentSyncPromises: Promise<void>[] = [];
+          
+          equipmentChangesRef.current.forEach((equipment, heroId) => {
+            const hero = currentHeroes.find(h => h.id === heroId);
+            if (!hero) return;
+            
+            // Use the current hero's equipment (latest state)
+            const currentEquipment = hero.equipment || {};
+            
+            // Only sync if there are actual changes
+            if (Object.keys(currentEquipment).length > 0 || Object.keys(equipment).length > 0) {
+              equipmentSyncPromises.push(
+                heroAPI.updateHeroById(heroId, {
+                  equipment: currentEquipment
+                })
+                  .then(() => {
+                    console.log(`[Equipment Sync] ✅ Synced equipment for ${hero.name}`);
+                  })
+                  .catch(err => {
+                    console.error(`[Equipment Sync] ❌ Failed to sync equipment for ${hero.name}:`, err);
+                  })
+              );
+            }
+          });
+          
+          // Wait for all equipment syncs to complete
+          if (equipmentSyncPromises.length > 0) {
+            Promise.all(equipmentSyncPromises).then(async () => {
+              console.log('[Equipment Sync] ✅ All equipment changes synced');
+              
+              // Clear equipment changes after successful sync
+              equipmentChangesRef.current.clear();
+              lastEquipmentSyncRef.current = now;
+            }).catch(err => {
+              console.error('[Equipment Sync] ❌ Some equipment syncs failed:', err);
+              // Still clear to prevent accumulation, but log error
+              equipmentChangesRef.current.clear();
+              lastEquipmentSyncRef.current = now;
+            });
+          } else {
+            // No changes to sync, but still update timestamp
+            lastEquipmentSyncRef.current = now;
+          }
+        }
+        
+        // INVENTORY BATCH SYNC: Sync accumulated inventory changes to backend
+        const timeSinceLastInventorySync = now - lastInventorySyncRef.current;
+        if (inventoryChangesRef.current.size > 0 && timeSinceLastInventorySync >= 60000) {
+          console.log('[Inventory Sync] ✅ Syncing inventory changes for', inventoryChangesRef.current.size, 'heroes...');
+          
+          // Process each hero's inventory changes
+          const inventorySyncPromises: Promise<void>[] = [];
+          
+          inventoryChangesRef.current.forEach((inventory, heroId) => {
+            const hero = currentHeroes.find(h => h.id === heroId);
+            if (!hero) return;
+            
+            // Use the current hero's inventory (latest state)
+            const currentInventory = hero.inventory || [];
+            
+            // Only sync if there are actual changes
+            inventorySyncPromises.push(
+              heroAPI.updateHeroById(heroId, {
+                inventory: currentInventory
+              })
+                .then(() => {
+                  console.log(`[Inventory Sync] ✅ Synced inventory for ${hero.name} (${currentInventory.length} items)`);
+                })
+                .catch(err => {
+                  console.error(`[Inventory Sync] ❌ Failed to sync inventory for ${hero.name}:`, err);
+                })
+            );
+          });
+          
+          // Wait for all inventory syncs to complete
+          if (inventorySyncPromises.length > 0) {
+            Promise.all(inventorySyncPromises).then(async () => {
+              console.log('[Inventory Sync] ✅ All inventory changes synced');
+              
+              // Clear inventory changes after successful sync
+              inventoryChangesRef.current.clear();
+              lastInventorySyncRef.current = now;
+            }).catch(err => {
+              console.error('[Inventory Sync] ❌ Some inventory syncs failed:', err);
+              // Still clear to prevent accumulation, but log error
+              inventoryChangesRef.current.clear();
+              lastInventorySyncRef.current = now;
+            });
+          } else {
+            // No changes to sync, but still update timestamp
+            lastInventorySyncRef.current = now;
+          }
+        }
+      }
     }, 300000); // Every 5 minutes (reduced from 60s to save Firebase writes)
     
     syncIntervalRef.current = syncInterval;
