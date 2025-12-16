@@ -2513,4 +2513,40 @@ export const reportsAPI = {
   }
 };
 
+// Stream Settings API
+export const streamSettingsAPI = {
+  async getSettings(twitchId: string): Promise<{
+    success: boolean;
+    settings: {
+      enabled: boolean;
+      intervalMinutes: number;
+      showWaves: boolean;
+      showXp: boolean;
+      showLevelUps: boolean;
+      showGold: boolean;
+      customMessage: string | null;
+    };
+  }> {
+    const response = await apiClient.get(`/api/stream/settings/${twitchId}`);
+    return response.data;
+  },
+
+  async updateSettings(twitchId: string, settings: {
+    enabled?: boolean;
+    intervalMinutes?: number;
+    showWaves?: boolean;
+    showXp?: boolean;
+    showLevelUps?: boolean;
+    showGold?: boolean;
+    customMessage?: string | null;
+  }): Promise<{
+    success: boolean;
+    message: string;
+    settings: any;
+  }> {
+    const response = await apiClient.put(`/api/stream/settings/${twitchId}`, settings);
+    return response.data;
+  }
+};
+
 export { apiClient };

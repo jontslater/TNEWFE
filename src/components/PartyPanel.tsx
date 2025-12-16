@@ -521,33 +521,6 @@ export default function PartyPanel({ hero, onPartyUpdate }: PartyPanelProps) {
           >
             🚀 Queue as Party
           </button>
-          {/* Test Hero Creation Button (dev only) */}
-          {import.meta.env.DEV && (
-            <button
-              onClick={async () => {
-                try {
-                  const { heroAPI } = await import('../api/client');
-                  const testUserId = `test-${Date.now()}`;
-                  const testUsername = `TestPlayer${Math.floor(Math.random() * 1000)}`;
-                  const testHeroName = `TestHero${Math.floor(Math.random() * 1000)}`;
-                  
-                  const result = await heroAPI.createTestHero(testUserId, testUsername, testHeroName, 'berserker', 20);
-                  
-                  if (result.success) {
-                    alert(`Test hero created!\nUsername: ${testUsername}\nHero: ${testHeroName}\nUserId: ${testUserId}\n\nYou can now invite this user to your party.`);
-                  } else {
-                    alert('Failed to create test hero');
-                  }
-                } catch (error: any) {
-                  console.error('Failed to create test hero:', error);
-                  alert(`Failed to create test hero: ${error.response?.data?.error || error.message}`);
-                }
-              }}
-              className="w-full bg-amber-600 hover:bg-amber-700 text-white text-xs px-4 py-2 rounded transition-colors"
-            >
-              🧪 Create Test Player (Dev)
-            </button>
-          )}
         </div>
       )}
 

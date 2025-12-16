@@ -889,154 +889,301 @@ export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, 
                           onEquipChange(item.slot, item);
                         }
                       }}
-                      className={`${getRarityBg(item.rarity)} rounded-lg p-2 border-2 cursor-pointer hover:scale-105 transition-transform hover:border-blue-400 relative flex flex-col min-h-[180px]`}
+                      className="bg-gray-700 rounded-lg p-2 border-2 border-gray-600 hover:border-purple-500 transition-colors flex flex-col min-h-[200px]"
                     >
-                      <ItemTooltip item={item}>
-                        <div className="hover:brightness-110 transition-all pointer-events-none flex-grow">
-                          <div className={`font-semibold text-xs mb-1 ${getRarityColor(item.rarity)} flex items-center gap-1 leading-tight`}>
-                            <span className="truncate">{item.name}</span>
-                            {(item as any).upgradeLevel && (item as any).upgradeLevel > 0 && (
-                              <span className="text-amber-400 font-semibold text-[10px] flex-shrink-0">+{(item as any).upgradeLevel}</span>
+                      <div
+                        draggable
+                        onDragStart={() => handleDragStart(item, 'inventory')}
+                        className="cursor-move flex-grow pointer-events-auto"
+                      >
+                        <ItemTooltip item={item} position="above">
+                          <div className="hover:bg-gray-600/30 rounded p-1 -m-1 transition-colors pointer-events-auto flex-grow">
+                            <div className={`font-semibold mb-1 text-xs ${getRarityColor(item.rarity)} flex items-center gap-1 leading-tight`}>
+                              {(item as any).locked && <span className="text-yellow-400 flex-shrink-0" title="Locked">🔒</span>}
+                              <span className="truncate">{item.name}</span>
+                              {(item as any).upgradeLevel && (item as any).upgradeLevel > 0 && (
+                                <span className="text-amber-400 font-semibold text-[10px] flex-shrink-0">+{(item as any).upgradeLevel}</span>
+                              )}
+                            </div>
+                            
+                            <div className="space-y-0.5 text-[10px] mb-2">
+                              {item.attack > 0 && <div className="text-red-400">+{item.attack} ATK</div>}
+                              {item.defense > 0 && <div className="text-blue-400">+{item.defense} DEF</div>}
+                              {item.hp > 0 && <div className="text-green-400">+{item.hp} HP</div>}
+                            </div>
+
+                            {/* Sockets Display */}
+                            {item.slot && (() => {
+                              const maxSockets = (item as any).maxSockets !== undefined ? (item as any).maxSockets : getMaxSockets(item.rarity || 'common', item.slot);
+                              const sockets = (item as any).sockets || [];
+                              if (maxSockets > 0 || sockets.length > 0) {
+                                return (
+                                  <div className="mb-2 pt-1 border-t border-gray-600">
+                                    <div className="text-[9px] text-cyan-400 font-semibold mb-1">
+                                      Sockets: {sockets.length}/{maxSockets}
+                                    </div>
+                                    <div className="flex gap-1 flex-wrap">
+                                      {sockets.map((socket: any, socketIdx: number) => (
+                                        <div
+                                          key={socket.id || socketIdx}
+                                          className="relative"
+                                          title={socket.gem ? `${socket.gem.type} (${socket.gem.rarity})` : 'Empty Socket'}
+                                        >
+                                          {socket.gem ? (
+                                            <div 
+                                              className="w-5 h-5 rounded-full border-2 border-gray-600"
+                                              style={{ 
+                                                backgroundColor: socket.gem.type === 'ruby' ? '#ef4444' : 
+                                                               socket.gem.type === 'sapphire' ? '#3b82f6' : 
+                                                               socket.gem.type === 'emerald' ? '#10b981' : '#fbbf24'
+                                              }}
+                                            />
+                                          ) : (
+                                            <div className="w-5 h-5 rounded-full border-2 border-gray-500 bg-gray-700" />
+                                          )}
+                                        </div>
+                                      ))}
+                                      {/* Show empty socket slots if not at max */}
+                                      {sockets.length < maxSockets && Array.from({ length: maxSockets - sockets.length }).map((_, emptyIdx) => (
+                                        <div key={`empty-${emptyIdx}`} className="w-5 h-5 rounded-full border-2 border-dashed border-gray-600 bg-gray-800" title="Empty Socket" />
+                                      ))}
+                                    </div>
+                                    {/* Show gem stats if any gems are installed */}
+                                    {sockets.some((s: any) => s.gem) && (
+                                      <div className="mt-1 text-[9px] text-gray-400">
+                                        {sockets.filter((s: any) => s.gem).map((socket: any, gemIdx: number) => {
+                                          const gem = socket.gem;
+                                          if (!gem || !gem.stats) return null;
+                                          return (
+                                            <div key={gemIdx} className="text-[8px]">
+                                              {Object.entries(gem.stats).slice(0, 1).map(([stat, value]: [string, any]) => {
+                                                if (value === 0 || value === undefined) return null;
+                                                const isPercentage = ['critChance', 'critDamage', 'damageReduction', 'xpGain', 'goldGain', 'tokenGain', 'allStats'].includes(stat);
+                                                const statLabels: Record<string, string> = {
+                                                  attack: 'ATK',
+                                                  defense: 'DEF',
+                                                  critChance: 'Crit',
+                                                  critDamage: 'Crit Dmg',
+                                                  damageReduction: 'DR',
+                                                  maxHp: 'HP',
+                                                  allStats: 'All',
+                                                  xpGain: 'XP',
+                                                  goldGain: 'Gold',
+                                                  tokenGain: 'Tokens'
+                                                };
+                                                return (
+                                                  <span key={stat} className="mr-1">
+                                                    +{value}{isPercentage ? '%' : ''} {statLabels[stat] || stat}
+                                                  </span>
+                                                );
+                                              })}
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              }
+                              return null;
+                            })()}
+
+                            {/* Upgrade Stats (Custom Upgrade System) */}
+                            {(item as any).upgradeStats && Array.isArray((item as any).upgradeStats) && (item as any).upgradeStats.length > 0 && (
+                              <div className="mb-3 pt-2 border-t border-gray-600">
+                                <div className="text-xs text-amber-400 font-semibold mb-1">⬆️ Upgrades:</div>
+                                <div className="space-y-1">
+                                  {(item as any).upgradeStats.flatMap((upgrade: any) => 
+                                    upgrade.selectedStats?.map((stat: any) => {
+                                      const statNames: Record<string, string> = {
+                                        attack: 'Attack',
+                                        defense: 'Defense',
+                                        hp: 'HP',
+                                        critChance: 'Crit Chance',
+                                        critDamage: 'Crit Damage',
+                                        healingPower: 'Healing Power',
+                                        spellDamage: 'Spell Damage'
+                                      };
+                                      
+                                      // Show the percentage they selected (all upgrades are percentages)
+                                      return (
+                                        <div key={`${upgrade.level}-${stat.type}`} className="text-xs text-amber-300">
+                                          +{stat.value}% {statNames[stat.type] || stat.type}
+                                        </div>
+                                      );
+                                    }) || []
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Applied Upgrades/Enchantments */}
+                            {(item as any).appliedUpgrades && (item as any).appliedUpgrades.length > 0 && (
+                              <div className="mb-3 pt-2 border-t border-gray-600">
+                                <div className="text-xs text-purple-400 font-semibold mb-1">Enhancements:</div>
+                                <div className="space-y-1">
+                                  {(item as any).appliedUpgrades.map((upgrade: any, upgradeIdx: number) => {
+                                    const isEnchantment = upgrade.recipeKey?.includes('fiery') || 
+                                                         upgrade.recipeKey?.includes('vampiric') || 
+                                                         upgrade.recipeKey?.includes('arcane');
+                                    const type = isEnchantment ? 'Enchantment' : 'Upgrade';
+                                    const name = upgrade.recipeKey?.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase());
+                                    
+                                    return (
+                                      <div key={upgradeIdx} className="text-xs text-white">
+                                        • {name} ({type})
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
                             )}
                           </div>
-                          <div className="text-[10px] text-gray-400 capitalize mb-1">{item.slot}</div>
-                          <div className="space-y-0.5 text-[10px] mb-1">
-                            {item.attack > 0 && <div className="text-red-400">+{item.attack} ATK</div>}
-                            {item.defense > 0 && <div className="text-blue-400">+{item.defense} DEF</div>}
-                            {item.hp > 0 && <div className="text-green-400">+{item.hp} HP</div>}
-                          </div>
-                          {item.slot && (
-                            <div className="flex flex-wrap gap-1 pointer-events-auto relative z-20 mt-auto pt-1">
-                              {onUpgradeItem && item.id && (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    e.preventDefault();
-                                    setUpgradeItem({ item, location: 'inventory' });
-                                  }}
-                                  disabled={(item.upgradeLevel || 0) >= 2}
-                                  className={`flex-1 min-w-[60px] text-white text-[10px] py-1 rounded font-semibold transition-colors cursor-pointer ${
-                                    (item.upgradeLevel || 0) >= 2
-                                      ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
-                                      : 'bg-amber-600 hover:bg-amber-700'
-                                  }`}
-                                  title={(item.upgradeLevel || 0) >= 2 ? 'Item is fully upgraded (+2)' : 'Upgrade item'}
-                                >
-                                  {(item.upgradeLevel || 0) >= 2 ? 'Max' : 'Up'}
-                                </button>
-                              )}
-                              {isRarePlus(item.rarity) && item.id && (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    e.preventDefault();
-                                    setReforgeItem({ item, location: 'inventory' });
-                                  }}
-                                  className="flex-1 min-w-[60px] bg-purple-600 hover:bg-purple-700 text-white text-[10px] py-1 rounded font-semibold transition-colors cursor-pointer"
-                                  title="Reforge item (reroll stats)"
-                                >
-                                  Ref
-                                </button>
-                              )}
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  e.preventDefault();
-                                  if (onEquipChange && item.slot) {
-                                    console.log('Equipping item:', item.name, 'to slot:', item.slot);
-                                    onEquipChange(item.slot, item);
-                                  } else {
-                                    console.error('Cannot equip: missing slot or onEquipChange handler', { slot: item.slot, hasHandler: !!onEquipChange });
+                        </ItemTooltip>
+                      </div>
+
+                      <div className="flex flex-wrap gap-1 mt-auto pointer-events-auto relative z-20" onClick={(e) => e.stopPropagation()}>
+                        {/* Lock/Unlock Button */}
+                        {item.id && (
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              e.preventDefault();
+                              if (!hero.id) return;
+                              
+                              const isLocked = (item as any).locked;
+                              try {
+                                // For inventory items, we need to update the item in the inventory array
+                                const updatedInventory = (hero.inventory || []).map((invItem: any) => {
+                                  if (invItem.id === item.id) {
+                                    return { ...invItem, locked: !isLocked };
                                   }
-                                }}
-                                className={`flex-1 min-w-[60px] bg-blue-600 hover:bg-blue-700 text-white text-[10px] py-1 rounded font-semibold transition-colors cursor-pointer`}
-                              >
-                                Equip
-                              </button>
-                              <button
-                                onClick={async (e) => {
-                                  e.stopPropagation();
-                                  // Calculate sell value: 25% of item value * rarity multiplier
-                                  const itemValue = item.attack + item.defense + item.hp;
-                                  const rarityMult: Record<string, number> = { 
-                                    common: 1, 
-                                    uncommon: 1.3, 
-                                    rare: 2, 
-                                    epic: 3, 
-                                    legendary: 4,
-                                    mythic: 5
-                                  };
-                                  const multiplier = rarityMult[item.rarity] || 1;
-                                  const sellValue = Math.floor(itemValue * multiplier * 0.25);
-                                  
-                                  if (!window.confirm(`Sell ${item.name} for ${sellValue}g?`)) return;
-                                  
-                                  try {
-                                    const updatedInventory = (hero.inventory || []).filter(invItem => invItem.id !== item.id);
-                                    
-                                    if (hero.id) {
-                                      await heroAPI.updateHeroById(hero.id, {
-                                        inventory: updatedInventory,
-                                        gold: (hero.gold || 0) + sellValue
-                                      });
-                                      alert(`✅ Sold ${item.name} for ${sellValue}g!`);
-                                      if (onUpdate) onUpdate();
-                                    }
-                                  } catch (error: any) {
-                                    console.error('Failed to sell item:', error);
-                                    alert(error.response?.data?.error || 'Failed to sell item');
-                                  }
-                                }}
-                                className="flex-1 bg-yellow-600 hover:bg-yellow-700 text-white text-xs py-1.5 rounded font-semibold transition-colors"
-                                title="Sell item for gold"
-                              >
-                                Sell
-                              </button>
-                            </div>
-                          )}
-                          {!item.slot && (
-                            <div className="flex gap-2">
-                              <button
-                                onClick={async (e) => {
-                                  e.stopPropagation();
-                                  const itemValue = item.attack + item.defense + item.hp;
-                                  const rarityMult: Record<string, number> = { 
-                                    common: 1, 
-                                    uncommon: 1.3, 
-                                    rare: 2, 
-                                    epic: 3, 
-                                    legendary: 4,
-                                    mythic: 5
-                                  };
-                                  const multiplier = rarityMult[item.rarity] || 1;
-                                  const sellValue = Math.floor(itemValue * multiplier * 0.25);
-                                  
-                                  if (!window.confirm(`Sell ${item.name} for ${sellValue}g?`)) return;
-                                  
-                                  try {
-                                    const updatedInventory = (hero.inventory || []).filter(invItem => invItem.id !== item.id);
-                                    
-                                    if (hero.id) {
-                                      await heroAPI.updateHeroById(hero.id, {
-                                        inventory: updatedInventory,
-                                        gold: (hero.gold || 0) + sellValue
-                                      });
-                                      alert(`✅ Sold ${item.name} for ${sellValue}g!`);
-                                      if (onUpdate) onUpdate();
-                                    }
-                                  } catch (error: any) {
-                                    console.error('Failed to sell item:', error);
-                                    alert(error.response?.data?.error || 'Failed to sell item');
-                                  }
-                                }}
-                                className="w-full bg-yellow-600 hover:bg-yellow-700 text-white text-xs py-1.5 rounded font-semibold transition-colors"
-                              >
-                                Sell
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </ItemTooltip>
+                                  return invItem;
+                                });
+                                
+                                await heroAPI.updateHeroById(hero.id, {
+                                  inventory: updatedInventory
+                                });
+                                if (onUpdate) onUpdate();
+                              } catch (error: any) {
+                                console.error('Failed to toggle lock:', error);
+                                alert(error.response?.data?.error || 'Failed to toggle lock');
+                              }
+                            }}
+                            className={`flex-1 min-w-[40px] text-white text-[10px] py-1 rounded font-semibold transition-colors cursor-pointer ${
+                              (item as any).locked
+                                ? 'bg-yellow-600 hover:bg-yellow-700'
+                                : 'bg-gray-600 hover:bg-gray-700'
+                            }`}
+                            title={(item as any).locked ? 'Unlock item (prevent auto-sell/replace)' : 'Lock item (prevent auto-sell/replace)'}
+                          >
+                            {(item as any).locked ? '🔒' : '🔓'}
+                          </button>
+                        )}
+                        {onUpgradeItem && item.id && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              e.preventDefault();
+                              setUpgradeItem({ item, location: 'inventory' });
+                            }}
+                            disabled={(item.upgradeLevel || 0) >= 2}
+                            className={`flex-1 min-w-[55px] text-white text-[10px] py-1 rounded font-semibold transition-colors ${
+                              (item.upgradeLevel || 0) >= 2
+                                ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                                : 'bg-amber-600 hover:bg-amber-700 cursor-pointer'
+                            }`}
+                            title={(item.upgradeLevel || 0) >= 2 ? 'Item is fully upgraded (+2)' : 'Upgrade item'}
+                          >
+                            {(item.upgradeLevel || 0) >= 2 ? 'Max' : 'Up'}
+                          </button>
+                        )}
+                        {isRarePlus(item.rarity) && item.id && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              e.preventDefault();
+                              setReforgeItem({ item, location: 'inventory' });
+                            }}
+                            className="flex-1 min-w-[55px] bg-purple-600 hover:bg-purple-700 text-white text-[10px] py-1 rounded font-semibold transition-colors cursor-pointer"
+                            title="Reforge item (reroll stats)"
+                          >
+                            Ref
+                          </button>
+                        )}
+                        {item.slot && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              e.preventDefault();
+                              if (onEquipChange && item.slot) {
+                                console.log('Equipping item:', item.name, 'to slot:', item.slot);
+                                onEquipChange(item.slot, item);
+                              } else {
+                                console.error('Cannot equip: missing slot or onEquipChange handler', { slot: item.slot, hasHandler: !!onEquipChange });
+                              }
+                            }}
+                            disabled={(item as any).locked}
+                            className={`flex-1 min-w-[55px] text-white text-[10px] py-1 rounded font-semibold transition-colors ${
+                              (item as any).locked
+                                ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                                : 'bg-blue-600 hover:bg-blue-700 cursor-pointer'
+                            }`}
+                            title={(item as any).locked ? 'Cannot equip locked item' : 'Equip item'}
+                          >
+                            Equip
+                          </button>
+                        )}
+                        <button
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            if ((item as any).locked) {
+                              alert('Cannot sell locked item. Unlock it first.');
+                              return;
+                            }
+                            // Calculate sell value: 25% of item value * rarity multiplier
+                            const itemValue = item.attack + item.defense + item.hp;
+                            const rarityMult: Record<string, number> = { 
+                              common: 1, 
+                              uncommon: 1.3, 
+                              rare: 2, 
+                              epic: 3, 
+                              legendary: 4,
+                              mythic: 5
+                            };
+                            const multiplier = rarityMult[item.rarity] || 1;
+                            const sellValue = Math.floor(itemValue * multiplier * 0.25);
+                            
+                            if (!window.confirm(`Sell ${item.name} for ${sellValue}g?`)) return;
+                            
+                            try {
+                              const updatedInventory = (hero.inventory || []).filter(invItem => invItem.id !== item.id);
+                              
+                              if (hero.id) {
+                                await heroAPI.updateHeroById(hero.id, {
+                                  inventory: updatedInventory,
+                                  gold: (hero.gold || 0) + sellValue
+                                });
+                                alert(`✅ Sold ${item.name} for ${sellValue}g!`);
+                                if (onUpdate) onUpdate();
+                              }
+                            } catch (error: any) {
+                              console.error('Failed to sell item:', error);
+                              alert(error.response?.data?.error || 'Failed to sell item');
+                            }
+                          }}
+                          disabled={(item as any).locked}
+                          className={`flex-1 min-w-[55px] text-white text-[10px] py-1 rounded font-semibold transition-colors ${
+                            (item as any).locked
+                              ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                              : 'bg-red-600 hover:bg-red-700 cursor-pointer'
+                          }`}
+                          title={(item as any).locked ? 'Cannot sell locked item' : 'Sell item for gold'}
+                        >
+                          Sell
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>

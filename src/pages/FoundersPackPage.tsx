@@ -3,6 +3,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
 import Navigation from '../components/Navigation';
 import { foundersPackAPI } from '../api/client';
+import { createCheckoutSession, isStripeConfigured } from '../services/stripe';
 
 interface PackTier {
   id: 'bronze' | 'silver' | 'gold' | 'platinum';
@@ -105,34 +106,35 @@ export default function FoundersPackPage() {
       return;
     }
 
+    if (!user?.id) {
+      alert('User ID not found. Please log in again.');
+      return;
+    }
+
+    // Check if Stripe is configured
+    if (!isStripeConfigured()) {
+      alert('Payment processing is not yet configured. Please contact support.');
+      return;
+    }
+
     setSelectedPack(pack);
     setProcessing(true);
 
     try {
-      const response = await foundersPackAPI.initiatePurchase(user!.id, pack.id);
+      const response = await foundersPackAPI.initiatePurchase(user.id, pack.id);
       
-      if (response.success) {
-        // TODO: When Stripe is ready, redirect to checkout session
-        // For now, show message that payment processing is pending
-        alert(
-          `Founders Pack Purchase Initiated!\n\n` +
-          `Selected: ${pack.name}\n` +
-          `Price: $${pack.price}\n\n` +
-          `Payment processing integration is in progress.\n` +
-          `Once Stripe is configured, you'll be redirected to complete payment.\n\n` +
-          `Purchase ID: ${response.purchaseId}`
-        );
-        
-        // When Stripe ready:
-        // if (response.sessionId) {
-        //   window.location.href = response.sessionId; // Stripe checkout URL
-        // }
-      } else {
-        alert('Failed to initiate purchase. Please try again.');
+      if (!response.success || !response.purchaseId) {
+        throw new Error(response.message || 'Failed to initiate purchase');
       }
+
+      // Create Stripe checkout session and redirect
+      await createCheckoutSession(response.purchaseId, pack.price);
+      // Note: createCheckoutSession will redirect to Stripe automatically
+      
     } catch (error: any) {
       console.error('Purchase error:', error);
-      alert(error.response?.data?.error || 'Failed to initiate purchase. Please try again.');
+      const errorMsg = error.message || error.response?.data?.error || 'Failed to start purchase process';
+      alert(`Purchase error: ${errorMsg}`);
     } finally {
       setProcessing(false);
       setSelectedPack(null);
@@ -221,16 +223,6 @@ export default function FoundersPackPage() {
           ))}
         </div>
 
-        {/* Payment Notice */}
-        <div className="bg-yellow-900/30 border-2 border-yellow-600 rounded-lg p-6 max-w-4xl mx-auto mb-8">
-          <h3 className="text-2xl font-bold text-yellow-300 mb-3 text-center">
-            💳 Payment Processing
-          </h3>
-          <p className="text-gray-300 text-center">
-            Payment processing integration is in progress. Stripe setup is required before purchases can be completed.
-            The purchase flow structure is ready and will be activated once payment processing is configured.
-          </p>
-        </div>
 
         {/* Benefits Section */}
         <div className="bg-gray-800/50 rounded-lg p-8 max-w-4xl mx-auto mb-8">

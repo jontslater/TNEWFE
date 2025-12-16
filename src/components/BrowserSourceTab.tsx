@@ -3,10 +3,218 @@ import { generateBrowserSourceUrl } from '../utils/browserSource';
 import { useAuth } from '../hooks/useAuth';
 import { db } from '../utils/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
+import { streamSettingsAPI } from '../api/client';
 
 interface BrowserSourceTabProps {
   userId?: string | null | undefined;
   token?: string | null;
+}
+
+/**
+ * Chat Update Settings Component
+ */
+function ChatUpdateSettingsSection({ user }: { user: any }) {
+  const [settings, setSettings] = useState({
+    enabled: false,
+    intervalMinutes: 7,
+    showWaves: true,
+    showXp: true,
+    showLevelUps: true,
+    showGold: false,
+    customMessage: null as string | null
+  });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState('');
+
+  useEffect(() => {
+    if (user?.twitchId) {
+      loadSettings();
+    }
+  }, [user?.twitchId]);
+
+  const loadSettings = async () => {
+    if (!user?.twitchId) return;
+    
+    try {
+      setLoading(true);
+      const response = await streamSettingsAPI.getSettings(user.twitchId);
+      if (response.success && response.settings) {
+        setSettings(response.settings);
+      }
+    } catch (error) {
+      console.error('Failed to load chat update settings:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!user?.twitchId) return;
+
+    try {
+      setSaving(true);
+      const response = await streamSettingsAPI.updateSettings(user.twitchId, settings);
+      if (response.success) {
+        setSaveMessage('Settings saved successfully!');
+        setTimeout(() => setSaveMessage(''), 3000);
+      }
+    } catch (error) {
+      console.error('Failed to save settings:', error);
+      setSaveMessage('Failed to save settings');
+      setTimeout(() => setSaveMessage(''), 3000);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Debug logging
+  useEffect(() => {
+    console.log('[ChatUpdateSettings] User:', user);
+    console.log('[ChatUpdateSettings] TwitchId:', user?.twitchId);
+    console.log('[ChatUpdateSettings] Will render:', !!user?.twitchId);
+  }, [user]);
+
+  if (!user?.twitchId) {
+    return (
+      <div className="bg-purple-900/30 rounded-lg p-4 border border-purple-700">
+        <h3 className="text-lg font-semibold text-purple-300 mb-2">💬 Periodic Chat Updates</h3>
+        <p className="text-gray-300 text-sm">
+          Please log in with Twitch to configure chat updates. Current user: {user?.twitchUsername || user?.displayName || 'Not logged in'}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-purple-900/30 rounded-lg p-4 border border-purple-700">
+      <h3 className="text-lg font-semibold text-purple-300 mb-2">💬 Periodic Chat Updates</h3>
+      <p className="text-gray-300 text-sm mb-4">
+        Configure automatic stats updates in your Twitch chat. Updates only post when you're live.
+      </p>
+
+      {loading ? (
+        <div className="text-gray-400 text-sm">Loading settings...</div>
+      ) : (
+        <div className="space-y-4">
+          {/* Enable/Disable Toggle */}
+          <div className="flex items-center justify-between">
+            <label className="text-sm font-semibold text-gray-300">Enable Chat Updates</label>
+            <button
+              onClick={() => setSettings({ ...settings, enabled: !settings.enabled })}
+              className={`px-4 py-2 rounded font-semibold text-sm transition-colors ${
+                settings.enabled
+                  ? 'bg-green-600 hover:bg-green-700 text-white'
+                  : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+              }`}
+            >
+              {settings.enabled ? 'Enabled' : 'Disabled'}
+            </button>
+          </div>
+
+          {settings.enabled && (
+            <>
+              {/* Update Interval */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-300 mb-2">
+                  Update Interval: <span className="text-purple-400">{settings.intervalMinutes} minutes</span>
+                </label>
+                <input
+                  type="range"
+                  min="5"
+                  max="10"
+                  step="1"
+                  value={settings.intervalMinutes}
+                  onChange={(e) => setSettings({ ...settings, intervalMinutes: parseInt(e.target.value) })}
+                  className="w-full"
+                />
+                <div className="flex justify-between text-xs text-gray-400 mt-1">
+                  <span>5 min</span>
+                  <span>10 min</span>
+                </div>
+              </div>
+
+              {/* Stats Toggles */}
+              <div className="space-y-2">
+                <div className="text-sm font-semibold text-gray-300 mb-2">Show in Updates:</div>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={settings.showWaves}
+                      onChange={(e) => setSettings({ ...settings, showWaves: e.target.checked })}
+                      className="rounded"
+                    />
+                    <span className="text-sm text-gray-300">Waves Completed</span>
+                  </label>
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={settings.showXp}
+                      onChange={(e) => setSettings({ ...settings, showXp: e.target.checked })}
+                      className="rounded"
+                    />
+                    <span className="text-sm text-gray-300">XP Gained</span>
+                  </label>
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={settings.showLevelUps}
+                      onChange={(e) => setSettings({ ...settings, showLevelUps: e.target.checked })}
+                      className="rounded"
+                    />
+                    <span className="text-sm text-gray-300">Heroes Leveled Up</span>
+                  </label>
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={settings.showGold}
+                      onChange={(e) => setSettings({ ...settings, showGold: e.target.checked })}
+                      className="rounded"
+                    />
+                    <span className="text-sm text-gray-300">Gold Gained</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Custom Message Template */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-300 mb-2">
+                  Custom Message Template (Optional)
+                </label>
+                <p className="text-xs text-gray-400 mb-2">
+                  Use placeholders: {'{time}'}, {'{waves}'}, {'{xp}'}, {'{levelups}'}, {'{gold}'}
+                </p>
+                <textarea
+                  value={settings.customMessage || ''}
+                  onChange={(e) => setSettings({ ...settings, customMessage: e.target.value || null })}
+                  placeholder="📊 Last {time}: {waves} waves completed, {xp} XP gained, {levelups} heroes leveled up!"
+                  className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 text-sm"
+                  rows={3}
+                />
+              </div>
+
+              {/* Save Button */}
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="px-6 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:cursor-not-allowed rounded font-semibold text-sm transition-colors"
+                >
+                  {saving ? 'Saving...' : 'Save Settings'}
+                </button>
+                {saveMessage && (
+                  <span className={`text-sm ${saveMessage.includes('Failed') ? 'text-red-400' : 'text-green-400'}`}>
+                    {saveMessage}
+                  </span>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function BrowserSourceTab({ userId: propUserId, token: propToken }: BrowserSourceTabProps) {
@@ -374,6 +582,9 @@ export default function BrowserSourceTab({ userId: propUserId, token: propToken 
             <li><strong className="text-white">1920x1080 resolution:</strong> Optimized for streaming</li>
           </ul>
         </div>
+
+        {/* Chat Update Settings */}
+        <ChatUpdateSettingsSection user={user} />
 
         {/* Active Queue Display - Inline (not modal, just status) */}
         {activeQueue && !showQueueModal && (

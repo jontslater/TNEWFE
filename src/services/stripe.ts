@@ -73,7 +73,12 @@ export async function createCheckoutSession(purchaseId: string, price: number): 
 
 /**
  * Check if Stripe is configured
+ * In development/localhost, allow purchases even without Stripe key (for testing)
  */
 export function isStripeConfigured(): boolean {
+  // In development, allow purchases even without Stripe key
+  if (import.meta.env.DEV || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    return true; // Allow in dev mode for testing
+  }
   return !!STRIPE_PUBLISHABLE_KEY && STRIPE_PUBLISHABLE_KEY.startsWith('pk_');
 }

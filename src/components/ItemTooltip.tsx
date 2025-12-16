@@ -77,7 +77,7 @@ export default function ItemTooltip({ item, children, position: initialPosition 
       {/* Tooltip - Smart positioning based on available space */}
       <div 
         ref={tooltipRef}
-        className={`absolute left-1/2 -translate-x-1/2 ${positionClasses} invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-50 pointer-events-none`}
+        className={`absolute left-1/2 -translate-x-1/2 ${positionClasses} invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-[9999] pointer-events-none`}
       >
         <div className="bg-gray-900 border-2 border-gray-700 rounded-lg p-4 shadow-2xl min-w-64 max-w-80">
           {/* Item Name */}
