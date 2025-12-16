@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { loginWithTwitch } from '../utils/twitchOAuth';
-import { initiateTikTokLogin } from '../services/tiktokOAuth';
 import logo from '../Logos/TheNeverEndingWarLogo.png';
 import { useHeroListener } from '../hooks/useHeroListener';
 import { questAPI } from '../api/client';
@@ -152,20 +151,12 @@ export default function Navigation() {
                 </button>
               </>
             ) : (
-              <div className="flex space-x-2">
-                <button
-                  onClick={loginWithTwitch}
-                  className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-bold transition-colors"
-                >
-                  Twitch
-                </button>
-                <button
-                  onClick={initiateTikTokLogin}
-                  className="bg-black hover:bg-gray-900 text-white px-4 py-2 rounded-lg font-bold transition-colors border border-cyan-400"
-                >
-                  TikTok
-                </button>
-              </div>
+              <button
+                onClick={loginWithTwitch}
+                className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-bold transition-colors"
+              >
+                Log in with Twitch
+              </button>
             )}
           </div>
         </div>

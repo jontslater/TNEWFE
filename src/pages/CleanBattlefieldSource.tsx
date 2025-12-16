@@ -2542,23 +2542,27 @@ export default function CleanBattlefieldSource() {
       
       console.log(`[Adventure] Generated ${newEnemies.length} enemies before boss check:`, newEnemies.map(e => e.name));
 
-      // Convert to our Enemy type and MANUALLY apply difficulty scaling
+      // Convert to our Enemy type (scaling already applied in generateEnemiesForCombat)
       const convertedEnemies: Enemy[] = newEnemies.map(e => {
-        // Apply difficulty modifier to HP and attack
-        const scaledHp = Math.floor(e.hp * difficultyModifier);
-        const scaledAttack = Math.floor(e.attack * difficultyModifier);
+        // NO NEED to apply difficultyModifier again - it's already included in e.hp and e.attack
+        // The generateEnemiesForCombat function already applied all scaling including:
+        // - Level scaling (12% per level)
+        // - Party size scaling (8% per hero beyond first)
+        // - Gear score scaling
+        // - Wave scaling
+        // - Difficulty modifier
         
-        console.log(`[Enemy] ${e.name} scaling: HP ${e.hp}→${scaledHp}, ATK ${e.attack}→${scaledAttack} (${(difficultyModifier * 100).toFixed(0)}% difficulty)`);
+        console.log(`[Enemy] ${e.name} final stats: HP ${e.hp}, ATK ${e.attack}, DEF ${e.defense}`);
         
         return {
           id: e.id,
           name: e.name,
           enemyType: (e as any).enemyType || e.name, // Preserve enemyType for sprite lookup (prevents Goblin Chief sprite mismatch)
           level: e.level,
-          hp: scaledHp,
-          maxHp: scaledHp,
-          attack: scaledAttack,
-          defense: e.defense,
+          hp: e.hp, // Already scaled
+          maxHp: e.hp, // Already scaled
+          attack: e.attack, // Already scaled
+          defense: e.defense, // Already scaled
           xp: e.xp,
           isBoss: e.isBoss || false,
           isDead: e.isDead || false // Ensure isDead is set (should come from generateEnemiesForCombat, but be defensive)
