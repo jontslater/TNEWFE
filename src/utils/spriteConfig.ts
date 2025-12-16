@@ -202,15 +202,18 @@ export const HERO_SPRITES: Record<string, {
     }
   },
   bard: {
-    sprite: '/Sprites/Heroes/HeroSprites/Bard/idle-4-frames.png',
+    sprite: '/Sprites/Heroes/HeroSprites/Wizard 2D Pixel Art v2.0/Sprites/with_outline/IDLE.png',
     isAnimated: true,
     spriteSize: 48,
-    frameCount: { idle: 4, attack: 4, hurt: 4, death: 4 },
+    frameCount: { idle: 6, attack: 9, hurt: 4, death: 6, rangedAttack: 10, projectile: 5, walk: 4 },
     animations: {
-      idle: '/Sprites/Heroes/HeroSprites/Bard/idle-4-frames.png',
-      attack: '/Sprites/Heroes/HeroSprites/Bard/idle-4-frames.png',
-      hurt: '/Sprites/Heroes/HeroSprites/Bard/idle-4-frames.png',
-      death: '/Sprites/Heroes/HeroSprites/Bard/idle-4-frames.png'
+      idle: '/Sprites/Heroes/HeroSprites/Wizard 2D Pixel Art v2.0/Sprites/with_outline/IDLE.png',
+      attack: '/Sprites/Heroes/HeroSprites/Wizard 2D Pixel Art v2.0/Sprites/with_outline/MELEE ATTACK.png',
+      hurt: '/Sprites/Heroes/HeroSprites/Wizard 2D Pixel Art v2.0/Sprites/with_outline/HURT.png',
+      death: '/Sprites/Heroes/HeroSprites/Wizard 2D Pixel Art v2.0/Sprites/with_outline/DEATH.png',
+      rangedAttack: '/Sprites/Heroes/HeroSprites/Wizard 2D Pixel Art v2.0/Sprites/with_outline/RANGED ATTACK.png',
+      projectile: '/Sprites/Heroes/HeroSprites/Wizard 2D Pixel Art v2.0/Projectile.png',
+      walk: '/Sprites/Heroes/HeroSprites/Wizard 2D Pixel Art v2.0/Sprites/with_outline/WALK.png'
     }
   },
   // MELEE DPS - Dwarf Warrior sprite

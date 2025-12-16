@@ -618,6 +618,15 @@ export function processHealerAbilities(
       const attackPercent = Math.floor(attackBuff * 100);
       const defensePercent = Math.floor(defenseBuff * 100);
       callbacks.log('heal', `🎵 ${healer.username} uses BATTLE HYMN! All party members gain +${attackPercent}% attack and +${defensePercent}% defense (${buffedCount} heroes)`);
+      
+      // Trigger musical note effects for all buffed heroes
+      if (callbacks.triggerMusicalNoteEffect) {
+        heroesArray.forEach((h) => {
+          if (!h || h.hp <= 0 || h.isDead) return;
+          callbacks.triggerMusicalNoteEffect(h.username, '#ffd700', 5); // Gold notes for buffs
+        });
+      }
+      
       healer.cooldowns!.classAbilityPrimary = now + 45000; // 45s cooldown
     }
   }
@@ -658,6 +667,15 @@ export function processHealerAbilities(
 
       const healPercentDisplay = Math.floor(healPercent * 100);
       callbacks.log('heal', `🎵 ${healer.username} uses HEALING MELODY! All party members healed for ${healPercentDisplay}% max HP (${Math.floor(totalMelodyHealing)} total)`);
+      
+      // Trigger musical note effects for all healed heroes
+      if (callbacks.triggerMusicalNoteEffect) {
+        heroesArray.forEach((h) => {
+          if (!h || h.hp <= 0 || h.isDead) return;
+          callbacks.triggerMusicalNoteEffect(h.username, '#90EE90', 3); // Light green notes for healing
+        });
+      }
+      
       healer.cooldowns!.classAbilitySecondary = now + 30000; // 30s cooldown
     }
   }

@@ -722,6 +722,26 @@ export default function UnifiedBrowserSource() {
       showScrollingCombatText(entityId, amount, type, isHero);
     });
 
+    // Subscribe to musical note effects for bard abilities
+    combatEngine.onMusicalNoteEffect((username, color, count) => {
+      // Find hero element by username
+      const hero = heroes.find(h => 
+        (h.username || h.name || h.characterName) === username
+      );
+      
+      if (hero) {
+        const heroId = hero.id || hero.name || hero.characterName;
+        const heroElement = document.querySelector(`[data-hero-id="${heroId}"]`) as HTMLElement;
+        
+        if (heroElement) {
+          // Import and use createMusicalNoteEffect
+          import('../utils/musicalNoteEffects').then(({ createMusicalNoteEffect }) => {
+            createMusicalNoteEffect(heroElement, color || '#ffd700', count || 5);
+          });
+        }
+      }
+    });
+
     // Set up log callback - detect level-ups and rewards for immediate sync
     combatEngine.onLog((type, message) => {
       // Detect level-ups and rewards to sync immediately

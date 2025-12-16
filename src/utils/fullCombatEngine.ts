@@ -206,6 +206,7 @@ export class FullCombatEngine {
   private animationCallbacks: AnimationCallback[] = [];
   private logCallbacks: LogCallback[] = [];
   private combatTextCallbacks: CombatTextCallback[] = [];
+  private musicalNoteCallbacks: ((username: string, color?: string, count?: number) => void)[] = [];
   private state: CombatState;
   private onEnemiesGenerated?: (enemies: Enemy[]) => void; // Callback when new enemies are generated
   private adventureEngine: AdventureEngine; // Simplified adventure engine
@@ -347,6 +348,18 @@ export class FullCombatEngine {
       }
     };
   }
+
+  onMusicalNoteEffect(callback: (username: string, color?: string, count?: number) => void): () => void {
+    this.musicalNoteCallbacks.push(callback);
+    
+    // Return cleanup function
+    return () => {
+      const index = this.musicalNoteCallbacks.indexOf(callback);
+      if (index > -1) {
+        this.musicalNoteCallbacks.splice(index, 1);
+      }
+    };
+  }
   
   // ID resolution helper - match DOM element IDs
   private enemyElementId(enemy: Enemy | { id: any }): string {
@@ -366,6 +379,10 @@ export class FullCombatEngine {
   
   private triggerCombatText(entityId: string, amount: number, type: 'damage' | 'crit' | 'heal' | 'heal-hot' | 'dot', isHero: boolean) {
     this.combatTextCallbacks.forEach(cb => cb(entityId, amount, type, isHero));
+  }
+
+  private triggerMusicalNoteEffect(username: string, color?: string, count?: number) {
+    this.musicalNoteCallbacks.forEach(cb => cb(username, color, count));
   }
   
   private log(type: string, message: string) {
@@ -586,6 +603,8 @@ export class FullCombatEngine {
         triggerHealAnimation: (username: string) => this.triggerAnimation(username, 'heal', true),
         triggerCombatText: (entityId: string, amount: number, type: 'damage' | 'crit' | 'heal' | 'heal-hot' | 'dot', isHero: boolean) =>
           this.triggerCombatText(entityId, amount, type, isHero),
+        triggerMusicalNoteEffect: (username: string, color?: string, count?: number) =>
+          this.triggerMusicalNoteEffect(username, color, count),
         updateEnemyHealthBar: () => {},
         updateHeroUI: () => {}
       },

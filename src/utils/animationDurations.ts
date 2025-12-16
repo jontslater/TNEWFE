@@ -45,10 +45,9 @@ export const ANIMATION_DURATIONS: Record<string, Record<string, number>> = {
  */
 export function getHeroSpriteType(heroRole: string): string {
   const tanks = ['guardian', 'paladin', 'warden', 'bloodknight', 'vanguard', 'brewmaster'];
-  const healers = ['cleric', 'atoner', 'druid', 'lightbringer', 'shaman', 'mistweaver', 'chronomancer'];
+  const healers = ['cleric', 'atoner', 'druid', 'lightbringer', 'shaman', 'mistweaver', 'chronomancer', 'bard'];
   
   if (tanks.includes(heroRole)) return 'huge-knight';
-  if (heroRole === 'bard') return 'bard'; // Bard has its own sprite, check before healers
   if (healers.includes(heroRole)) return 'wizard';
   
   const meleeDPS = ['berserker', 'crusader', 'assassin', 'reaper', 'bladedancer', 'monk', 'stormwarrior', 'hunter'];

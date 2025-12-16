@@ -212,6 +212,7 @@ export interface CombatCallbacks {
   triggerDamageAnimation?: (id: string, isHero: boolean) => void;
   triggerHealAnimation: (username: string) => void;
   triggerCombatText?: (id: string, amount: number, type: 'damage' | 'crit' | 'heal' | 'heal-hot' | 'dot' | 'miss', isHero: boolean) => void;
+  triggerMusicalNoteEffect?: (username: string, color?: string, count?: number) => void; // For bard abilities
   updateEnemyHealthBar: () => void;
   updateHeroUI: () => void;
 }

@@ -1432,6 +1432,26 @@ export default function BrowserSourcePage() {
         showScrollingCombatText(targetId, amount, type, isHero);
       });
       
+      // Subscribe to musical note effects for bard abilities
+      const musicalNoteCleanup = combatEngine.onMusicalNoteEffect((username, color, count) => {
+        // Find hero element by username
+        const hero = displayHeroes.find(h => 
+          (h.username || h.name || h.characterName) === username
+        );
+        
+        if (hero) {
+          const heroId = hero.id || hero.name || hero.characterName;
+          const heroElement = document.querySelector(`[data-hero-id="${heroId}"]`) as HTMLElement;
+          
+          if (heroElement) {
+            // Import and use createMusicalNoteEffect
+            import('../utils/musicalNoteEffects').then(({ createMusicalNoteEffect }) => {
+              createMusicalNoteEffect(heroElement, color || '#ffd700', count || 5);
+            });
+          }
+        }
+      });
+      
       // CRITICAL: Always start adventure loop immediately - combat should start automatically
       // Adventure loop will skip if enemies exist, but will spawn new enemies after combat ends
       // Reference: E:\IdleDnD\game.js lines 8677-8679 - adventure loop always runs
