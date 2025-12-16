@@ -306,36 +306,71 @@ export default function CleanBattlefieldSource() {
         const leftHeroId = message.hero?.id || message.heroId;
         const leftHeroName = message.hero?.name || message.hero?.username || 'Unknown';
         console.log(`[WebSocket] 👋 ${leftHeroName} (${leftHeroId}) left! Removing immediately...`);
+        console.log(`[WebSocket] 🔍 Full message:`, JSON.stringify(message, null, 2));
+        console.log(`[WebSocket] 🔍 Current heroes IDs:`, heroes.map(h => h.id));
         
         // CRITICAL: Remove hero immediately from state (don't wait for Firebase update)
         if (leftHeroId) {
-          // Remove from combat heroes state
+          // Convert to string for comparison (hero IDs might be strings or numbers)
+          const leftHeroIdStr = String(leftHeroId);
+          
+          // Remove from combat heroes state - try multiple ID formats
           setHeroes(current => {
-            const filtered = current.filter(h => h.id !== leftHeroId);
-            if (filtered.length !== current.length) {
-              console.log(`[WebSocket] ✅ Removed ${leftHeroName} from heroes state (${current.length} → ${filtered.length})`);
+            const beforeCount = current.length;
+            const filtered = current.filter(h => {
+              // Try multiple ID formats for matching
+              const heroIdStr = String(h.id || '');
+              const heroNameMatch = h.name === leftHeroName || h.username === leftHeroName;
+              const heroIdMatch = heroIdStr === leftHeroIdStr || h.id === leftHeroId;
+              
+              // Remove if ID matches OR if name matches and we have the ID (to handle edge cases)
+              if (heroIdMatch) {
+                console.log(`[WebSocket] ✅ Matched hero by ID: ${heroIdStr} === ${leftHeroIdStr}`);
+                return false; // Remove this hero
+              }
+              
+              return true; // Keep this hero
+            });
+            
+            if (filtered.length !== beforeCount) {
+              console.log(`[WebSocket] ✅ Removed ${leftHeroName} from heroes state (${beforeCount} → ${filtered.length})`);
               heroesRef.current = filtered;
+            } else {
+              console.warn(`[WebSocket] ⚠️ Hero ${leftHeroIdStr} (${leftHeroName}) not found in heroes state. Current heroes:`, current.map(h => `${h.id} (${h.name})`));
             }
             return filtered;
           });
           
           // Also remove from loadedHeroes if present
           setLoadedHeroes(current => {
-            const filtered = current.filter(h => h.id !== leftHeroId);
-            if (filtered.length !== current.length) {
-              console.log(`[WebSocket] ✅ Removed ${leftHeroName} from loadedHeroes (${current.length} → ${filtered.length})`);
+            const beforeCount = current.length;
+            const filtered = current.filter(h => {
+              const heroIdStr = String(h.id || '');
+              return heroIdStr !== leftHeroIdStr && h.id !== leftHeroId;
+            });
+            
+            if (filtered.length !== beforeCount) {
+              console.log(`[WebSocket] ✅ Removed ${leftHeroName} from loadedHeroes (${beforeCount} → ${filtered.length})`);
             }
             return filtered;
           });
           
           // Clean up join time tracking
           heroBattlefieldJoinTime.current.delete(leftHeroId);
+          heroBattlefieldJoinTime.current.delete(leftHeroIdStr);
           lastChatTime.current.delete(leftHeroId);
+          lastChatTime.current.delete(leftHeroIdStr);
           
           // Note: Sprite cleanup will happen automatically when the component unmounts
           // since the hero is removed from the heroes array that's used for rendering
         } else {
           console.warn(`[WebSocket] ⚠️ hero_left_battlefield message missing hero.id:`, message);
+          console.warn(`[WebSocket] ⚠️ Message structure:`, {
+            hasHero: !!message.hero,
+            heroId: message.hero?.id,
+            heroIdField: message.heroId,
+            heroName: message.hero?.name
+          });
         }
         break;
       
@@ -1840,6 +1875,17 @@ export default function CleanBattlefieldSource() {
 
     // Real-time listener
     const unsubscribe = onSnapshot(heroesQuery, (snapshot) => {
+      // Log changes for debugging
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === 'removed') {
+          console.log(`[Firebase] 🗑️ Hero removed from query: ${change.doc.id} (${change.doc.data().name || 'Unknown'})`);
+        } else if (change.type === 'modified') {
+          console.log(`[Firebase] ✏️ Hero modified: ${change.doc.id} (${change.doc.data().name || 'Unknown'})`);
+        } else if (change.type === 'added') {
+          console.log(`[Firebase] ➕ Hero added to query: ${change.doc.id} (${change.doc.data().name || 'Unknown'})`);
+        }
+      });
+      
       const loadedHeroes = snapshot.docs.map(doc => {
         const data = doc.data();
         return {
@@ -1952,6 +1998,8 @@ export default function CleanBattlefieldSource() {
               // Preserve combat-specific state but update HP, inventory, shield, shopBuffs, title from Firebase
               heroMap.set(firebaseHero.id, {
                 ...existingHero,
+                // Update name from Firebase (user may have changed their hero name)
+                name: firebaseHero.name || firebaseHero.username || firebaseHero.characterName || existingHero.name,
                 hp: firebaseHero.hp,
                 maxHp: firebaseHero.maxHp,
                 shield: firebaseHero.shield || 0,
