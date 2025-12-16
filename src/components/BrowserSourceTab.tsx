@@ -498,6 +498,22 @@ export default function BrowserSourceTab({ userId: propUserId, token: propToken 
           </div>
         </div>
         
+        {/* Important Notice */}
+        <div className="bg-orange-900/40 rounded-lg p-4 border-2 border-orange-600">
+          <div className="flex items-start gap-3">
+            <span className="text-2xl">⚠️</span>
+            <div className="flex-1">
+              <h3 className="text-lg font-semibold text-orange-300 mb-2">Important Notice</h3>
+              <p className="text-gray-200 text-sm leading-relaxed">
+                We're making frequent updates to improve the game. If commands aren't working in chat, 
+                please <strong className="text-white">log out of the website and log back in</strong> to 
+                re-establish your connection to the bot. This will refresh your authentication and ensure 
+                commands are processed correctly.
+              </p>
+            </div>
+          </div>
+        </div>
+        
         <div className="space-y-4">
         {/* Clean Battlefield URL (Recommended) */}
         <div className="bg-green-900/30 rounded-lg p-4 border border-green-700">
