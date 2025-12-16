@@ -7719,6 +7719,21 @@ export default function CleanBattlefieldSource() {
     (stats as any).gemStats = gemStats;
     (stats as any).socketBonusStats = socketBonusStats;
     
+    // Apply profession enchantments/upgrades (appliedUpgrades)
+    // These are flat bonuses from Mining/Enchanting profession items (Fiery Weapon, Vampiric Touch, etc.)
+    Object.values(equipment).forEach((item: any) => {
+      if (!item || !item.appliedUpgrades || !Array.isArray(item.appliedUpgrades)) return;
+      
+      item.appliedUpgrades.forEach((appliedUpgrade: any) => {
+        if (appliedUpgrade.bonus) {
+          // Apply flat bonuses from profession enchantments
+          stats.attack += appliedUpgrade.bonus.attack || 0;
+          stats.defense += appliedUpgrade.bonus.defense || 0;
+          stats.maxHp += appliedUpgrade.bonus.hp || 0;
+        }
+      });
+    });
+    
     // Apply upgrade bonuses (custom stat selection system)
     // Upgrades are percentages of the hero's TOTAL stats, not the item's base stats
     Object.values(equipment).forEach((item: any) => {
