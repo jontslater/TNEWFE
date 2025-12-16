@@ -88,6 +88,12 @@ export default function Navigation() {
                 Raids
               </button>
               <button
+                onClick={() => navigate('/faq')}
+                className="text-cyan-400 hover:text-cyan-300 transition-colors font-semibold"
+              >
+                FAQ
+              </button>
+              <button
                 onClick={() => navigate('/store')}
                 className="text-yellow-400 hover:text-yellow-300 transition-colors font-semibold"
               >
