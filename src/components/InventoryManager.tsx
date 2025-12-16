@@ -950,76 +950,72 @@ export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, 
                         >
                           Sell Selected ({selectedItems.size})
                         </button>
-                        <button
-                          onClick={async () => {
-                            // Batch disenchant selected items (only if hero has enchanting profession)
-                            if (!hero.profession || hero.profession.type !== 'enchanting') {
-                              alert('You need the Enchanting profession to disenchant items.');
-                              return;
-                            }
-                            
-                            const itemsToDisenchant = regularItems.filter(item => item.id && selectedItems.has(item.id));
-                            if (itemsToDisenchant.length === 0) return;
-                            
-                            // Calculate total essence
-                            let totalEssence = 0;
-                            const essenceValues: Record<string, number> = {
-                              common: 1,
-                              uncommon: 2,
-                              rare: 5,
-                              epic: 10,
-                              legendary: 20,
-                              mythic: 50
-                            };
-                            
-                            itemsToDisenchant.forEach(item => {
-                              if ((item as any).locked) return; // Skip locked items
-                              const baseEssence = essenceValues[item.rarity] || 1;
-                              // Higher rarity and upgrade level = more essence
-                              const upgradeBonus = ((item as any).upgradeLevel || 0) * 2;
-                              totalEssence += baseEssence + upgradeBonus;
-                            });
-                            
-                            if (totalEssence === 0) {
-                              alert('Selected items are locked or have no value.');
-                              return;
-                            }
-                            
-                            if (!window.confirm(`Disenchant ${itemsToDisenchant.length} item(s) for ${totalEssence} essence?`)) return;
-                            
-                            try {
-                              const updatedInventory = (hero.inventory || []).filter(
-                                invItem => !invItem.id || !selectedItems.has(invItem.id) || (invItem as any).locked
-                              );
+                        {hero.profession?.type === 'enchanting' && (
+                          <button
+                            onClick={async () => {
+                              // Batch disenchant selected items (only enchanters can disenchant)
+                              const itemsToDisenchant = regularItems.filter(item => item.id && selectedItems.has(item.id));
+                              if (itemsToDisenchant.length === 0) return;
                               
-                              const currentEssence = hero.profession.materials?.essence || 0;
-                              const updatedMaterials = {
-                                ...(hero.profession.materials || {}),
-                                essence: currentEssence + totalEssence
+                              // Calculate total essence
+                              let totalEssence = 0;
+                              const essenceValues: Record<string, number> = {
+                                common: 1,
+                                uncommon: 2,
+                                rare: 5,
+                                epic: 10,
+                                legendary: 20,
+                                mythic: 50
                               };
                               
-                              if (hero.id) {
-                                await heroAPI.updateHeroById(hero.id, {
-                                  inventory: updatedInventory,
-                                  profession: {
-                                    ...hero.profession,
-                                    materials: updatedMaterials
-                                  }
-                                });
-                                alert(`✅ Disenchanted ${itemsToDisenchant.length} item(s) for ${totalEssence} essence!`);
-                                setSelectedItems(new Set());
-                                if (onUpdate) onUpdate();
+                              itemsToDisenchant.forEach(item => {
+                                if ((item as any).locked) return; // Skip locked items
+                                const baseEssence = essenceValues[item.rarity] || 1;
+                                // Higher rarity and upgrade level = more essence
+                                const upgradeBonus = ((item as any).upgradeLevel || 0) * 2;
+                                totalEssence += baseEssence + upgradeBonus;
+                              });
+                              
+                              if (totalEssence === 0) {
+                                alert('Selected items are locked or have no value.');
+                                return;
                               }
-                            } catch (error: any) {
-                              console.error('Failed to disenchant items:', error);
-                              alert(error.response?.data?.error || 'Failed to disenchant items');
-                            }
-                          }}
-                          className="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded text-xs font-semibold transition-colors"
-                          disabled={!hero.profession || hero.profession.type !== 'enchanting'}
-                        >
-                          Disenchant ({selectedItems.size})
-                        </button>
+                              
+                              if (!window.confirm(`Disenchant ${itemsToDisenchant.length} item(s) for ${totalEssence} essence?`)) return;
+                              
+                              try {
+                                const updatedInventory = (hero.inventory || []).filter(
+                                  invItem => !invItem.id || !selectedItems.has(invItem.id) || (invItem as any).locked
+                                );
+                                
+                                const currentEssence = hero.profession.materials?.essence || 0;
+                                const updatedMaterials = {
+                                  ...(hero.profession.materials || {}),
+                                  essence: currentEssence + totalEssence
+                                };
+                                
+                                if (hero.id) {
+                                  await heroAPI.updateHeroById(hero.id, {
+                                    inventory: updatedInventory,
+                                    profession: {
+                                      ...hero.profession,
+                                      materials: updatedMaterials
+                                    }
+                                  });
+                                  alert(`✅ Disenchanted ${itemsToDisenchant.length} item(s) for ${totalEssence} essence!`);
+                                  setSelectedItems(new Set());
+                                  if (onUpdate) onUpdate();
+                                }
+                              } catch (error: any) {
+                                console.error('Failed to disenchant items:', error);
+                                alert(error.response?.data?.error || 'Failed to disenchant items');
+                              }
+                            }}
+                            className="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded text-xs font-semibold transition-colors"
+                          >
+                            Disenchant ({selectedItems.size})
+                          </button>
+                        )}
                       </>
                     )}
                   </div>
