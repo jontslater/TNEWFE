@@ -353,7 +353,7 @@ export const heroAPI = {
     return response.data;
   },
 
-  async createHero(classKey: string, twitchUserId?: string, tiktokUserId?: string, paymentMethod?: 'tokens' | 'payment'): Promise<Hero & { heroCount: number; maxHeroes: number }> {
+  async createHero(classKey: string, twitchUserId?: string, tiktokUserId?: string, paymentMethod?: 'tokens' | 'payment', twitchUsername?: string): Promise<Hero & { heroCount: number; maxHeroes: number }> {
     if (USE_MOCK) {
       return new Promise((resolve) => {
         setTimeout(() => resolve({
@@ -368,7 +368,8 @@ export const heroAPI = {
       class: classKey,
       twitchUserId,
       tiktokUserId,
-      paymentMethod
+      paymentMethod,
+      twitchUsername
     });
     return response.data;
   },
@@ -1620,6 +1621,96 @@ export const foundersPackAPI = {
       });
       throw error;
     }
+  },
+
+  /**
+   * Set founder pack tier for a user (admin/manual grant)
+   * @param userId - Twitch user ID
+   * @param tier - Pack tier ('bronze' | 'silver' | 'gold' | 'platinum')
+   * @returns Success status and updated heroes
+   */
+  async setFounderStatus(userId: string, tier: 'bronze' | 'silver' | 'gold' | 'platinum'): Promise<{
+    success: boolean;
+    message: string;
+    tier: string;
+    heroesUpdated: number;
+    heroes: Array<{ heroId: string; heroName: string }>;
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          success: true,
+          message: `Set ${tier} founder status (mock)`,
+          tier,
+          heroesUpdated: 1,
+          heroes: [{ heroId: 'mock', heroName: 'Mock Hero' }]
+        }), 300);
+      });
+    }
+
+    const response = await apiClient.post('/api/purchases/set-founder', {
+      userId,
+      tier
+    });
+    return response.data;
+  },
+
+  /**
+   * Set founder pack tier by username (admin/manual grant)
+   * @param username - Twitch username
+   * @param tier - Pack tier ('bronze' | 'silver' | 'gold' | 'platinum')
+   * @returns Success status and updated heroes
+   */
+  async setFounderStatusByUsername(username: string, tier: 'bronze' | 'silver' | 'gold' | 'platinum'): Promise<{
+    success: boolean;
+    message: string;
+    tier: string;
+    heroesUpdated: number;
+    heroes: Array<{ heroId: string; heroName: string }>;
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          success: true,
+          message: `Set ${tier} founder status for ${username} (mock)`,
+          tier,
+          heroesUpdated: 1,
+          heroes: [{ heroId: 'mock', heroName: 'Mock Hero' }]
+        }), 300);
+      });
+    }
+
+    const response = await apiClient.post('/api/purchases/set-founder', {
+      username,
+      tier
+    });
+    return response.data;
+  },
+
+  /**
+   * Remove founder pack status from a user (admin only)
+   * @param userId - Twitch user ID
+   * @returns Success status
+   */
+  async removeFounderStatus(userId: string): Promise<{
+    success: boolean;
+    message: string;
+    heroesUpdated: number;
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          success: true,
+          message: 'Removed founder status (mock)',
+          heroesUpdated: 1
+        }), 300);
+      });
+    }
+
+    const response = await apiClient.post('/api/purchases/remove-founder', {
+      userId
+    });
+    return response.data;
   }
 };
 

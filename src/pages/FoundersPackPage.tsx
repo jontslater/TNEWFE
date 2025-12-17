@@ -106,8 +106,8 @@ export default function FoundersPackPage() {
       return;
     }
 
-    if (!user?.id) {
-      alert('User ID not found. Please log in again.');
+    if (!user?.twitchId) {
+      alert('Twitch user ID not found. Please log in again.');
       return;
     }
 
@@ -121,7 +121,7 @@ export default function FoundersPackPage() {
     setProcessing(true);
 
     try {
-      const response = await foundersPackAPI.initiatePurchase(user.id, pack.id);
+      const response = await foundersPackAPI.initiatePurchase(user.twitchId, pack.id);
       
       if (!response.success || !response.purchaseId) {
         throw new Error(response.message || 'Failed to initiate purchase');

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import Navigation from '../components/Navigation';
 import { foundersPackAPI } from '../api/client';
 import HeroSpriteJS from '../components/HeroSpriteJS';
+import { useAuth } from '../hooks/useAuth';
 
 interface Founder {
   userId: string;
@@ -14,9 +15,12 @@ interface Founder {
 }
 
 export default function FoundersHallPage() {
+  const { user } = useAuth();
+  const isAdmin = user?.twitchUsername?.toLowerCase() === 'theneverendingwar';
   const [founders, setFounders] = useState<Founder[]>([]);
   const [loading, setLoading] = useState(true);
   const [response, setResponse] = useState<any>(null);
+  const [removingFounder, setRemovingFounder] = useState<string | null>(null);
 
   useEffect(() => {
     loadFounders();
@@ -30,8 +34,12 @@ export default function FoundersHallPage() {
       console.log('[FoundersHall] API Response:', response);
       
       if (response.success) {
-        const foundersList = response.founders || [];
-        console.log(`[FoundersHall] Found ${foundersList.length} founders:`, foundersList);
+        const foundersList = (response.founders || []).filter((founder: Founder) => {
+          // Filter out the specific hero that shouldn't appear
+          return founder.userId !== 'NRy5VebeCTxM3wX99k1o' && 
+                 founder.purchaseId !== 'hero_NRy5VebeCTxM3wX99k1o';
+        });
+        console.log(`[FoundersHall] Found ${foundersList.length} founders (after filtering):`, foundersList);
         setFounders(foundersList);
         setResponse(response); // Store for debug display
         
@@ -96,10 +104,10 @@ export default function FoundersHallPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-900">
+    <div className="min-h-screen bg-gray-900 overflow-x-hidden">
       <Navigation />
       
-      <div className="container mx-auto px-4 py-8">
+      <div className="container mx-auto px-4 py-8 overflow-x-hidden">
         <div className="text-center mb-8">
           <h1 className="text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 via-amber-500 to-yellow-600 mb-4">
             🏛️ Founders Hall
@@ -132,7 +140,7 @@ export default function FoundersHallPage() {
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 overflow-x-hidden">
             {founders.map((founder, index) => {
               const tierConfig = getTierConfig(founder.tier);
               const glowColor = founder.tier === 'platinum' ? 'rgba(234, 179, 8, 0.5)' : 
@@ -152,12 +160,22 @@ export default function FoundersHallPage() {
                   className={`bg-gradient-to-br ${tierConfig.bgGradient} rounded-lg p-6 border-2 ${tierConfig.borderColor} transition-all shadow-lg hover:shadow-xl`}
                 >
                   {/* Statue Sprite */}
-                  <div className="text-center mb-4 mt-4">
-                    <div className="relative inline-block">
+                  <div className="text-center mb-4 mt-8 flex justify-center items-center" style={{ minHeight: '140px' }}>
+                    <div 
+                      className="relative flex items-center justify-center"
+                      style={{ 
+                        width: '140px', 
+                        height: '140px', 
+                        overflow: 'visible'
+                      }}
+                    >
                       <div 
-                        className="relative"
+                        className="relative flex items-center justify-center"
                         style={{
                           filter: 'grayscale(100%) contrast(1.2) brightness(0.9) sepia(20%)',
+                          width: '100%',
+                          height: '100%',
+                          overflow: 'visible'
                         }}
                       >
                         <HeroSpriteJS
@@ -165,7 +183,7 @@ export default function FoundersHallPage() {
                           role={heroRole}
                           scale={2.5}
                           facing="right"
-                          style={{ filter: 'none' }}
+                          style={{ filter: 'none', display: 'block' }}
                         />
                       </div>
                     </div>
@@ -199,6 +217,37 @@ export default function FoundersHallPage() {
                       Joined {formatDate(founder.purchaseDate)}
                     </p>
                   </div>
+
+                  {/* Admin Delete Button */}
+                  {isAdmin && (
+                    <div className="mt-3 pt-3 border-t border-gray-700">
+                      <button
+                        type="button"
+                        disabled={removingFounder === founder.userId}
+                        onClick={async () => {
+                          if (!window.confirm(`Remove ${founder.username} from Founders Hall? This will remove founder pack status from all their heroes.`)) {
+                            return;
+                          }
+                          setRemovingFounder(founder.userId);
+                          try {
+                            const result = await foundersPackAPI.removeFounderStatus(founder.userId);
+                            alert(`✅ Removed ${founder.username} from Founders Hall\nUpdated ${result.heroesUpdated} hero${result.heroesUpdated !== 1 ? 'es' : ''}`);
+                            // Force reload with a small delay to ensure backend has processed
+                            setTimeout(() => {
+                              loadFounders();
+                            }, 500);
+                          } catch (error: any) {
+                            alert(`❌ Error: ${error.response?.data?.error || error.message}`);
+                          } finally {
+                            setRemovingFounder(null);
+                          }
+                        }}
+                        className="w-full text-xs px-3 py-1.5 rounded bg-red-700 hover:bg-red-600 text-white disabled:bg-gray-700 disabled:text-gray-400 disabled:cursor-not-allowed"
+                      >
+                        {removingFounder === founder.userId ? 'Removing...' : 'Remove from Hall'}
+                      </button>
+                    </div>
+                  )}
                 </div>
               );
             })}

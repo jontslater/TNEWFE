@@ -4,7 +4,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useHero } from '../hooks/useHero';
 import { useAllHeroes } from '../hooks/useAllHeroes';
 import { useGuild } from '../hooks/useGuild';
-import { raidAPI, heroAPI } from '../api/client';
+import { raidAPI, heroAPI, foundersPackAPI } from '../api/client';
 import { Raid, WorldBoss, Item } from '../types/Raid';
 import HeroDashboard from '../components/HeroDashboard';
 import ProfessionPanel from '../components/ProfessionPanel';
@@ -45,6 +45,7 @@ export default function PlayerPortal() {
   const [showLoginReward, setShowLoginReward] = useState(false);
   const [loginRewardStatus, setLoginRewardStatus] = useState<any>(null);
   const [dungeonQueueStatus, setDungeonQueueStatus] = useState<any>(null);
+  const [grantingFounderPack, setGrantingFounderPack] = useState<{ userId: string; tier: string } | null>(null);
   
   // Handle navigation state and URL params (for setting active tab from other pages)
   useEffect(() => {
@@ -793,6 +794,16 @@ export default function PlayerPortal() {
                                   <span className="text-xs text-gray-400">
                                     ({group.heroes.length} hero{group.heroes.length !== 1 ? 'es' : ''})
                                   </span>
+                                  {group.heroes[0]?.founderPackTier && (
+                                    <span className={`text-xs px-2 py-0.5 rounded font-semibold ${
+                                      group.heroes[0].founderPackTier === 'platinum' ? 'bg-yellow-600 text-white' :
+                                      group.heroes[0].founderPackTier === 'gold' ? 'bg-yellow-500 text-black' :
+                                      group.heroes[0].founderPackTier === 'silver' ? 'bg-gray-400 text-black' :
+                                      'bg-orange-600 text-white'
+                                    }`}>
+                                      {group.heroes[0].founderPackTier.toUpperCase()} Founder
+                                    </span>
+                                  )}
                                 </div>
                                 <div className="text-xs text-gray-400">
                                   Twitch ID: {group.twitchId}
@@ -805,6 +816,59 @@ export default function PlayerPortal() {
 
                             {isExpanded && (
                               <div className="px-4 pb-4 pt-1 space-y-2">
+                                {/* Founder Pack Grant Section */}
+                                <div className="mb-4 p-3 bg-gray-800 rounded-lg border border-gray-600">
+                                  <div className="text-xs font-semibold text-gray-300 mb-2">Grant Founder Pack</div>
+                                  <div className="flex gap-2 flex-wrap">
+                                    {['bronze', 'silver', 'gold', 'platinum'].map((tier) => {
+                                      const isGranting = grantingFounderPack?.userId === group.twitchId && grantingFounderPack?.tier === tier;
+                                      const currentTier = group.heroes[0]?.founderPackTier;
+                                      const isCurrentTier = currentTier === tier;
+                                      return (
+                                        <button
+                                          key={tier}
+                                          type="button"
+                                          disabled={isGranting || isCurrentTier}
+                                          onClick={async () => {
+                                            if (!window.confirm(`Grant ${tier.toUpperCase()} Founder Pack to ${group.label}? This will grant benefits to all their heroes.`)) {
+                                              return;
+                                            }
+                                            setGrantingFounderPack({ userId: group.twitchId, tier });
+                                            try {
+                                              const result = await foundersPackAPI.setFounderStatus(group.twitchId, tier as any);
+                                              alert(`✅ ${result.message}\nUpdated ${result.heroesUpdated} hero${result.heroesUpdated !== 1 ? 'es' : ''}`);
+                                              await refetchAllHeroes();
+                                            } catch (error: any) {
+                                              alert(`❌ Error: ${error.response?.data?.error || error.message}`);
+                                            } finally {
+                                              setGrantingFounderPack(null);
+                                            }
+                                          }}
+                                          className={`text-xs px-3 py-1.5 rounded font-semibold transition-all ${
+                                            isCurrentTier
+                                              ? 'bg-gray-600 text-gray-300 cursor-not-allowed'
+                                              : isGranting
+                                              ? 'bg-gray-700 text-gray-400 cursor-wait'
+                                              : tier === 'platinum'
+                                              ? 'bg-yellow-600 hover:bg-yellow-500 text-white'
+                                              : tier === 'gold'
+                                              ? 'bg-yellow-500 hover:bg-yellow-400 text-black'
+                                              : tier === 'silver'
+                                              ? 'bg-gray-400 hover:bg-gray-300 text-black'
+                                              : 'bg-orange-600 hover:bg-orange-500 text-white'
+                                          }`}
+                                        >
+                                          {isGranting ? 'Granting...' : isCurrentTier ? `Current: ${tier}` : `Grant ${tier}`}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                  {group.heroes[0]?.founderPackTier && (
+                                    <div className="text-xs text-gray-400 mt-2">
+                                      Current: {group.heroes[0].founderPackTier.toUpperCase()} Founder Pack
+                                    </div>
+                                  )}
+                                </div>
                                 {group.heroes.map((h: any, idx: number) => {
                                   const key = `${h.id}-${h.characterId || h.role || idx}`;
                                   return (

@@ -84,7 +84,8 @@ export default function CreateHeroPage() {
         selectedClass,
         user.twitchId,
         user.tiktokId,
-        costInfo && costInfo.heroCount >= 10 ? paymentMethod || undefined : undefined
+        costInfo && costInfo.heroCount >= 10 ? paymentMethod || undefined : undefined,
+        user.twitchUsername
       );
 
       // Hero created successfully, redirect to portal
