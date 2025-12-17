@@ -29,6 +29,7 @@ import { getFounderTitleColor, getFounderTitleDisplay, getFounderTierFromTitle }
 import { getAuraFilter } from '../utils/auraEffects';
 import { createProjectile } from '../utils/projectiles';
 import { createExhaustEffect, shouldShowExhaustEffect } from '../utils/exhaustEffects';
+import { createMusicalNoteEffect } from '../utils/musicalNoteEffects';
 
 // Hero type (with full gear support)
 interface Hero {
@@ -3000,11 +3001,18 @@ export default function CleanBattlefieldSource() {
                 });
               }
               
-              // Show heal SCT for each hero
-              const heroElement = document.querySelector(`[data-hero-id="${h.id}"]`);
+              // Show heal effects - musical notes for bard, SCT for other healers
+              const heroElement = document.querySelector(`[data-hero-id="${h.id}"]`) as HTMLElement;
               if (heroElement && actualHeal > 0) {
-                const rect = heroElement.getBoundingClientRect();
-                addSCT(`+${Math.round(actualHeal)}`, rect.left + rect.width / 2, rect.top + 20, 'heal');
+                // For bard, use musical notes instead of green healing text
+                if (cleric.role === 'bard') {
+                  console.log(`[Bard] Creating musical notes for ${h.name} (group heal)`);
+                  createMusicalNoteEffect(heroElement, '#90EE90', 4); // Light green notes for healing
+                } else {
+                  // Other healers use standard green healing SCT
+                  const rect = heroElement.getBoundingClientRect();
+                  addSCT(`+${Math.round(actualHeal)}`, rect.left + rect.width / 2, rect.top + 20, 'heal');
+                }
               }
               
               // Set cooldown on cleric
@@ -3708,36 +3716,44 @@ export default function CleanBattlefieldSource() {
         }, 100); // Small delay to ensure state update completes
       }
       
-      // Show heal SCT with particles and flash (SAME as idle mode!)
-      const targetElement = document.querySelector(`[data-hero-id="${target.id}"]`);
+      // Show heal effects - musical notes for bard, SCT for other healers
+      const targetElement = document.querySelector(`[data-hero-id="${target.id}"]`) as HTMLElement;
       if (targetElement) {
         const rect = targetElement.getBoundingClientRect();
         const actualHeal = Math.round(Math.min(healAmount, target.maxHp - target.hp));
         const overheal = Math.round(healAmount - actualHeal);
         
-        // Main heal number (round for display)
-        addSCT(`+${Math.round(healAmount)}`, rect.left + rect.width / 2, rect.top + 20, 'heal');
-        
-        // Multiple "+" particles for visual flair (like idle!)
-        for (let i = 0; i < 5; i++) {
-          setTimeout(() => {
-            const offsetX = (Math.random() - 0.5) * 60;
-            const offsetY = (Math.random() - 0.5) * 30;
-            addSCT('+', rect.left + rect.width / 2 + offsetX, rect.top + 10 + offsetY, 'heal');
-          }, i * 80);
+        // For bard, use musical notes instead of green healing text
+        if (healer.role === 'bard') {
+          console.log(`[Bard] Creating musical notes for ${target.name} (healing)`);
+          createMusicalNoteEffect(targetElement, '#90EE90', 4); // Light green notes for healing
+        } else {
+          // Other healers use standard green healing SCT
+          // Main heal number (round for display)
+          addSCT(`+${Math.round(healAmount)}`, rect.left + rect.width / 2, rect.top + 20, 'heal');
+          
+          // Multiple "+" particles for visual flair (like idle!)
+          for (let i = 0; i < 5; i++) {
+            setTimeout(() => {
+              const offsetX = (Math.random() - 0.5) * 60;
+              const offsetY = (Math.random() - 0.5) * 30;
+              addSCT('+', rect.left + rect.width / 2 + offsetX, rect.top + 10 + offsetY, 'heal');
+            }, i * 80);
+          }
+          
+          // Green flash on hero (like idle!)
+          const heroSpriteWrapper = targetElement.querySelector('div[style*="inline-block"]');
+          if (heroSpriteWrapper) {
+            const spriteDiv = heroSpriteWrapper as HTMLDivElement;
+            const originalFilter = spriteDiv.style.filter;
+            spriteDiv.style.filter = 'brightness(1.8) saturate(1.5) drop-shadow(0 0 30px rgba(16, 185, 129, 1))';
+            setTimeout(() => {
+              spriteDiv.style.filter = originalFilter;
+            }, 500);
+          }
         }
         
-        // Green flash on hero (like idle!)
-        const heroSpriteWrapper = targetElement.querySelector('div[style*="inline-block"]');
-        if (heroSpriteWrapper) {
-          const spriteDiv = heroSpriteWrapper as HTMLDivElement;
-          const originalFilter = spriteDiv.style.filter;
-          spriteDiv.style.filter = 'brightness(1.8) saturate(1.5) drop-shadow(0 0 30px rgba(16, 185, 129, 1))';
-          setTimeout(() => {
-            spriteDiv.style.filter = originalFilter;
-          }, 500);
-        }
-        
+        // Show shield SCT for overheal (both bard and other healers)
         if (overheal > 0) {
           setTimeout(() => {
             addSCT(`+${Math.round(overheal)} Shield`, rect.left + rect.width / 2, rect.top + 40, 'loot');

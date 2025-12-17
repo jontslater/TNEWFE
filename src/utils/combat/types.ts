@@ -140,6 +140,8 @@ export interface ClassAbilityState {
   shieldWallExpiry?: number;
   divineShieldActive?: boolean;
   divineShieldExpiry?: number;
+  guardianSongActive?: boolean; // Bard: Guardian Song (damage immunity)
+  guardianSongExpiry?: number;
   hpSnapshot?: Record<string, HpSnapshot[]>;
   enlargeActive?: boolean;
   enlargeExpiry?: number;

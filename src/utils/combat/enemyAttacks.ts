@@ -368,6 +368,24 @@ export function processEnemyAttack(
     return Promise.resolve();
   }
 
+  // Guardian Song (Bard) = full immunity
+  const guardianSongActive = target.hero.classAbilityState?.guardianSongActive && 
+                            target.hero.classAbilityState?.guardianSongExpiry && 
+                            now < target.hero.classAbilityState.guardianSongExpiry;
+  if (guardianSongActive) {
+    callbacks.log('combat', `🎵🛡️ ${target.username} is IMMUNE! (Guardian Song)`);
+    
+    // CRITICAL: Show MISS SCT for immunity
+    if (callbacks.triggerCombatText) {
+      const heroId = heroElementId(target);
+      callbacks.triggerCombatText(heroId, 0, 'miss', true);
+    }
+    
+    // CRITICAL: Cleanup tracking before returning
+    cleanup();
+    return Promise.resolve();
+  }
+
   // Evasion = dodge
   if (evasionActive) {
     callbacks.log('combat', `⚡ ${target.username} DODGES ${enemy.name}'s attack!`);

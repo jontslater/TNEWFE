@@ -1434,21 +1434,64 @@ export default function BrowserSourcePage() {
       
       // Subscribe to musical note effects for bard abilities
       const musicalNoteCleanup = combatEngine.onMusicalNoteEffect((username, color, count) => {
-        // Find hero element by username
+        console.log(`[Musical Notes] Received trigger for username: ${username}, color: ${color}, count: ${count}`);
+        
+        // Try multiple ways to find the hero element
+        let heroElement: HTMLElement | null = null;
+        
+        // Method 1: Find by username in displayHeroes
         const hero = displayHeroes.find(h => 
           (h.username || h.name || h.characterName) === username
         );
         
         if (hero) {
           const heroId = hero.id || hero.name || hero.characterName;
-          const heroElement = document.querySelector(`[data-hero-id="${heroId}"]`) as HTMLElement;
-          
-          if (heroElement) {
-            // Import and use createMusicalNoteEffect
-            import('../utils/musicalNoteEffects').then(({ createMusicalNoteEffect }) => {
-              createMusicalNoteEffect(heroElement, color || '#ffd700', count || 5);
-            });
+          heroElement = document.querySelector(`[data-hero-id="${heroId}"]`) as HTMLElement;
+          console.log(`[Musical Notes] Found hero by displayHeroes, heroId: ${heroId}, element:`, heroElement ? 'found' : 'not found');
+        }
+        
+        // Method 2: Try direct username lookup via data-hero-username
+        if (!heroElement) {
+          heroElement = document.querySelector(`[data-hero-username="${username}"]`) as HTMLElement;
+          if (heroElement) console.log(`[Musical Notes] Found hero by data-hero-username`);
+        }
+        
+        // Method 3: Try finding by battle-hero- ID
+        if (!heroElement && hero) {
+          const heroId = hero.id || hero.name || hero.characterName;
+          heroElement = document.getElementById(`battle-hero-${heroId}`) as HTMLElement;
+          if (heroElement) console.log(`[Musical Notes] Found hero by battle-hero- ID`);
+        }
+        
+        // Method 4: Try finding sprite container with username in text or data attributes
+        if (!heroElement) {
+          const allSprites = document.querySelectorAll('.hero-sprite-container, [class*="sprite"]');
+          for (const sprite of allSprites) {
+            const spriteElement = sprite as HTMLElement;
+            const dataUsername = spriteElement.getAttribute('data-hero-username') || 
+                                spriteElement.getAttribute('data-username');
+            const heroIdAttr = spriteElement.getAttribute('data-hero-id');
+            
+            // Match by username or check if heroId matches any hero's ID
+            if (dataUsername === username || 
+                (heroIdAttr && displayHeroes.some(h => (h.id || h.name || h.characterName) === heroIdAttr && 
+                                                      (h.username || h.name || h.characterName) === username))) {
+              heroElement = spriteElement;
+              console.log(`[Musical Notes] Found hero by sprite container search`);
+              break;
+            }
           }
+        }
+        
+        if (heroElement) {
+          console.log(`[Musical Notes] ✅ Creating musical note effect for ${username}`);
+          // Import and use createMusicalNoteEffect
+          import('../utils/musicalNoteEffects').then(({ createMusicalNoteEffect }) => {
+            createMusicalNoteEffect(heroElement, color || '#ffd700', count || 5);
+          });
+        } else {
+          console.warn(`[Musical Notes] ⚠️ Could not find hero element for: ${username}. Available heroes:`, 
+            displayHeroes.map(h => ({ id: h.id, name: h.name, username: h.username, characterName: h.characterName })));
         }
       });
       

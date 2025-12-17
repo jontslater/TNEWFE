@@ -116,6 +116,21 @@ export function processHealerAbilities(
 
       if (healedCount > 0) {
         callbacks.log('heal', `🌊 ${healer.username} uses GROUP HEAL! Restores ${healedCount} heroes!`);
+        
+        // For bard, use musical notes instead of heal animation
+        if (healer.role === 'bard' && callbacks.triggerMusicalNoteEffect) {
+          heroesArray.forEach((h) => {
+            if (!h || h.hp <= 0 || h.isDead) return;
+            callbacks.triggerMusicalNoteEffect(h.username, '#90EE90', 4); // Green notes for healing
+          });
+        } else {
+          // Other healers use normal heal animation
+          heroesArray.forEach((h) => {
+            if (!h || h.hp <= 0 || h.isDead) return;
+            callbacks.triggerHealAnimation(h.username);
+          });
+        }
+        
         healer.cooldowns!.groupHeal = now + 30000; // 30 second cooldown
       }
     }
@@ -165,7 +180,13 @@ export function processHealerAbilities(
           callbacks.log('heal', `💙 ${criticalHero.username} gains ${Math.floor(overhealAmount)} shield from overheal!`);
         }
 
-        callbacks.triggerHealAnimation(criticalHero.username);
+        // For bard, use musical notes instead of heal animation
+        if (healer.role === 'bard' && callbacks.triggerMusicalNoteEffect) {
+          callbacks.triggerMusicalNoteEffect(criticalHero.username, '#90EE90', 4); // Green notes for healing
+        } else {
+          callbacks.triggerHealAnimation(criticalHero.username);
+        }
+        
         callbacks.log('heal', `⚡💚 ${healer.username} uses INSTANT HEAL on ${criticalHero.username} for ${Math.floor(actualHeal)} HP!`);
         healer.cooldowns!.instantHeal = now + 20000; // 20 second cooldown
       }
@@ -656,7 +677,10 @@ export function processHealerAbilities(
       }
 
       totalMelodyHealing += actualHeal;
-      callbacks.triggerHealAnimation(h.username);
+      // Don't trigger heal animation for bard - we'll use musical notes instead
+      if (healer.role !== 'bard') {
+        callbacks.triggerHealAnimation(h.username);
+      }
     });
 
     if (totalMelodyHealing > 0) {
@@ -668,15 +692,75 @@ export function processHealerAbilities(
       const healPercentDisplay = Math.floor(healPercent * 100);
       callbacks.log('heal', `🎵 ${healer.username} uses HEALING MELODY! All party members healed for ${healPercentDisplay}% max HP (${Math.floor(totalMelodyHealing)} total)`);
       
-      // Trigger musical note effects for all healed heroes
+      // Trigger musical note effects for all healed heroes (bard always uses notes)
       if (callbacks.triggerMusicalNoteEffect) {
         heroesArray.forEach((h) => {
           if (!h || h.hp <= 0 || h.isDead) return;
+          console.log(`[Bard] Triggering musical notes for ${h.username} (Healing Melody)`);
           callbacks.triggerMusicalNoteEffect(h.username, '#90EE90', 3); // Light green notes for healing
         });
+      } else {
+        console.warn(`[Bard] triggerMusicalNoteEffect callback not available`);
       }
       
       healer.cooldowns!.classAbilitySecondary = now + 30000; // 30s cooldown
+    }
+  }
+
+  // BARD: Guardian Song (grants damage immunity + HoT to low HP tank)
+  // Uses a custom cooldown field - check if tank is below 30% HP
+  if (healer.role === 'bard') {
+    // Initialize cooldown if needed (use instantHeal cooldown as a custom slot for this ability)
+    if (!healer.cooldowns!.dispel) {
+      healer.cooldowns!.dispel = 0; // Reuse dispel cooldown slot for Guardian Song
+    }
+    
+    if (now >= healer.cooldowns!.dispel) {
+      // Find tank with low HP (< 30%)
+      let lowHpTank: Hero | null = null;
+      let lowestTankHpPercent = 1.0;
+      
+      heroesArray.forEach((h) => {
+        if (!h || h.hp <= 0 || h.isDead) return;
+        
+        const category = ROLE_CONFIG[h.role]?.category || 'dps';
+        if (category === 'tank') {
+          const hpPercent = h.hp / h.maxHp;
+          if (hpPercent < 0.3 && hpPercent < lowestTankHpPercent) {
+            lowestTankHpPercent = hpPercent;
+            lowHpTank = h;
+          }
+        }
+      });
+      
+      if (lowHpTank) {
+        // Grant damage immunity for 4 seconds
+        if (!lowHpTank.classAbilityState) {
+          lowHpTank.classAbilityState = {};
+        }
+        lowHpTank.classAbilityState.guardianSongActive = true;
+        lowHpTank.classAbilityState.guardianSongExpiry = now + 4000; // 4 seconds immunity
+        
+        // Apply HoT: 5% max HP per second for 8 seconds
+        if (!lowHpTank.activeBuffs) lowHpTank.activeBuffs = {};
+        lowHpTank.activeBuffs['hpRegen'] = {
+          value: Math.floor(lowHpTank.maxHp * 0.05), // 5% max HP per second
+          remainingDuration: 8000, // 8 seconds
+          name: 'Guardian Song',
+          lastUpdateTime: now
+        };
+        
+        const hpPercent = Math.floor((lowHpTank.hp / lowHpTank.maxHp) * 100);
+        callbacks.log('heal', `🎵🛡️ ${healer.username} uses GUARDIAN SONG on ${lowHpTank.username}! (${hpPercent}% HP) Grants 4s damage immunity + 5% max HP/sec HoT for 8s`);
+        
+        // Trigger musical note effects
+        if (callbacks.triggerMusicalNoteEffect) {
+          console.log(`[Bard] Triggering musical notes for ${lowHpTank.username} (Guardian Song)`);
+          callbacks.triggerMusicalNoteEffect(lowHpTank.username, '#4169E1', 6); // Royal blue notes for protection
+        }
+        
+        healer.cooldowns!.dispel = now + 90000; // 90s cooldown
+      }
     }
   }
 
