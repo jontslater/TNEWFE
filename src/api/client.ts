@@ -24,6 +24,28 @@ apiClient.interceptors.request.use((config) => {
   return config;
 });
 
+// Add response interceptor for error handling
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    // Handle 401/403 errors globally
+    if (error.response?.status === 401 || error.response?.status === 403) {
+      // Clear invalid token
+      localStorage.removeItem('auth_token');
+      // Only redirect if not already on auth callback or home page
+      const currentPath = window.location.pathname;
+      if (currentPath !== '/' && !currentPath.includes('/auth/callback')) {
+        console.warn('Authentication token expired or invalid. Redirecting to home...');
+        // Use setTimeout to avoid navigation during render
+        setTimeout(() => {
+          window.location.href = '/';
+        }, 100);
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 // Hero API
 export const heroAPI = {
   async getAllHeroes(): Promise<Hero[]> {

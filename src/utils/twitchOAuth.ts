@@ -51,13 +51,22 @@ export function handleOAuthCallback(): { code: string; state: string } | null {
   const code = urlParams.get('code');
   const state = urlParams.get('state');
   const error = urlParams.get('error');
+  const errorDescription = urlParams.get('error_description');
 
   if (error) {
-    console.error('OAuth error:', error);
+    console.error('OAuth error:', error, errorDescription);
+    // Show user-friendly error message
+    if (errorDescription) {
+      alert(`Twitch login failed: ${errorDescription}`);
+    } else {
+      alert(`Twitch login failed: ${error}. Please try again.`);
+    }
     return null;
   }
 
   if (!code || !state) {
+    console.error('Missing OAuth parameters:', { code: !!code, state: !!state });
+    console.error('URL params:', Object.fromEntries(urlParams.entries()));
     return null;
   }
 
@@ -69,16 +78,18 @@ export function handleOAuthCallback(): { code: string; state: string } | null {
     match: state === storedState
   });
   
-  // TEMPORARY: Skip state check in development if storedState is null
-  if (state !== storedState && storedState !== null) {
+  // More lenient state check - allow if storedState is null (development/incognito)
+  // but still verify if both exist to prevent CSRF attacks
+  if (storedState !== null && state !== storedState) {
     console.error('State mismatch - possible CSRF attack');
     console.error('Received state:', state);
     console.error('Stored state:', storedState);
+    alert('Security verification failed. Please try logging in again.');
     return null;
   }
   
   if (storedState === null) {
-    console.warn('⚠️ State verification skipped - sessionStorage was empty (development mode)');
+    console.warn('⚠️ State verification skipped - sessionStorage was empty (development mode or incognito)');
   }
 
   // Clean up

@@ -81,8 +81,34 @@ export default function AuthCallback() {
         navigate('/portal');
       } catch (err) {
         console.error('Authentication failed:', err);
-        setError('Authentication failed. Please try again.');
-        setTimeout(() => navigate('/'), 3000);
+        
+        // More detailed error message
+        let errorMessage = 'Authentication failed. Please try again.';
+        if (err instanceof Error) {
+          errorMessage = err.message;
+        } else if (typeof err === 'object' && err !== null && 'response' in err) {
+          const axiosError = err as any;
+          if (axiosError.response?.data?.error) {
+            errorMessage = axiosError.response.data.error;
+          } else if (axiosError.response?.data?.details) {
+            errorMessage = `${axiosError.response.data.error || 'Authentication failed'}: ${axiosError.response.data.details}`;
+          } else if (axiosError.response?.status === 400) {
+            errorMessage = 'Invalid authentication code. Please try logging in again.';
+          } else if (axiosError.response?.status === 401) {
+            errorMessage = 'Authentication token expired. Please try logging in again.';
+          } else if (axiosError.response?.status === 403) {
+            errorMessage = 'Access denied. Please check your account permissions.';
+          } else if (axiosError.response?.status === 500) {
+            errorMessage = 'Server error during authentication. Please try again later.';
+          } else if (axiosError.response?.status) {
+            errorMessage = `Authentication failed (${axiosError.response.status}). Please try again.`;
+          } else if (axiosError.message) {
+            errorMessage = axiosError.message;
+          }
+        }
+        
+        setError(errorMessage);
+        setTimeout(() => navigate('/'), 5000); // Give user time to read error
       }
     };
 
