@@ -461,7 +461,7 @@ export default function PlayerPortal() {
                     const key = `${h.id}-${(h as any).characterId || h.role || idx}`;
                     const classInfo = CLASS_DATA.find(c => c.key === h.role);
                     const category = classInfo?.category || getCategoryFromRole(h.role);
-                    const gearScore = getItemScore(h.equipment || {});
+                    const gearScore = getItemScore(h.equipment || {}, h.role);
                     const isPinned = (h as any).pinned || false;
                     const categoryColors = {
                       tank: 'bg-blue-600 text-blue-100',
@@ -1008,7 +1008,7 @@ function DungeonFinderTab({ hero, userId, queueStatus, onQueueChange }: any) {
   };
 
   const calculateItemScore = (hero: any) => {
-    return getItemScore(hero.equipment || {});
+    return getItemScore(hero.equipment || {}, hero.role);
   };
 
   // Dungeon difficulty requirements

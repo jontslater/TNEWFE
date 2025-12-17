@@ -114,13 +114,65 @@ export function getRoleBg(role: string): string {
   return 'bg-dps';
 }
 
-export function getItemScore(equipment: any): number {
+/**
+ * Get role category (tank/healer/dps) from role name
+ */
+function getRoleCategory(role: string): 'tank' | 'healer' | 'dps' {
+  const roleLower = role?.toLowerCase() || '';
+  
+  const tanks = ['guardian', 'paladin', 'warden', 'bloodknight', 'vanguard', 'brewmaster'];
+  const healers = ['cleric', 'atoner', 'druid', 'lightbringer', 'shaman', 'mistweaver', 'chronomancer', 'chronomender', 'bard'];
+  
+  if (tanks.includes(roleLower)) return 'tank';
+  if (healers.includes(roleLower)) return 'healer';
+  return 'dps';
+}
+
+/**
+ * Calculate item score (role-aware - healers prioritize healing power)
+ * @param equipment - Hero equipment object
+ * @param heroRole - Optional hero role (e.g., 'bard', 'cleric', 'guardian')
+ * @returns Total item score
+ */
+export function getItemScore(equipment: any, heroRole?: string): number {
+  if (!equipment) return 0;
+  
+  const heroCategory = heroRole ? getRoleCategory(heroRole) : 'dps';
   let score = 0;
   
   Object.values(equipment).forEach((item: any) => {
     if (item) {
-      // Match backend calculation formula
-      const baseScore = (item.attack || 0) + (item.defense || 0) + ((item.hp || 0) / 2);
+      let baseScore = 0;
+      
+      if (heroCategory === 'healer') {
+        // Healers prioritize: intellect, spellPower, healingPower, then defense/hp
+        baseScore = (item.intellect || 0) * 2 +           // Intellect is primary stat
+                   (item.spellPower || 0) * 2.5 +         // Spell power scales healing
+                   (item.secondaryStats?.healingPower || 0) * 3 + // Healing power is very valuable
+                   (item.defense || 0) * 0.5 +            // Defense is secondary
+                   ((item.hp || 0) / 2) +                 // HP is secondary
+                   (item.attack || 0) * 0.3;              // Attack is least important
+      } else if (heroCategory === 'tank') {
+        // Tanks prioritize: stamina, defense, hp, then strength
+        baseScore = (item.stamina || 0) * 1.5 +
+                   (item.defense || 0) * 1.2 +
+                   ((item.hp || 0) / 2) * 1.5 +
+                   (item.strength || 0) * 0.8 +
+                   (item.attack || 0) * 0.5;
+      } else {
+        // DPS prioritize: attack, strength/intellect, then secondary damage stats
+        const primaryStat = item.strength || item.intellect || 0;
+        const spellDamage = item.secondaryStats?.spellDamage || 0;
+        const meleeDamage = item.secondaryStats?.meleeDamage || 0;
+        
+        baseScore = (item.attack || 0) * 1.5 +
+                   primaryStat * 1.2 +
+                   spellDamage * 1.5 +
+                   meleeDamage * 1.5 +
+                   (item.defense || 0) * 0.3 +
+                   ((item.hp || 0) / 2) * 0.5;
+      }
+      
       const rarityBonus = item.rarity === 'legendary' ? 1.5 : 
                           item.rarity === 'epic' ? 1.3 : 
                           item.rarity === 'rare' ? 1.1 : 1.0;

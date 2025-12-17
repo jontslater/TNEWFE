@@ -92,7 +92,7 @@ export default function GuildRaidSignupPage() {
     }
     
     const hero = member.hero;
-    const itemScore = getItemScore(hero.equipment || {});
+    const itemScore = getItemScore(hero.equipment || {}, hero.role);
     
     setAssignedPlayers(prev => [...prev, {
       userId: member.userId,
@@ -273,7 +273,7 @@ export default function GuildRaidSignupPage() {
                 const isAssigned = assignedPlayers.some(p => p.userId === member.userId);
                 const hero = member.hero;
                 const canAssign = hero && !isAssigned && assignedPlayers.length < raid.maxPlayers;
-                const meetsRequirements = hero && hero.level >= raid.minLevel && getItemScore(hero.equipment || {}) >= raid.minItemScore;
+                const meetsRequirements = hero && hero.level >= raid.minLevel && getItemScore(hero.equipment || {}, hero.role) >= raid.minItemScore;
                 
                 return (
                   <div
@@ -298,7 +298,7 @@ export default function GuildRaidSignupPage() {
                             {' • '}
                             <span className="text-purple-400 capitalize">{hero.role || 'dps'}</span>
                             {' • '}
-                            <span className="text-green-400">iScore: {getItemScore(hero.equipment || {})}</span>
+                            <span className="text-green-400">iScore: {getItemScore(hero.equipment || {}, hero.role)}</span>
                           </div>
                         ) : (
                           <div className="text-sm text-red-400 mt-1">No hero</div>
@@ -306,7 +306,7 @@ export default function GuildRaidSignupPage() {
                         {hero && (!meetsRequirements) && (
                           <div className="text-xs text-red-400 mt-1">
                             {hero.level < raid.minLevel && `Level ${raid.minLevel} required`}
-                            {hero.level >= raid.minLevel && getItemScore(hero.equipment || {}) < raid.minItemScore && `Item Score ${raid.minItemScore} required`}
+                            {hero.level >= raid.minLevel && getItemScore(hero.equipment || {}, hero.role) < raid.minItemScore && `Item Score ${raid.minItemScore} required`}
                           </div>
                         )}
                       </div>

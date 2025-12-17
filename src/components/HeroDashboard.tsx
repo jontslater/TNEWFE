@@ -101,7 +101,7 @@ export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: Hero
   const spritePreviewRef = useRef<HTMLDivElement>(null);
   const hpPercent = (hero.hp / hero.maxHp) * 100;
   const xpPercent = (Math.floor(hero.xp) / Math.floor(hero.maxXp)) * 100;
-  const itemScore = getItemScore(hero.equipment);
+  const itemScore = getItemScore(hero.equipment, hero.role);
   
   // Warn if hero has founder features but no founderPackTier
   useEffect(() => {
