@@ -63,8 +63,11 @@ export default function Navigation() {
       <div className="container mx-auto px-4 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-8">
-            <button onClick={() => navigate('/')} className="flex items-center">
+            <button onClick={() => navigate('/')} className="flex items-center gap-2">
               <img src={logo} alt="The Never Ending War" className="h-12" />
+              <span className="px-2 py-1 text-xs font-bold text-white bg-orange-600 rounded-md border border-orange-500">
+                BETA
+              </span>
             </button>
             
             <div className="flex space-x-6">
