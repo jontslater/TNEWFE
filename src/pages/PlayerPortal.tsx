@@ -838,6 +838,7 @@ export default function PlayerPortal() {
                                               const result = await foundersPackAPI.setFounderStatus(group.twitchId, tier as any);
                                               alert(`✅ ${result.message}\nUpdated ${result.heroesUpdated} hero${result.heroesUpdated !== 1 ? 'es' : ''}`);
                                               await refetchAllHeroes();
+                                              await refetchHero(); // Refresh current hero to show updated founder pack features
                                             } catch (error: any) {
                                               alert(`❌ Error: ${error.response?.data?.error || error.message}`);
                                             } finally {

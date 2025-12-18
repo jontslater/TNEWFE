@@ -9500,7 +9500,12 @@ export default function CleanBattlefieldSource() {
             fontFamily: 'monospace',
             textShadow: '2px 2px 4px rgba(0,0,0,0.9)',
             zIndex: 1000,
-            whiteSpace: 'nowrap'
+            whiteSpace: 'nowrap',
+            backgroundColor: 'rgba(0, 0, 0, 0.75)', // Semi-transparent black background
+            padding: '8px 16px', // Padding for better spacing
+            borderRadius: '8px', // Rounded corners
+            border: '1px solid rgba(255, 255, 255, 0.2)', // Subtle border for definition
+            backdropFilter: 'blur(4px)' // Optional: blur effect for better readability
           }}>
             {statusParts}
           </div>
