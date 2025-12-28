@@ -1697,10 +1697,12 @@ export default function CleanBattlefieldSource() {
   // Equipment change tracking state (accumulate changes, batch sync to backend)
   const equipmentChangesRef = useRef<Map<string, any>>(new Map()); // heroId -> equipment object (absolute, latest wins)
   const lastEquipmentSyncRef = useRef<number>(Date.now());
+  const lastSyncedEquipmentRef = useRef<Map<string, any>>(new Map()); // heroId -> last synced equipment (for change detection)
   
   // Inventory change tracking state (accumulate changes, batch sync to backend)
   const inventoryChangesRef = useRef<Map<string, any[]>>(new Map()); // heroId -> inventory array (absolute, latest wins)
   const lastInventorySyncRef = useRef<number>(Date.now());
+  const lastSyncedInventoryRef = useRef<Map<string, any[]>>(new Map()); // heroId -> last synced inventory (for change detection)
   
   // Profession materials tracking state (accumulate changes, batch sync to backend)
   const professionMaterialsRef = useRef<Map<string, any>>(new Map()); // heroId -> profession materials object
@@ -6654,7 +6656,7 @@ export default function CleanBattlefieldSource() {
         });
       }
       
-      if (questProgressRef.current.size > 0 && timeSinceLastSync >= 60000) {
+      if (questProgressRef.current.size > 0 && timeSinceLastSync >= 300000) { // Increased to 5 minutes
         console.log('[Quest Sync] ✅ Syncing quest progress for', questProgressRef.current.size, 'heroes...');
         
         // Convert Map to array of updates for batch API
@@ -6790,7 +6792,7 @@ export default function CleanBattlefieldSource() {
         
         // AUTO-PURCHASE BATCH SYNC: Sync pending purchases to backend
         const timeSinceLastPurchaseSync = now - lastPurchaseSyncRef.current;
-        if (pendingPurchasesRef.current.size > 0 && timeSinceLastPurchaseSync >= 60000) {
+        if (pendingPurchasesRef.current.size > 0 && timeSinceLastPurchaseSync >= 300000) { // Increased to 5 minutes
           console.log('[Purchase Sync] Syncing auto-purchases for', pendingPurchasesRef.current.size, 'heroes...');
           
           // Process each hero's pending purchases
@@ -6843,7 +6845,7 @@ export default function CleanBattlefieldSource() {
         
         // AUTO-GATHER BATCH SYNC: Sync pending gathers to backend
         const timeSinceLastGatherSync = now - lastGatherSyncRef.current;
-        if (pendingGathersRef.current.size > 0 && timeSinceLastGatherSync >= 60000) {
+        if (pendingGathersRef.current.size > 0 && timeSinceLastGatherSync >= 300000) { // Increased to 5 minutes
           console.log('[Gather Sync] Syncing auto-gathers for', pendingGathersRef.current.size, 'heroes...');
           
           // Process each hero's pending gathers
@@ -6888,7 +6890,7 @@ export default function CleanBattlefieldSource() {
         
         // HERO STAT BATCH SYNC: Sync accumulated hero stat changes to backend
         const timeSinceLastHeroStatSync = now - lastHeroStatSyncRef.current;
-        if (heroStatChangesRef.current.size > 0 && timeSinceLastHeroStatSync >= 60000) {
+        if (heroStatChangesRef.current.size > 0 && timeSinceLastHeroStatSync >= 300000) { // Increased to 5 minutes
           console.log('[Hero Stat Sync] ✅ Syncing hero stat changes for', heroStatChangesRef.current.size, 'heroes...');
           
           // Process each hero's stat changes
@@ -7024,7 +7026,7 @@ export default function CleanBattlefieldSource() {
         
         // EQUIPMENT BATCH SYNC: Sync accumulated equipment changes to backend
         const timeSinceLastEquipmentSync = now - lastEquipmentSyncRef.current;
-        if (equipmentChangesRef.current.size > 0 && timeSinceLastEquipmentSync >= 60000) {
+        if (equipmentChangesRef.current.size > 0 && timeSinceLastEquipmentSync >= 300000) { // Increased to 5 minutes
           console.log('[Equipment Sync] ✅ Syncing equipment changes for', equipmentChangesRef.current.size, 'heroes...');
           
           // Process each hero's equipment changes
@@ -7036,20 +7038,29 @@ export default function CleanBattlefieldSource() {
             
             // Use the current hero's equipment (latest state)
             const currentEquipment = hero.equipment || {};
+            const lastSynced = lastSyncedEquipmentRef.current.get(heroId) || {};
             
-            // Only sync if there are actual changes
-            if (Object.keys(currentEquipment).length > 0 || Object.keys(equipment).length > 0) {
+            // Check if equipment actually changed by comparing JSON strings
+            const currentEquipmentStr = JSON.stringify(currentEquipment);
+            const lastSyncedStr = JSON.stringify(lastSynced);
+            
+            // Only sync if equipment actually changed
+            if (currentEquipmentStr !== lastSyncedStr) {
               equipmentSyncPromises.push(
                 heroAPI.updateHeroById(heroId, {
                   equipment: currentEquipment
                 })
                   .then(() => {
                     console.log(`[Equipment Sync] ✅ Synced equipment for ${hero.name}`);
+                    // Store last synced equipment
+                    lastSyncedEquipmentRef.current.set(heroId, JSON.parse(currentEquipmentStr));
                   })
                   .catch(err => {
                     console.error(`[Equipment Sync] ❌ Failed to sync equipment for ${hero.name}:`, err);
                   })
               );
+            } else {
+              console.log(`[Equipment Sync] ⏭️ Skipping ${hero.name} - no equipment changes detected`);
             }
           });
           
@@ -7070,12 +7081,14 @@ export default function CleanBattlefieldSource() {
           } else {
             // No changes to sync, but still update timestamp
             lastEquipmentSyncRef.current = now;
+            // Clear tracking since nothing changed
+            equipmentChangesRef.current.clear();
           }
         }
         
         // INVENTORY BATCH SYNC: Sync accumulated inventory changes to backend
         const timeSinceLastInventorySync = now - lastInventorySyncRef.current;
-        if (inventoryChangesRef.current.size > 0 && timeSinceLastInventorySync >= 60000) {
+        if (inventoryChangesRef.current.size > 0 && timeSinceLastInventorySync >= 300000) { // Increased to 5 minutes
           console.log('[Inventory Sync] ✅ Syncing inventory changes for', inventoryChangesRef.current.size, 'heroes...');
           
           // Process each hero's inventory changes
@@ -7087,19 +7100,34 @@ export default function CleanBattlefieldSource() {
             
             // Use the current hero's inventory (latest state)
             const currentInventory = hero.inventory || [];
+            const lastSynced = lastSyncedInventoryRef.current.get(heroId) || [];
             
-            // Only sync if there are actual changes
-            inventorySyncPromises.push(
-              heroAPI.updateHeroById(heroId, {
-                inventory: currentInventory
-              })
-                .then(() => {
-                  console.log(`[Inventory Sync] ✅ Synced inventory for ${hero.name} (${currentInventory.length} items)`);
+            // Check if inventory actually changed by comparing array lengths and item IDs
+            const currentIds = currentInventory.map((item: any) => item.id).sort().join(',');
+            const lastSyncedIds = lastSynced.map((item: any) => item.id).sort().join(',');
+            
+            // Also check for quantity changes by comparing JSON (handles quantity updates)
+            const currentInventoryStr = JSON.stringify(currentInventory.map((item: any) => ({ id: item.id, quantity: item.quantity || 1 })).sort((a: any, b: any) => a.id.localeCompare(b.id)));
+            const lastSyncedStr = JSON.stringify(lastSynced.map((item: any) => ({ id: item.id, quantity: item.quantity || 1 })).sort((a: any, b: any) => a.id.localeCompare(b.id)));
+            
+            // Only sync if inventory actually changed
+            if (currentIds !== lastSyncedIds || currentInventoryStr !== lastSyncedStr) {
+              inventorySyncPromises.push(
+                heroAPI.updateHeroById(heroId, {
+                  inventory: currentInventory
                 })
-                .catch(err => {
-                  console.error(`[Inventory Sync] ❌ Failed to sync inventory for ${hero.name}:`, err);
-                })
-            );
+                  .then(() => {
+                    console.log(`[Inventory Sync] ✅ Synced inventory for ${hero.name} (${currentInventory.length} items)`);
+                    // Store last synced inventory (deep copy)
+                    lastSyncedInventoryRef.current.set(heroId, JSON.parse(JSON.stringify(currentInventory)));
+                  })
+                  .catch(err => {
+                    console.error(`[Inventory Sync] ❌ Failed to sync inventory for ${hero.name}:`, err);
+                  })
+              );
+            } else {
+              console.log(`[Inventory Sync] ⏭️ Skipping ${hero.name} - no inventory changes detected`);
+            }
           });
           
           // Wait for all inventory syncs to complete
@@ -7119,12 +7147,14 @@ export default function CleanBattlefieldSource() {
           } else {
             // No changes to sync, but still update timestamp
             lastInventorySyncRef.current = now;
+            // Clear tracking since nothing changed
+            inventoryChangesRef.current.clear();
           }
         }
         
         // PROFESSION MATERIALS BATCH SYNC: Sync accumulated profession materials to backend
         const timeSinceLastProfessionMaterialsSync = now - lastProfessionMaterialsSyncRef.current;
-        if (professionMaterialsRef.current.size > 0 && timeSinceLastProfessionMaterialsSync >= 60000) {
+        if (professionMaterialsRef.current.size > 0 && timeSinceLastProfessionMaterialsSync >= 300000) { // Increased to 5 minutes
           console.log('[Profession Materials Sync] ✅ Syncing profession materials for', professionMaterialsRef.current.size, 'heroes...');
           
           // Process each hero's profession materials changes
@@ -7194,7 +7224,7 @@ export default function CleanBattlefieldSource() {
           }
         }
       }
-    }, 300000); // Every 5 minutes (reduced from 60s to save Firebase writes)
+    }, 600000); // Every 10 minutes (increased from 5 minutes to further reduce Firebase writes)
     
     syncIntervalRef.current = syncInterval;
 
