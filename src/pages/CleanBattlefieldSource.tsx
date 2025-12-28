@@ -122,6 +122,7 @@ interface Hero {
   nameFrame?: string;
   auraEffect?: string;
   auraColor?: string;
+  prestigeLevel?: number;
   spellEffect?: string;
 }
 
@@ -1889,11 +1890,40 @@ export default function CleanBattlefieldSource() {
       
       const loadedHeroes = snapshot.docs.map(doc => {
         const data = doc.data();
+        // CRITICAL: Use actual Firebase level (don't default to 1 if level exists)
+        // Level 1 is valid after prestige, so we need to check for undefined/null specifically
+        let firebaseLevel = data.level !== undefined && data.level !== null ? data.level : 1;
+        const firebasePrestigeLevel = data.prestigeLevel || 0;
+        const MAX_LEVEL = 100;
+        
+        // CRITICAL: Protect prestiged heroes from invalid level data in Firebase
+        if (firebasePrestigeLevel > 0) {
+          if (firebaseLevel > MAX_LEVEL) {
+            console.error(`[Firebase Load] 🚨 BLOCKED: Prestiged hero ${data.name || 'Hero'} (P${firebasePrestigeLevel}) has invalid level ${firebaseLevel} in Firebase. Forcing to 1.`);
+            firebaseLevel = 1;
+            // Also reset XP if level is invalid
+            if (data.xp !== undefined && data.xp > 0) {
+              data.xp = 0;
+            }
+            if (data.maxXp !== undefined) {
+              data.maxXp = 100; // Level 1 maxXp
+            }
+          } else if (firebaseLevel < 1) {
+            console.warn(`[Firebase Load] ⚠️ Prestiged hero ${data.name || 'Hero'} has level ${firebaseLevel}, forcing to 1.`);
+            firebaseLevel = 1;
+          }
+        }
+        
+        // Debug log for prestige heroes
+        if (firebasePrestigeLevel > 0 && firebaseLevel > 100) {
+          console.warn(`[Prestige Level Mismatch] ⚠️ ${data.name || 'Hero'}: Prestige ${firebasePrestigeLevel} but level is ${firebaseLevel} (should be ≤100)`);
+        }
+        
         return {
           id: doc.id,
           name: data.name || data.username || data.characterName || 'Hero',
           role: data.role || 'berserker',
-          level: data.level || 1,
+          level: firebaseLevel, // Use protected Firebase level
           hp: data.hp || 100,
           maxHp: data.maxHp || 100,
           xp: data.xp || 0,
@@ -1936,6 +1966,8 @@ export default function CleanBattlefieldSource() {
           skills: data.skills || {},
           enchantedItems: data.enchantedItems || [],
           shield: data.shield || 0,
+          prestigeLevel: data.prestigeLevel || 0,
+          prestigeBoosts: data.prestigeBoosts || null,
           shopBuffs: data.shopBuffs || {},
           inventory: data.inventory || [],
           potions: data.potions || { health: 0 }
@@ -1996,6 +2028,34 @@ export default function CleanBattlefieldSource() {
           uniqueHeroes.forEach(firebaseHero => {
             const existingHero = current.find(h => h.id === firebaseHero.id);
             if (existingHero) {
+              // CRITICAL: Protect prestiged heroes from invalid level data in Firebase
+              let firebaseLevel = firebaseHero.level !== undefined ? firebaseHero.level : existingHero.level;
+              const firebasePrestigeLevel = firebaseHero.prestigeLevel !== undefined ? firebaseHero.prestigeLevel : (existingHero.prestigeLevel || 0);
+              const MAX_LEVEL = 100;
+              
+              // CRITICAL: If hero has prestiged, protect against invalid level data from Firebase
+              if (firebasePrestigeLevel > 0) {
+                // Prestiged heroes should NEVER be above level 100
+                if (firebaseLevel > MAX_LEVEL) {
+                  console.error(`[Firebase Listener] 🚨 BLOCKED: Prestiged hero ${firebaseHero.name} (P${firebasePrestigeLevel}) has invalid level ${firebaseLevel} in Firebase. Keeping existing level ${existingHero.level}.`);
+                  firebaseLevel = existingHero.level; // Keep existing level instead of using invalid Firebase level
+                  // Also reset XP if we're keeping level 1
+                  if (firebaseLevel === 1 && firebaseHero.xp !== undefined && firebaseHero.xp > 0) {
+                    firebaseHero.xp = 0;
+                  }
+                }
+                // Also ensure level is at least 1 for prestiged heroes
+                if (firebaseLevel < 1) {
+                  console.warn(`[Firebase Listener] ⚠️ Prestiged hero ${firebaseHero.name} has level ${firebaseLevel}, forcing to 1.`);
+                  firebaseLevel = 1;
+                }
+              }
+              
+              // CRITICAL: Log level changes for debugging prestige resets
+              if (firebaseLevel !== existingHero.level) {
+                console.log(`[Prestige Update] 🔄 ${firebaseHero.name}: Level ${existingHero.level} → ${firebaseLevel} (Prestige: ${firebasePrestigeLevel})`);
+              }
+              
               // Preserve combat-specific state but update HP, inventory, shield, shopBuffs, title from Firebase
               heroMap.set(firebaseHero.id, {
                 ...existingHero,
@@ -2007,15 +2067,20 @@ export default function CleanBattlefieldSource() {
                 shopBuffs: firebaseHero.shopBuffs || {},
                 inventory: firebaseHero.inventory || [],
                 gold: firebaseHero.gold,
-                level: firebaseHero.level,
-                xp: firebaseHero.xp,
+                // CRITICAL: Update level, XP, and maxXp from Firebase (important for prestige resets)
+                // Use protected Firebase level
+                level: firebaseLevel,
+                xp: firebaseHero.xp !== undefined ? firebaseHero.xp : existingHero.xp,
+                maxXp: firebaseHero.maxXp !== undefined ? firebaseHero.maxXp : existingHero.maxXp,
                 // Update cosmetic/display fields from Firebase (title, colors, frames, etc.)
                 activeTitle: firebaseHero.activeTitle !== undefined ? firebaseHero.activeTitle : existingHero.activeTitle,
                 nameColor: firebaseHero.nameColor !== undefined ? firebaseHero.nameColor : existingHero.nameColor,
                 nameFrame: firebaseHero.nameFrame !== undefined ? firebaseHero.nameFrame : existingHero.nameFrame,
                 auraEffect: firebaseHero.auraEffect !== undefined ? firebaseHero.auraEffect : existingHero.auraEffect,
                 auraColor: firebaseHero.auraColor !== undefined ? firebaseHero.auraColor : existingHero.auraColor,
-                founderBadge: firebaseHero.founderBadge !== undefined ? firebaseHero.founderBadge : existingHero.founderBadge
+                founderBadge: firebaseHero.founderBadge !== undefined ? firebaseHero.founderBadge : existingHero.founderBadge,
+                prestigeLevel: firebaseHero.prestigeLevel !== undefined ? firebaseHero.prestigeLevel : (existingHero.prestigeLevel || 0),
+                prestigeBoosts: firebaseHero.prestigeBoosts !== undefined ? firebaseHero.prestigeBoosts : existingHero.prestigeBoosts
               });
             } else {
               heroMap.set(firebaseHero.id, firebaseHero);
@@ -2043,6 +2108,23 @@ export default function CleanBattlefieldSource() {
           return current.map(combatHero => {
             const firebaseHero = uniqueHeroes.find(h => h.id === combatHero.id);
             if (firebaseHero) {
+              // CRITICAL: Protect prestiged heroes from invalid level data in Firebase
+              let firebaseLevel = firebaseHero.level !== undefined ? firebaseHero.level : combatHero.level;
+              const firebasePrestigeLevel = firebaseHero.prestigeLevel !== undefined ? firebaseHero.prestigeLevel : (combatHero.prestigeLevel || 0);
+              const MAX_LEVEL = 100;
+              
+              // CRITICAL: If hero has prestiged, protect against invalid level data from Firebase
+              if (firebasePrestigeLevel > 0) {
+                if (firebaseLevel > MAX_LEVEL) {
+                  console.error(`[Firebase Listener] 🚨 BLOCKED: Prestiged hero ${firebaseHero.name} (P${firebasePrestigeLevel}) has invalid level ${firebaseLevel} in Firebase. Keeping existing level ${combatHero.level}.`);
+                  firebaseLevel = combatHero.level; // Keep existing level
+                }
+                if (firebaseLevel < 1) {
+                  console.warn(`[Firebase Listener] ⚠️ Prestiged hero ${firebaseHero.name} has level ${firebaseLevel}, forcing to 1.`);
+                  firebaseLevel = 1;
+                }
+              }
+              
               return {
                 ...combatHero,
                 hp: firebaseHero.hp,
@@ -2050,13 +2132,20 @@ export default function CleanBattlefieldSource() {
                 shield: firebaseHero.shield || combatHero.shield || 0,
                 shopBuffs: firebaseHero.shopBuffs || combatHero.shopBuffs || {},
                 inventory: firebaseHero.inventory || combatHero.inventory || [],
+                // CRITICAL: Update level, XP, and maxXp from Firebase (important for prestige resets)
+                // Use protected Firebase level
+                level: firebaseLevel,
+                xp: firebaseHero.xp !== undefined ? firebaseHero.xp : combatHero.xp,
+                maxXp: firebaseHero.maxXp !== undefined ? firebaseHero.maxXp : combatHero.maxXp,
                 // Update title if it changed in Firebase
                 activeTitle: firebaseHero.activeTitle !== undefined ? firebaseHero.activeTitle : combatHero.activeTitle,
                 nameColor: firebaseHero.nameColor !== undefined ? firebaseHero.nameColor : combatHero.nameColor,
                 nameFrame: firebaseHero.nameFrame !== undefined ? firebaseHero.nameFrame : combatHero.nameFrame,
                 auraEffect: firebaseHero.auraEffect !== undefined ? firebaseHero.auraEffect : combatHero.auraEffect,
                 auraColor: firebaseHero.auraColor !== undefined ? firebaseHero.auraColor : combatHero.auraColor,
-                founderBadge: firebaseHero.founderBadge !== undefined ? firebaseHero.founderBadge : combatHero.founderBadge
+                founderBadge: firebaseHero.founderBadge !== undefined ? firebaseHero.founderBadge : combatHero.founderBadge,
+                prestigeLevel: firebaseHero.prestigeLevel !== undefined ? firebaseHero.prestigeLevel : (combatHero.prestigeLevel || 0),
+                prestigeBoosts: firebaseHero.prestigeBoosts !== undefined ? firebaseHero.prestigeBoosts : combatHero.prestigeBoosts
               };
             }
             return combatHero;
@@ -5966,10 +6055,17 @@ export default function CleanBattlefieldSource() {
               isDead: hero.isDead || hero.hp <= 0
             };
             
-            // Check for level up
-            if (newXP >= maxXP) {
-              const newLevel = hero.level + 1;
-              const newMaxXP = 100 + newLevel * 10;
+            // Check for level up (CRITICAL: Cap at level 100)
+            const MAX_LEVEL = 100;
+            const currentLevel = hero.level || 1;
+            if (newXP >= maxXP && currentLevel < MAX_LEVEL) {
+              const newLevel = Math.min(currentLevel + 1, MAX_LEVEL);
+              // Use polynomial formula for maxXP (matching backend)
+              const calculateMaxXp = (level: number): number => {
+                if (level <= 1) return 100;
+                return Math.floor(40 * level * level + 300 * level - 240);
+              };
+              const newMaxXP = calculateMaxXp(newLevel);
               
               result.leveledUp = true;
               result.oldLevel = hero.level;
@@ -6785,7 +6881,16 @@ export default function CleanBattlefieldSource() {
             // Apply XP delta (add to current XP)
             if (changes.xp !== undefined && changes.xp !== 0) {
               const currentXP = hero.xp || 0;
-              updateData.xp = Math.max(0, currentXP + changes.xp);
+              let newXP = Math.max(0, currentXP + changes.xp);
+              
+              // CRITICAL: Cap XP at maxXp for level 100
+              const MAX_LEVEL = 100;
+              if ((hero.level || 1) >= MAX_LEVEL) {
+                const maxXpForLevel100 = hero.maxXp || 100000; // Fallback
+                newXP = Math.min(newXP, maxXpForLevel100);
+              }
+              
+              updateData.xp = newXP;
             }
             
             // Apply gold delta (add to current gold)
@@ -6794,9 +6899,34 @@ export default function CleanBattlefieldSource() {
               updateData.gold = Math.max(0, currentGold + changes.gold);
             }
             
-            // Apply absolute values (level, HP, maxHp, attack, defense)
+            // CRITICAL: Level sync protection for prestiged heroes and level cap
             if (changes.level !== undefined) {
-              updateData.level = changes.level;
+              const prestigeLevel = (hero as any).prestigeLevel || 0;
+              const MAX_LEVEL = 100;
+              let newLevel = changes.level;
+              
+              // Always cap at MAX_LEVEL
+              if (newLevel > MAX_LEVEL) {
+                console.warn(`[Hero Stat Sync] ⚠️ Attempted to sync level ${newLevel} for hero ${hero.name}, capping at ${MAX_LEVEL}`);
+                newLevel = MAX_LEVEL;
+              }
+              
+              // CRITICAL: If hero has prestiged, NEVER sync a level > 100
+              // Prestiged heroes should always be between 1-100
+              if (prestigeLevel > 0 && newLevel > MAX_LEVEL) {
+                console.error(`[Hero Stat Sync] 🚨 BLOCKED: Prestiged hero ${hero.name} (P${prestigeLevel}) attempted to sync level ${newLevel}. Forcing level 1.`);
+                newLevel = 1;
+                // Also reset XP to 0 for prestiged heroes that somehow got > 100
+                updateData.xp = 0;
+                updateData.maxXp = 100; // Initial level 1 maxXp
+              }
+              
+              // Only sync level if it's valid
+              if (newLevel >= 1 && newLevel <= MAX_LEVEL) {
+                updateData.level = newLevel;
+              } else {
+                console.error(`[Hero Stat Sync] 🚨 Invalid level ${newLevel} for hero ${hero.name}, skipping level sync`);
+              }
             }
             if (changes.hp !== undefined) {
               updateData.hp = changes.hp;
@@ -8339,7 +8469,7 @@ export default function CleanBattlefieldSource() {
                   letterSpacing: '2px',
                   fontFamily: 'Georgia, serif'
                 }}>
-                  {Math.floor(boss.hp).toLocaleString()}
+                  {Math.floor(boss.hp || 0).toLocaleString()}
                 </div>
               </div>
             </div>
@@ -8539,7 +8669,7 @@ export default function CleanBattlefieldSource() {
         {/* Enemies - Use unified positioning with dungeon mode */}
         {enemies.map((enemy, index) => {
           const position = getEnemyPosition(index, enemies.length, enemy.isBoss, enemy.enemyType, 'dungeon', heroes);
-          const hpPercent = (enemy.hp / enemy.maxHp) * 100;
+          const hpPercent = enemy.maxHp && enemy.maxHp > 0 ? ((enemy.hp || 0) / enemy.maxHp) * 100 : 0;
           const hasShield = (enemy.shield || 0) > 0;
           
           return (
@@ -8603,7 +8733,7 @@ export default function CleanBattlefieldSource() {
                     fontWeight: 'bold',
                     textShadow: '2px 2px 4px rgba(0,0,0,1)'
                   }}>
-                    {Math.floor(enemy.hp).toLocaleString()} / {enemy.maxHp.toLocaleString()}
+                    {Math.floor(enemy.hp || 0).toLocaleString()} / {(enemy.maxHp || 0).toLocaleString()}
                   </div>
                 </div>
               )}
@@ -8766,7 +8896,7 @@ export default function CleanBattlefieldSource() {
                   letterSpacing: '1px', // Half of 2px
                   fontFamily: 'Georgia, serif'
                 }}>
-                  {Math.floor(boss.hp).toLocaleString()}
+                  {Math.floor(boss.hp || 0).toLocaleString()}
                 </div>
               </div>
             </div>
@@ -8965,7 +9095,7 @@ export default function CleanBattlefieldSource() {
         {/* Raid Enemies (Wave mobs OR Boss) - Use unified positioning */}
         {enemies.map((enemy, index) => {
           const position = getEnemyPosition(index, enemies.length, enemy.isBoss, enemy.enemyType, 'raid');
-          const hpPercent = (enemy.hp / enemy.maxHp) * 100;
+          const hpPercent = enemy.maxHp && enemy.maxHp > 0 ? ((enemy.hp || 0) / enemy.maxHp) * 100 : 0;
           const hasShield = (enemy.shield || 0) > 0;
           
           return (
@@ -9029,7 +9159,7 @@ export default function CleanBattlefieldSource() {
                     fontWeight: 'bold',
                     textShadow: '2px 2px 4px rgba(0,0,0,1)'
                   }}>
-                    {Math.floor(enemy.hp).toLocaleString()} / {enemy.maxHp.toLocaleString()}
+                    {Math.floor(enemy.hp || 0).toLocaleString()} / {(enemy.maxHp || 0).toLocaleString()}
                   </div>
                 </div>
               )}
@@ -9238,6 +9368,116 @@ export default function CleanBattlefieldSource() {
               </span>
             </div>
 
+            {/* Prestige Stars - Below hero name */}
+            {(() => {
+              const prestigeLevel = (hero as any).prestigeLevel || hero.prestigeLevel || 0;
+              
+              if (prestigeLevel > 0) {
+                // Determine tier based on prestige level
+                // Bronze: Prestige 1-5 (1 star per prestige = 5 bronze stars max)
+                // Silver: Prestige 6-10 (1 star per prestige, starts fresh at prestige 6)
+                // Gold: Prestige 11-20 (1 star per prestige, starts fresh at prestige 11)
+                // Platinum: Prestige 21-30 (1 star per prestige, starts fresh at prestige 21)
+                // Mythic: Prestige 31+ (1 star per prestige, starts fresh at prestige 31)
+                
+                let tier = 'bronze';
+                let color = '#CD7F32'; // Bronze
+                let starsToShow = 0;
+                
+                if (prestigeLevel >= 31) {
+                  tier = 'mythic';
+                  color = '#FF1493'; // Deep pink
+                  // Mythic: prestige 31+ (1 star per prestige, starts at prestige 31)
+                  starsToShow = prestigeLevel - 30;
+                } else if (prestigeLevel >= 21) {
+                  tier = 'platinum';
+                  color = '#E5E4E2'; // Platinum
+                  // Platinum: prestige 21-30 (1 star per prestige, starts at prestige 21)
+                  starsToShow = prestigeLevel - 20;
+                } else if (prestigeLevel >= 11) {
+                  tier = 'gold';
+                  color = '#FFD700'; // Gold
+                  // Gold: prestige 11-20 (1 star per prestige, starts at prestige 11)
+                  starsToShow = prestigeLevel - 10;
+                } else if (prestigeLevel >= 6) {
+                  tier = 'silver';
+                  color = '#C0C0C0'; // Silver
+                  // Silver: prestige 6-10 (1 star per prestige, starts at prestige 6)
+                  starsToShow = prestigeLevel - 5;
+                } else {
+                  tier = 'bronze';
+                  color = '#CD7F32'; // Bronze
+                  // Bronze: prestige 1-5 (1 star per prestige)
+                  starsToShow = prestigeLevel;
+                }
+                
+                // Debug: Log the calculation (remove in production)
+                if (process.env.NODE_ENV === 'development') {
+                  console.log(`[Prestige Stars] prestigeLevel: ${prestigeLevel}, tier: ${tier}, starsToShow: ${starsToShow}`);
+                }
+                
+                // Display stars in rows of 5
+                const fullRows = Math.floor(starsToShow / 5);
+                const remainingStars = starsToShow % 5;
+                
+                // TODO: When bronze star images are added, replace emoji with:
+                // <img src="/Badges/BronzeStar.png" alt="Bronze Star" style={{ width: '14px', height: '14px', filter: `drop-shadow(0 0 2px ${color})` }} />
+                
+                return (
+                  <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '2px',
+                    marginBottom: '4px',
+                    transform: 'translateY(-36px)',
+                    position: 'relative',
+                    zIndex: 10
+                  }}>
+                    {/* Full rows of 5 stars */}
+                    {Array.from({ length: fullRows }).map((_, rowIdx) => (
+                      <div key={`row-${rowIdx}`} style={{ display: 'flex', gap: '2px' }}>
+                        {Array.from({ length: 5 }).map((_, starIdx) => (
+                          <span
+                            key={`star-${rowIdx}-${starIdx}`}
+                            style={{
+                              color: color,
+                              fontSize: '14px',
+                              textShadow: `0 0 4px ${color}80, 1px 1px 2px rgba(0,0,0,0.9)`,
+                              filter: `drop-shadow(0 0 2px ${color})`,
+                              lineHeight: '1'
+                            }}
+                          >
+                            ⭐
+                          </span>
+                        ))}
+                      </div>
+                    ))}
+                    {/* Remaining stars (less than 5) */}
+                    {remainingStars > 0 && (
+                      <div style={{ display: 'flex', gap: '2px' }}>
+                        {Array.from({ length: remainingStars }).map((_, starIdx) => (
+                          <span
+                            key={`remaining-${starIdx}`}
+                            style={{
+                              color: color,
+                              fontSize: '14px',
+                              textShadow: `0 0 4px ${color}80, 1px 1px 2px rgba(0,0,0,0.9)`,
+                              filter: `drop-shadow(0 0 2px ${color})`,
+                              lineHeight: '1'
+                            }}
+                          >
+                            ⭐
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+              return null;
+            })()}
+
             {/* Resurrection Timer (if dead) - ABOVE sprite */}
             {hero.isDead && resurrectionTimers[hero.id] !== undefined && (
               <div style={{
@@ -9343,7 +9583,7 @@ export default function CleanBattlefieldSource() {
       {/* Enemies - Use unified positioning */}
       {enemies && enemies.map((enemy, index) => {
         const position = getEnemyPosition(index, enemies.length, enemy.isBoss || false, enemy.enemyType, 'idle');
-        const hpPercent = (enemy.hp / enemy.maxHp) * 100;
+        const hpPercent = enemy.maxHp && enemy.maxHp > 0 ? ((enemy.hp || 0) / enemy.maxHp) * 100 : 0;
         const hasShield = (enemy.shield || 0) > 0;
 
         return (

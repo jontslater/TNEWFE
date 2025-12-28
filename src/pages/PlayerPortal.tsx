@@ -26,6 +26,7 @@ import BrowserSourceTab from '../components/BrowserSourceTab';
 import AuctionHousePage from './AuctionHousePage';
 import QuestsPage from './QuestsPage';
 import SocialSidebar from '../components/SocialSidebar';
+import PrestigeStore from '../components/PrestigeStore';
 
 export default function PlayerPortal() {
   const navigate = useNavigate();
@@ -39,7 +40,7 @@ export default function PlayerPortal() {
   const { guild, loading: guildLoading, refetch: refetchGuild } = useGuild(hero?.id || null);
   const [raids, setRaids] = useState<Raid[]>([]);
   const [worldBoss, setWorldBoss] = useState<WorldBoss | null>(null);
-  const [activeTab, setActiveTab] = useState<'hero' | 'inventory' | 'profession' | 'guild' | 'raids' | 'skills' | 'dungeon' | 'browserSource' | 'achievements' | 'allHeroes' | 'auction' | 'quests'>('hero');
+  const [activeTab, setActiveTab] = useState<'hero' | 'inventory' | 'profession' | 'guild' | 'raids' | 'skills' | 'dungeon' | 'browserSource' | 'achievements' | 'allHeroes' | 'auction' | 'quests' | 'prestige'>('hero');
   const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
   const [adminSelectedHero, setAdminSelectedHero] = useState<Hero | null>(null);
   const [showLoginReward, setShowLoginReward] = useState(false);
@@ -56,7 +57,7 @@ export default function PlayerPortal() {
     // Also check URL query params
     const params = new URLSearchParams(location.search);
     const tabParam = params.get('tab');
-    if (tabParam && ['hero', 'inventory', 'profession', 'guild', 'raids', 'skills', 'dungeon', 'browserSource', 'achievements', 'allHeroes', 'auction', 'quests'].includes(tabParam)) {
+    if (tabParam && ['hero', 'inventory', 'profession', 'guild', 'raids', 'skills', 'dungeon', 'browserSource', 'achievements', 'allHeroes', 'auction', 'quests', 'prestige'].includes(tabParam)) {
       setActiveTab(tabParam as any);
     }
   }, [location.state, location.search]);
@@ -407,6 +408,16 @@ export default function PlayerPortal() {
             >
               Quests
             </button>
+            <button
+              onClick={() => setActiveTab('prestige')}
+              className={`px-6 py-4 font-semibold transition-colors border-b-2 ${
+                activeTab === 'prestige'
+                  ? 'text-amber-400 border-amber-400'
+                  : 'text-gray-400 border-transparent hover:text-gray-300'
+              }`}
+            >
+              ⭐ Prestige Store
+            </button>
             {isAdmin && (
               <button
                 onClick={() => setActiveTab('allHeroes')}
@@ -504,26 +515,26 @@ export default function PlayerPortal() {
                         <div className="grid grid-cols-3 gap-2 text-xs mb-2">
                           <div className="text-center">
                             <div className="text-yellow-400 font-semibold">
-                              {Math.round(h.maxHp).toLocaleString()}
+                              {Math.round(h.maxHp || 0).toLocaleString()}
                             </div>
                             <div className="text-gray-500 text-[10px]">HP</div>
                           </div>
                           <div className="text-center">
                             <div className="text-blue-400 font-semibold">
-                              {h.attack.toLocaleString()}
+                              {(h.attack || 0).toLocaleString()}
                             </div>
                             <div className="text-gray-500 text-[10px]">ATK</div>
                           </div>
                           <div className="text-center">
                             <div className="text-green-400 font-semibold">
-                              {h.defense.toLocaleString()}
+                              {(h.defense || 0).toLocaleString()}
                             </div>
                             <div className="text-gray-500 text-[10px]">DEF</div>
                           </div>
                         </div>
                         <div className="flex items-center justify-between text-xs mb-2 pt-2 border-t border-gray-700">
                           <span className="text-gray-400">Gear Score:</span>
-                          <span className="text-yellow-400 font-semibold">⚡ {gearScore.toLocaleString()}</span>
+                          <span className="text-yellow-400 font-semibold">⚡ {(gearScore || 0).toLocaleString()}</span>
                         </div>
                         {isSelected && (
                           <div className="mt-2 pt-2 border-t border-gray-700">
@@ -714,6 +725,9 @@ export default function PlayerPortal() {
             )}
             {activeTab === 'quests' && (
               <QuestsPage />
+            )}
+            {activeTab === 'prestige' && hero && (
+              <PrestigeStore hero={hero} onUpdate={refetchHero} />
             )}
             {activeTab === 'auction' && (
               <div className="space-y-4">
