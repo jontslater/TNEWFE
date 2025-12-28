@@ -4,6 +4,7 @@
  */
 
 import { Hero, Enemy, ROLE_CONFIG, EQUIPMENT_SLOTS, TANK_EQUIPMENT_SLOTS } from './fullCombatEngine';
+import { calculateSetBonuses } from './setBonuses';
 
 /**
  * Get viewer bonuses based on viewer count
@@ -187,9 +188,10 @@ export function getCharacterStats(hero: Hero) {
       dexterity: hero.dexterity || 0,
       wisdom: hero.wisdom || 0,
       stamina: hero.stamina || 0,
-      healingPower: hero.healingPower || 0,
-      spellDamage: hero.spellDamage || 0,
-      meleeDamage: hero.meleeDamage || 0,
+      // Secondary stats should only come from equipment, not stored on hero
+      healingPower: 0,
+      spellDamage: 0,
+      meleeDamage: 0,
       hpRegen: 0,
       damageReduction: 0,
       critChance: 0
@@ -208,9 +210,10 @@ export function getCharacterStats(hero: Hero) {
     dexterity: hero.dexterity || 0,
     wisdom: hero.wisdom || 0,
     stamina: hero.stamina || 0,
-    healingPower: hero.healingPower || 0,
-    spellDamage: hero.spellDamage || 0,
-    meleeDamage: hero.meleeDamage || 0,
+    // Secondary stats should only come from equipment, not stored on hero
+    healingPower: 0,
+    spellDamage: 0,
+    meleeDamage: 0,
     hpRegen: 0,
     damageReduction: 0,
     critChance: hero.critChance || 0
@@ -236,6 +239,7 @@ export function getCharacterStats(hero: Hero) {
         if (item.secondaryStats) {
           stats.healingPower += item.secondaryStats.healingPower || 0;
           stats.spellDamage += item.secondaryStats.spellDamage || 0;
+          // Melee damage will be filtered for healers after equipment loop
           stats.meleeDamage += item.secondaryStats.meleeDamage || 0;
           stats.hpRegen += item.secondaryStats.hpRegen || 0;
           stats.damageReduction += item.secondaryStats.damageReduction || 0;
@@ -256,6 +260,34 @@ export function getCharacterStats(hero: Hero) {
       }
     });
   }
+
+  // Apply set bonuses from equipped gear
+  const setBonuses = calculateSetBonuses(hero.equipment, hero.role || '');
+  stats.attack += setBonuses.attack || 0;
+  stats.defense += setBonuses.defense || 0;
+  stats.maxHp += setBonuses.hp || 0;
+  stats.intellect += setBonuses.intellect || 0;
+  stats.strength += setBonuses.strength || 0;
+  stats.dexterity += setBonuses.dexterity || 0;
+  stats.wisdom += setBonuses.wisdom || 0;
+  stats.stamina += setBonuses.stamina || 0;
+  stats.healingPower += setBonuses.healingPower || 0;
+  stats.spellDamage += setBonuses.spellDamage || 0;
+  
+  // FILTER: Healers don't use melee damage - convert to spell damage instead
+  // This ensures healers benefit from equipment that might have melee damage
+  const isHealerRole = ['cleric', 'atoner', 'druid', 'lightbringer', 'shaman', 'mistweaver', 'chronomancer', 'bard'].includes((hero.role || '').toLowerCase());
+  if (isHealerRole) {
+    // Convert all melee damage to spell damage for healers (they use spell power)
+    stats.spellDamage += stats.meleeDamage + (setBonuses.meleeDamage || 0);
+    stats.meleeDamage = 0; // Set to 0 for healers
+  } else {
+    stats.meleeDamage += setBonuses.meleeDamage || 0;
+  }
+  
+  stats.hpRegen += setBonuses.hpRegen || 0;
+  stats.damageReduction += setBonuses.damageReduction || 0;
+  stats.critChance += setBonuses.critChance || 0;
 
   // Cap total crit chance at 35%
   stats.critChance = Math.min(stats.critChance || 0, 0.35);

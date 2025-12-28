@@ -11,6 +11,7 @@ import { SPELL_EFFECTS, SpellEffectType } from '../utils/spellEffects';
 import { createExhaustEffect, shouldShowExhaustEffect } from '../utils/exhaustEffects';
 import HeroSpriteJS from './HeroSpriteJS';
 import PrestigeModal from './PrestigeModal';
+import { getCharacterStats } from '../utils/combatUtils';
 
 interface HeroDashboardProps {
   hero: Hero;
@@ -100,11 +101,16 @@ export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: Hero
   const [renameValue, setRenameValue] = useState<string>('');
   const [renaming, setRenaming] = useState(false);
   const [showPrestigeModal, setShowPrestigeModal] = useState(false);
+  const [customizationExpanded, setCustomizationExpanded] = useState(false);
   const spritePreviewRef = useRef<HTMLDivElement>(null);
   const hpPercent = (hero.hp / hero.maxHp) * 100;
   const xpPercent = (Math.floor(hero.xp) / Math.floor(hero.maxXp)) * 100;
   const itemScore = getItemScore(hero.equipment, hero.role);
   const canPrestige = hero.level >= 100;
+  
+  // Calculate comprehensive stats after gear is applied
+  // This gives users a realistic understanding of what their hero does with current gear
+  const displayStats = getCharacterStats(hero as any);
   
   // Warn if hero has founder features but no founderPackTier
   useEffect(() => {
@@ -567,23 +573,36 @@ export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: Hero
                 <span className="text-gray-400">•</span>
                 <span className="text-yellow-500">⚡ {itemScore} Item Score</span>
               </div>
-              {availableTitles.length > 0 && (
-                <div className="mt-3">
-                  <label className="text-xs text-gray-400 block mb-1">Title</label>
-                  <select
-                    value={selectedTitle || ''}
-                    onChange={(e) => handleTitleChange(e.target.value)}
-                    className="bg-gray-700 text-white px-3 py-1 rounded text-sm border border-gray-600 focus:outline-none focus:border-amber-400"
-                  >
-                    <option value="">No Title</option>
-                    {availableTitles.map(title => (
-                      <option key={title} value={title}>{title}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-              {/* Badge Selection Dropdown */}
-              <div className="mt-3">
+              
+              {/* Collapsible Customization Section */}
+              <div className="mt-4 border-t border-gray-700 pt-3">
+                <button
+                  onClick={() => setCustomizationExpanded(!customizationExpanded)}
+                  className="w-full flex items-center justify-between text-left text-sm font-semibold text-gray-300 hover:text-white transition-colors"
+                >
+                  <span>🎨 Customization</span>
+                  <span className="text-gray-500">{customizationExpanded ? '▼' : '▶'}</span>
+                </button>
+                
+                {customizationExpanded && (
+                  <div className="mt-3 space-y-3">
+                    {availableTitles.length > 0 && (
+                      <div>
+                        <label className="text-xs text-gray-400 block mb-1">Title</label>
+                        <select
+                          value={selectedTitle || ''}
+                          onChange={(e) => handleTitleChange(e.target.value)}
+                          className="bg-gray-700 text-white px-3 py-1 rounded text-sm border border-gray-600 focus:outline-none focus:border-amber-400 w-full"
+                        >
+                          <option value="">No Title</option>
+                          {availableTitles.map(title => (
+                            <option key={title} value={title}>{title}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                    {/* Badge Selection Dropdown */}
+                    <div>
                 <label className="text-xs text-gray-400 block mb-1">
                   ⭐ Founder Badge {isAdmin && <span className="text-yellow-400">(Admin: All Available)</span>}
                   {!isAdmin && !heroTier && <span className="text-red-400 text-xs ml-2">(Requires Founder Pack)</span>}
@@ -834,6 +853,9 @@ export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: Hero
                   <p className="text-xs text-gray-500 mt-1">
                     Enhances projectiles and ranged attacks
                   </p>
+                )}
+              </div>
+                  </div>
                 )}
               </div>
             </div>
@@ -1134,19 +1156,115 @@ export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: Hero
         )}
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-          <div className="text-gray-400 text-sm mb-1">Attack</div>
-          <div className="text-2xl font-bold text-red-400">{hero.attack}</div>
-        </div>
-        <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-          <div className="text-gray-400 text-sm mb-1">Defense</div>
-          <div className="text-2xl font-bold text-blue-400">{hero.defense}</div>
-        </div>
-        <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-          <div className="text-gray-400 text-sm mb-1">Max HP</div>
-          <div className="text-2xl font-bold text-green-400">{formatNumber(hero.maxHp)}</div>
+      {/* Comprehensive Stats Display - WoW Style */}
+      <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+        <h3 className="text-xl font-bold text-white mb-4">Character Stats</h3>
+        
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Core Stats */}
+          <div>
+            <h4 className="text-sm font-semibold text-gray-300 mb-3 border-b border-gray-700 pb-2">Core Stats</h4>
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="text-gray-400 text-sm">Attack Power</span>
+                <span className="text-red-400 font-semibold">{formatNumber(displayStats.attack || 0)}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-gray-400 text-sm">Defense</span>
+                <span className="text-blue-400 font-semibold">{formatNumber(displayStats.defense || 0)}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-gray-400 text-sm">Max Health</span>
+                <span className="text-green-400 font-semibold">{formatNumber(displayStats.maxHp || 0)}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Primary Stats */}
+          <div>
+            <h4 className="text-sm font-semibold text-gray-300 mb-3 border-b border-gray-700 pb-2">Primary Stats</h4>
+            <div className="space-y-2">
+              {displayStats.strength > 0 && (
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-400 text-sm">Strength</span>
+                  <span className="text-orange-400 font-semibold">{formatNumber(displayStats.strength)}</span>
+                </div>
+              )}
+              {displayStats.intellect > 0 && (
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-400 text-sm">Intellect</span>
+                  <span className="text-blue-300 font-semibold">{formatNumber(displayStats.intellect)}</span>
+                </div>
+              )}
+              {displayStats.wisdom > 0 && (
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-400 text-sm">Wisdom</span>
+                  <span className="text-purple-300 font-semibold">{formatNumber(displayStats.wisdom)}</span>
+                </div>
+              )}
+              {displayStats.dexterity > 0 && (
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-400 text-sm">Dexterity</span>
+                  <span className="text-yellow-400 font-semibold">{formatNumber(displayStats.dexterity)}</span>
+                </div>
+              )}
+              {displayStats.stamina > 0 && (
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-400 text-sm">Stamina</span>
+                  <span className="text-green-300 font-semibold">{formatNumber(displayStats.stamina)}</span>
+                </div>
+              )}
+              {(displayStats.strength === 0 && displayStats.intellect === 0 && displayStats.wisdom === 0 && displayStats.dexterity === 0 && displayStats.stamina === 0) && (
+                <div className="text-gray-500 text-sm italic">No primary stats from equipment</div>
+              )}
+            </div>
+          </div>
+
+          {/* Secondary Stats */}
+          <div>
+            <h4 className="text-sm font-semibold text-gray-300 mb-3 border-b border-gray-700 pb-2">Secondary Stats</h4>
+            <div className="space-y-2">
+              {displayStats.healingPower > 0 && (
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-400 text-sm">Healing Power</span>
+                  <span className="text-green-400 font-semibold">+{formatNumber(displayStats.healingPower)}</span>
+                </div>
+              )}
+              {displayStats.spellDamage > 0 && (
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-400 text-sm">Spell Damage</span>
+                  <span className="text-purple-400 font-semibold">+{((displayStats.spellDamage || 0) * 100).toFixed(1)}%</span>
+                </div>
+              )}
+              {displayStats.meleeDamage > 0 && (
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-400 text-sm">Melee Damage</span>
+                  <span className="text-red-300 font-semibold">+{((displayStats.meleeDamage || 0) * 100).toFixed(1)}%</span>
+                </div>
+              )}
+              {displayStats.hpRegen > 0 && (
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-400 text-sm">HP Regeneration</span>
+                  <span className="text-green-300 font-semibold">+{formatNumber(displayStats.hpRegen)}/s</span>
+                </div>
+              )}
+              {displayStats.damageReduction > 0 && (
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-400 text-sm">Damage Reduction</span>
+                  <span className="text-blue-300 font-semibold">+{((displayStats.damageReduction || 0) * 100).toFixed(1)}%</span>
+                </div>
+              )}
+              {displayStats.critChance > 0 && (
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-400 text-sm">Critical Strike Chance</span>
+                  <span className="text-yellow-400 font-semibold">+{((displayStats.critChance || 0) * 100).toFixed(2)}%</span>
+                </div>
+              )}
+              {(displayStats.healingPower === 0 && displayStats.spellDamage === 0 && displayStats.meleeDamage === 0 && displayStats.hpRegen === 0 && displayStats.damageReduction === 0 && displayStats.critChance === 0) && (
+                <div className="text-gray-500 text-sm italic">No secondary stats from equipment</div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 

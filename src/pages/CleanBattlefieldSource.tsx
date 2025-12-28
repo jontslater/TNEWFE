@@ -3095,12 +3095,48 @@ export default function CleanBattlefieldSource() {
         if (now >= cooldown) {
           console.log(`[Group Heal] 💚 ${cleric.name} casts GROUP HEAL! (${injuredHeroes.length} heroes injured)`);
           
-          // Heal all allies for 30% of their max HP
+          // Calculate group heal amount based on cleric's stats (scaled down for AoE)
+          // Base healing scales from Intellect + Wisdom (like spell power)
+          const totalIntellect = cleric.intellect || 0;
+          const totalWisdom = cleric.wisdom || 0;
+          
+          // Base heal = Intellect * 1.0 + Wisdom * 0.5 (spell power scaling)
+          // Fallback to level-based healing if no Int/Wis
+          let baseHeal = (totalIntellect * 1.0) + (totalWisdom * 0.5);
+          if (baseHeal < 1) {
+            baseHeal = cleric.level * 5; // Fallback to level-based
+          }
+          
+          // Add attack as a small bonus (10% contribution)
+          baseHeal += (cleric.attack || 0) * 0.1;
+          
+          // Healing Power % bonus (uncapped - better gear should heal more!)
+          const healingPower = cleric.healingPower || 0;
+          baseHeal *= (1 + (healingPower * 0.01)); // 1% per point of healing power
+          
+          // Spell Damage also affects healing (healers use spell power for everything)
+          const spellDamage = cleric.spellDamage || 0;
+          baseHeal *= (1 + (spellDamage * 0.01)); // 1% per point of spell damage
+          
+          // Group heal is 60% of single target heal (AoE scaling)
+          baseHeal *= 0.6;
+          
+          // Apply viewer bonuses if active
+          if (activeChatterCount > 0) {
+            const bonuses = calculateViewerBonuses();
+            baseHeal = Math.floor(baseHeal * bonuses.healing);
+          }
+          
+          const singleTargetHeal = Math.floor(baseHeal);
+          
+          // Heal all allies (30% of their max HP, or calculated heal, whichever is higher)
           setHeroes(current => {
             const updated = current.map(h => {
               if (h.isDead || h.hp <= 0) return h;
               
-              const healAmount = Math.round(h.maxHp * 0.3);
+              // Use calculated heal or 30% of max HP, whichever is higher
+              const percentHeal = Math.round(h.maxHp * 0.3);
+              const healAmount = Math.max(singleTargetHeal, percentHeal);
               const newHp = Math.round(Math.min(h.maxHp, h.hp + healAmount));
               const actualHeal = Math.round(newHp - h.hp);
               const overheal = Math.round(healAmount - actualHeal);
@@ -3699,19 +3735,29 @@ export default function CleanBattlefieldSource() {
         console.log(`[Heal] ${healer.name} heals ${target.name} (${Math.floor((target.hp / target.maxHp) * 100)}% HP) [${healPriority}]`);
       }
       
-      // Calculate heal amount (based on healer's intellect, wisdom, healing power)
-      let baseHeal = healer.attack || (healer.level * 5);
+      // Calculate heal amount (based on healer's intellect, wisdom, healing power, spell damage)
+      // Base healing scales from Intellect + Wisdom (like spell power)
+      // Intellect is primary (1.0x), Wisdom is secondary (0.5x), similar to caster damage
+      const totalIntellect = healer.intellect || 0;
+      const totalWisdom = healer.wisdom || 0;
       
-      // Healer scaling: Intellect + Wisdom
-      const cappedInt = Math.min(healer.intellect || 0, 100);
-      const cappedWis = Math.min(healer.wisdom || 0, 100);
-      const intBonus = 1 + (cappedInt * 0.015); // 1.5% per point
-      const wisBonus = 1 + (cappedWis * 0.01); // 1% per point
-      baseHeal *= intBonus * wisBonus;
+      // Base heal = Intellect * 1.0 + Wisdom * 0.5 (spell power scaling)
+      // Fallback to level-based healing if no Int/Wis
+      let baseHeal = (totalIntellect * 1.0) + (totalWisdom * 0.5);
+      if (baseHeal < 1) {
+        baseHeal = healer.level * 5; // Fallback to level-based
+      }
       
-      // Healing Power % bonus (capped at 30%)
-      const cappedHealingPower = Math.min(healer.healingPower || 0, 30);
-      baseHeal *= (1 + (cappedHealingPower * 0.01));
+      // Add attack as a small bonus (10% contribution) - healers still have some physical capability
+      baseHeal += (healer.attack || 0) * 0.1;
+      
+      // Healing Power % bonus (uncapped - better gear should heal more!)
+      const healingPower = healer.healingPower || 0;
+      baseHeal *= (1 + (healingPower * 0.01)); // 1% per point of healing power
+      
+      // Spell Damage also affects healing (healers use spell power for everything)
+      const spellDamage = healer.spellDamage || 0;
+      baseHeal *= (1 + (spellDamage * 0.01)); // 1% per point of spell damage
       
       // Apply ACTIVE CHATTER BONUS (+1% healing per active chatter)
       if (activeChatterCount > 0) {
@@ -3985,9 +4031,10 @@ export default function CleanBattlefieldSource() {
         console.log(`[Attack Buff] ⚡ ${hero.name} gets +10% attack from buff!`);
       }
       
-      // Determine if melee or caster DPS
+      // Determine role categories
       const isMeleeRole = ['berserker', 'crusader', 'assassin', 'reaper', 'bladedancer', 'monk', 'stormwarrior', 'hunter'].includes(hero.role);
-      const isCasterRole = ['mage', 'warlock', 'elementalist', 'necromancer', 'sorcerer', 'pyromancer'].includes(hero.role);
+      const isCasterRole = ['mage', 'warlock', 'elementalist', 'necromancer', 'sorcerer', 'pyromancer', 'ranger', 'shadowpriest', 'mooncaller', 'stormcaller', 'firemage', 'frostmage', 'dragonsorcerer'].includes(hero.role);
+      const isHealerRole = ['cleric', 'atoner', 'druid', 'lightbringer', 'shaman', 'mistweaver', 'chronomancer', 'bard'].includes(hero.role);
       const isTank = isTankRole(hero.role);
       
       // Check if hero uses projectiles (all ranged heroes + healers)
@@ -3997,6 +4044,7 @@ export default function CleanBattlefieldSource() {
       
       // Apply stat scaling based on role
       if (isMeleeRole) {
+        // Melee DPS: Use Attack + Strength + Dexterity + Melee Damage
         const cappedStr = Math.min(hero.strength || 0, 100);
         const cappedDex = Math.min(hero.dexterity || 0, 50);
         const strengthBonus = 1 + (cappedStr * 0.01);
@@ -4004,15 +4052,19 @@ export default function CleanBattlefieldSource() {
         baseDamage *= strengthBonus * dexBonus;
         const cappedMeleeDmg = Math.min(hero.meleeDamage || 0, 30);
         baseDamage *= (1 + (cappedMeleeDmg * 0.01));
-      } else if (isCasterRole) {
+      } else if (isCasterRole || isHealerRole) {
+        // Casters AND Healers: Use Intellect + Wisdom + Spell Damage
+        // Healers should use spell power for damage (they're spellcasters too!)
         const cappedInt = Math.min(hero.intellect || 0, 100);
         const cappedWis = Math.min(hero.wisdom || 0, 50);
         const intBonus = 1 + (cappedInt * 0.01);
         const wisBonus = 1 + (cappedWis * 0.005);
         baseDamage *= intBonus * wisBonus;
+        // Healers use spell damage (melee damage is filtered out for them)
         const cappedSpellDmg = Math.min(hero.spellDamage || 0, 30);
         baseDamage *= (1 + (cappedSpellDmg * 0.01));
       } else if (isTank) {
+        // Tanks: Use Attack + Strength (for threat generation)
         const cappedStr = Math.min(hero.strength || 0, 100);
         const strengthBonus = 1 + (cappedStr * 0.005);
         baseDamage *= strengthBonus;
@@ -7534,16 +7586,25 @@ export default function CleanBattlefieldSource() {
     return !isTankRole(role) && !isHealerRole(role);
   };
 
-  // Get threat weight for hero role (with Taunt/Fade modifiers)
+  // Get threat weight for hero role (with Taunt/Fade modifiers and gear scaling)
   const getThreatWeight = (hero: Hero): number => {
     if (!hero || !hero.role) return 1; // Safety check
     
     const now = Date.now();
     
     // Base threat by role
-    let baseThreat = 1; // DPS default
-    if (isTankRole(hero.role)) baseThreat = 20; // Tanks high threat
-    if (isHealerRole(hero.role)) baseThreat = 0.3; // Healers low threat
+    let baseThreat = 1; // DPS default (1x)
+    if (isTankRole(hero.role)) baseThreat = 20; // Tanks high base threat (20x)
+    if (isHealerRole(hero.role)) baseThreat = 0.5; // Healers low threat (0.5x - healing generates threat but lower than DPS)
+    
+    // Tanks generate additional threat from damage dealt (better gear = more threat)
+    // This ensures tanks with better gear hold aggro better
+    if (isTankRole(hero.role)) {
+      // Tanks get threat bonus from attack/defense (better gear = more threat generation)
+      // This scales threat with tank gear effectiveness
+      const gearThreatBonus = 1 + ((hero.attack || 0) / 1000) + ((hero.defense || 0) / 2000);
+      baseThreat *= gearThreatBonus;
+    }
     
     // Tanks below 50% HP get MASSIVE threat boost (enemies prioritize protecting them)
     if (isTankRole(hero.role) && hero.hp > 0 && hero.maxHp > 0) {
@@ -7555,14 +7616,30 @@ export default function CleanBattlefieldSource() {
       }
     }
     
-    // Taunt multiplier (10x threat)
-    if (hero.tauntExpiry && hero.tauntExpiry > now) {
-      return baseThreat * 10; // MASSIVE threat increase
+    // DPS generate threat from damage (better gear = more threat)
+    // This ensures high DPS can pull aggro if tanks aren't generating enough threat
+    if (!isTankRole(hero.role) && !isHealerRole(hero.role)) {
+      const dpsThreatBonus = 1 + ((hero.attack || 0) / 500); // DPS get threat from attack
+      baseThreat *= dpsThreatBonus;
     }
     
-    // Fade multiplier (0.1x threat)
+    // Healers generate threat from healing (but still lower than DPS)
+    // Healing generates threat to enemies (they want to kill the healer)
+    // Better gear = more healing = more threat, but capped lower than DPS
+    if (isHealerRole(hero.role)) {
+      // Healers get small threat bonus from healing power and intellect/wisdom
+      const healingThreatBonus = 1 + ((hero.healingPower || 0) / 200) + (((hero.intellect || 0) + (hero.wisdom || 0)) / 400);
+      baseThreat *= healingThreatBonus;
+    }
+    
+    // Taunt multiplier (10x threat) - MASSIVE threat increase
+    if (hero.tauntExpiry && hero.tauntExpiry > now) {
+      return baseThreat * 10;
+    }
+    
+    // Fade multiplier (0.1x threat) - Huge threat reduction
     if (hero.fadeExpiry && hero.fadeExpiry > now) {
-      return baseThreat * 0.1; // Huge threat reduction
+      return baseThreat * 0.1;
     }
     
     return baseThreat;
@@ -7663,7 +7740,7 @@ export default function CleanBattlefieldSource() {
     // Role-specific stat prioritization
     const role = hero.role?.toLowerCase() || '';
     const isTank = ['guardian', 'paladin', 'warden', 'bloodknight', 'vanguard', 'brewmaster'].includes(role);
-    const isHealer = ['cleric', 'atoner', 'druid', 'lightbringer', 'shaman', 'mistweaver', 'chronomancer'].includes(role);
+    const isHealer = ['cleric', 'atoner', 'druid', 'lightbringer', 'shaman', 'mistweaver', 'chronomancer', 'bard'].includes(role);
     const isCaster = ['mage', 'warlock', 'necromancer', 'ranger', 'shadowpriest', 'mooncaller', 'stormcaller', 'frostmage', 'firemage', 'dragonsorcerer'].includes(role);
     
     // Calculate current equipment value (with set bonuses)
@@ -7688,14 +7765,21 @@ export default function CleanBattlefieldSource() {
       currentValue += (currentSetBonuses.defense || 0) * 2 + (currentSetBonuses.hp || 0) + (currentSetBonuses.attack || 0) * 0.5;
       newValue += (newSetBonuses.defense || 0) * 2 + (newSetBonuses.hp || 0) + (newSetBonuses.attack || 0) * 0.5;
     } else if (isHealer) {
-      // Healers prioritize HP, defense, and HEALING POWER (spell power for heals)
+      // Healers prioritize HP, defense, intellect, wisdom, and HEALING POWER (spell power for heals)
+      // Intellect and Wisdom are primary stats for healers (they scale healing output)
+      const currentIntellect = (currentItem.intellect || 0);
+      const newIntellect = (newItem.intellect || 0);
+      const currentWisdom = (currentItem.wisdom || 0);
+      const newWisdom = (newItem.wisdom || 0);
+      
       const currentHealingPower = (currentItem.secondaryStats?.healingPower || 0) + (currentSetBonuses.healingPower || 0);
       const newHealingPower = (newItem.secondaryStats?.healingPower || 0) + (newSetBonuses.healingPower || 0);
       
       // Healing power is very valuable (1 healing power = 1% more healing, max 30%)
       // Weight healing power highly (10x) since it directly affects healing output
-      currentValue = (currentItem.hp || 0) * 1.5 + (currentItem.defense || 0) + (currentItem.attack || 0) * 0.3 + currentHealingPower * 10;
-      newValue = (newItem.hp || 0) * 1.5 + (newItem.defense || 0) + (newItem.attack || 0) * 0.3 + newHealingPower * 10;
+      // Intellect and Wisdom are also very valuable for healers (weighted at 5x each)
+      currentValue = (currentItem.hp || 0) * 1.5 + (currentItem.defense || 0) + (currentItem.attack || 0) * 0.3 + currentHealingPower * 10 + currentIntellect * 5 + currentWisdom * 5;
+      newValue = (newItem.hp || 0) * 1.5 + (newItem.defense || 0) + (newItem.attack || 0) * 0.3 + newHealingPower * 10 + newIntellect * 5 + newWisdom * 5;
       
       // Also consider spell damage for healers (some healer sets give spell damage)
       const currentSpellDmg = (currentItem.secondaryStats?.spellDamage || 0) + (currentSetBonuses.spellDamage || 0);
@@ -8069,7 +8153,17 @@ export default function CleanBattlefieldSource() {
     stats.stamina += setBonuses.stamina;
     stats.healingPower += setBonuses.healingPower;
     stats.spellDamage += setBonuses.spellDamage;
-    stats.meleeDamage += setBonuses.meleeDamage;
+    
+    // FILTER: Healers don't use melee damage - convert to spell damage instead
+    // This ensures healers (including bards) benefit from equipment that might have melee damage
+    if (isHealer) {
+      // Convert all melee damage (from equipment + set bonuses) to spell damage for healers
+      stats.spellDamage += stats.meleeDamage + setBonuses.meleeDamage;
+      stats.meleeDamage = 0; // Set to 0 for healers
+    } else {
+      stats.meleeDamage += setBonuses.meleeDamage;
+    }
+    
     stats.hpRegen += setBonuses.hpRegen;
     stats.damageReduction += setBonuses.damageReduction;
     stats.critChance += setBonuses.critChance;
