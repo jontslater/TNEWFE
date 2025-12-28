@@ -173,6 +173,36 @@ export interface Hero {
   spellEffect?: string; // Spell effect style: 'bronze' | 'silver' | 'gold' | 'platinum' | null - Enhanced visual effects for projectiles/abilities
   inventory?: Item[]; // Hero's inventory items (gear, consumables, etc.)
   shopBuffs?: Record<string, { remainingDuration: number; lastUpdateTime: number }>; // Active shop buffs
+  // Prestige system
+  prestigeLevel?: number; // 0 = never prestiged, 1+ = prestige count
+  prestigeTokens?: number; // Tokens earned from prestiging
+  prestigeBoosts?: {
+    xpGain: number; // Multiplier (e.g., 1.02 = +2%)
+    goldGain: number; // Multiplier
+    idleTicketGain: number; // Multiplier
+    statBoost: {
+      attack: number; // Flat bonus
+      defense: number; // Flat bonus
+      hp: number; // Flat bonus
+    };
+  };
+  // Prestige cores attached to equipment slots (not items, so they persist when gear is replaced)
+  prestigeSlotCores?: Record<string, {
+    id: string;
+    tier: string;
+    name: string;
+    statBonus: {
+      attack?: number;
+      defense?: number;
+      hp?: number;
+    };
+    bonus: {
+      xpGain?: number;
+      goldGain?: number;
+    };
+    color: string;
+    appliedAt: number;
+  }>;
 }
 
 export interface Profession {

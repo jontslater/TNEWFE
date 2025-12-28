@@ -8,6 +8,8 @@ import ReforgeModal from './ReforgeModal';
 import SocketModal from './SocketModal';
 import GemModal from './GemModal';
 import { heroAPI } from '../api/client';
+import ConfirmationDialog from './ConfirmationDialog';
+import MessageAlert from './MessageAlert';
 
 interface InventoryManagerProps {
   hero: Hero;
@@ -34,6 +36,17 @@ export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, 
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set()); // Selected item IDs for batch operations
   const [batchMode, setBatchMode] = useState(false); // Toggle batch selection mode
   
+  // Custom confirmation dialog state (replaces window.confirm)
+  const [confirmDialog, setConfirmDialog] = useState<{
+    message: string;
+    onConfirm: () => void;
+    onCancel?: () => void;
+  } | null>(null);
+  
+  // Custom message/alert state (replaces window.alert)
+  const [messageAlert, setMessageAlert] = useState<{
+    message: string;
+  } | null>(null);
 
   // Handle drag start
   const handleDragStart = (item: Item, source: 'inventory' | 'equipment', slot?: string) => {
@@ -197,7 +210,7 @@ export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, 
                     onDragStart={() => handleDragStart(item, 'equipment', slot)}
                     className="cursor-move flex-grow pointer-events-auto"
                   >
-                    <ItemTooltip item={item} position="above">
+                    <ItemTooltip item={item} position="above" hero={hero}>
                       <div className="hover:bg-gray-600/30 rounded p-1 -m-1 transition-colors pointer-events-auto flex-grow">
                         <div className={`font-semibold mb-1 text-xs ${getRarityColor(item.rarity)} flex items-center gap-1 leading-tight`}>
                           {(item as any).locked && <span className="text-yellow-400 flex-shrink-0" title="Locked">🔒</span>}
@@ -452,38 +465,35 @@ export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, 
                     const totalCost = 750; // 50g per slot * 15 slots
                     
                     if (!hero.id) {
-                      alert('Hero ID not found');
+                      setMessageAlert({ message: 'Hero ID not found' });
                       return;
                     }
 
                     if ((hero.gold || 0) < totalCost) {
-                      alert(`Not enough gold! You need ${totalCost}g to expand by ${slotsToAdd} slots (you have ${hero.gold || 0}g)`);
+                      setMessageAlert({ message: `Not enough gold! You need ${totalCost}g to expand by ${slotsToAdd} slots (you have ${hero.gold || 0}g)` });
                       return;
                     }
 
                     if (currentBankSize + slotsToAdd > 500) {
-                      alert(`Maximum bank size is 500 slots. You can only add ${500 - currentBankSize} more slots.`);
+                      setMessageAlert({ message: `Maximum bank size is 500 slots. You can only add ${500 - currentBankSize} more slots.` });
                       return;
                     }
 
-                    const confirm = window.confirm(
-                      `Expand storage by ${slotsToAdd} slots?\n\n` +
-                      `Current: ${currentBankSize} slots\n` +
-                      `After: ${currentBankSize + slotsToAdd} slots\n` +
-                      `Cost: ${totalCost}g\n\n` +
-                      `You will have ${(hero.gold || 0) - totalCost}g remaining.`
-                    );
-
-                    if (!confirm) return;
-
-                    try {
-                      await heroAPI.expandStorage(hero.id, slotsToAdd, 'gold');
-                      alert(`✅ Expanded storage by ${slotsToAdd} slots! (${currentBankSize} → ${currentBankSize + slotsToAdd})`);
-                      if (onUpdate) onUpdate();
-                    } catch (error: any) {
-                      console.error('Failed to expand storage:', error);
-                      alert(error.response?.data?.error || 'Failed to expand storage');
-                    }
+                    setConfirmDialog({
+                      message: `Expand storage by ${slotsToAdd} slots?\n\nCurrent: ${currentBankSize} slots\nAfter: ${currentBankSize + slotsToAdd} slots\nCost: ${totalCost}g\n\nYou will have ${(hero.gold || 0) - totalCost}g remaining.`,
+                      onConfirm: async () => {
+                        setConfirmDialog(null);
+                        try {
+                          await heroAPI.expandStorage(hero.id, slotsToAdd, 'gold');
+                          setMessageAlert({ message: `✅ Expanded storage by ${slotsToAdd} slots! (${currentBankSize} → ${currentBankSize + slotsToAdd})` });
+                          if (onUpdate) onUpdate();
+                        } catch (error: any) {
+                          console.error('Failed to expand storage:', error);
+                          setMessageAlert({ message: error.response?.data?.error || 'Failed to expand storage' });
+                        }
+                      },
+                      onCancel: () => setConfirmDialog(null)
+                    });
                   }}
                   className="bg-orange-600 hover:bg-orange-700 text-white px-3 py-2 rounded font-semibold text-sm transition-colors flex items-center gap-2"
                 >
@@ -497,38 +507,35 @@ export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, 
                     const totalCost = 50; // 50 tokens for 15 slots
                     
                     if (!hero.id) {
-                      alert('Hero ID not found');
+                      setMessageAlert({ message: 'Hero ID not found' });
                       return;
                     }
 
                     if ((hero.tokens || 0) < totalCost) {
-                      alert(`Not enough tokens! You need ${totalCost}t to expand by ${slotsToAdd} slots (you have ${hero.tokens || 0}t)`);
+                      setMessageAlert({ message: `Not enough tokens! You need ${totalCost}t to expand by ${slotsToAdd} slots (you have ${hero.tokens || 0}t)` });
                       return;
                     }
 
                     if (currentBankSize + slotsToAdd > 500) {
-                      alert(`Maximum bank size is 500 slots. You can only add ${500 - currentBankSize} more slots.`);
+                      setMessageAlert({ message: `Maximum bank size is 500 slots. You can only add ${500 - currentBankSize} more slots.` });
                       return;
                     }
 
-                    const confirm = window.confirm(
-                      `Expand storage by ${slotsToAdd} slots?\n\n` +
-                      `Current: ${currentBankSize} slots\n` +
-                      `After: ${currentBankSize + slotsToAdd} slots\n` +
-                      `Cost: ${totalCost}t\n\n` +
-                      `You will have ${(hero.tokens || 0) - totalCost}t remaining.`
-                    );
-
-                    if (!confirm) return;
-
-                    try {
-                      await heroAPI.expandStorage(hero.id, slotsToAdd, 'tokens');
-                      alert(`✅ Expanded storage by ${slotsToAdd} slots! (${currentBankSize} → ${currentBankSize + slotsToAdd})`);
-                      if (onUpdate) onUpdate();
-                    } catch (error: any) {
-                      console.error('Failed to expand storage:', error);
-                      alert(error.response?.data?.error || 'Failed to expand storage');
-                    }
+                    setConfirmDialog({
+                      message: `Expand storage by ${slotsToAdd} slots?\n\nCurrent: ${currentBankSize} slots\nAfter: ${currentBankSize + slotsToAdd} slots\nCost: ${totalCost}t\n\nYou will have ${(hero.tokens || 0) - totalCost}t remaining.`,
+                      onConfirm: async () => {
+                        setConfirmDialog(null);
+                        try {
+                          await heroAPI.expandStorage(hero.id, slotsToAdd, 'tokens');
+                          setMessageAlert({ message: `✅ Expanded storage by ${slotsToAdd} slots! (${currentBankSize} → ${currentBankSize + slotsToAdd})` });
+                          if (onUpdate) onUpdate();
+                        } catch (error: any) {
+                          console.error('Failed to expand storage:', error);
+                          setMessageAlert({ message: error.response?.data?.error || 'Failed to expand storage' });
+                        }
+                      },
+                      onCancel: () => setConfirmDialog(null)
+                    });
                   }}
                   className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-2 rounded font-semibold text-sm transition-colors flex items-center gap-2"
                 >
@@ -827,38 +834,43 @@ export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, 
                           
                           {/* Items are auto-used during combat - no manual use needed */}
                           <button 
-                            onClick={async (e) => {
+                            onClick={(e) => {
                               e.stopPropagation();
                               const sellValue = (firstItem as any).cost ? Math.floor((firstItem as any).cost * 0.5) : 5;
                               const confirmMsg = totalQuantity > 1 
                                 ? `Sell all ${totalQuantity}x ${itemName} for ${sellValue * totalQuantity}g?`
                                 : `Sell ${itemName} for ${sellValue}g?`;
                               
-                              if (!window.confirm(confirmMsg)) return;
-                              
-                              try {
-                                // Remove all items of this type from inventory
-                                const updatedInventory = (hero.inventory || []).filter(
-                                  invItem => {
-                                    const invKey = (invItem as any).itemKey || invItem.name || invItem.id;
-                                    return invKey !== key;
+                              setConfirmDialog({
+                                message: confirmMsg,
+                                onConfirm: async () => {
+                                  setConfirmDialog(null);
+                                  try {
+                                    // Remove all items of this type from inventory
+                                    const updatedInventory = (hero.inventory || []).filter(
+                                      invItem => {
+                                        const invKey = (invItem as any).itemKey || invItem.name || invItem.id;
+                                        return invKey !== key;
+                                      }
+                                    );
+                                    
+                                    const goldGain = sellValue * totalQuantity;
+                                    
+                                    if (hero.id) {
+                                      await heroAPI.updateHero(hero.id, {
+                                        inventory: updatedInventory,
+                                        gold: (hero.gold || 0) + goldGain
+                                      });
+                                      setMessageAlert({ message: `✅ Sold ${totalQuantity}x ${itemName} for ${goldGain}g!` });
+                                      if (onUpdate) onUpdate();
+                                    }
+                                  } catch (error: any) {
+                                    console.error('Failed to sell item:', error);
+                                    setMessageAlert({ message: error.response?.data?.error || 'Failed to sell item' });
                                   }
-                                );
-                                
-                                const goldGain = sellValue * totalQuantity;
-                                
-                                if (hero.id) {
-                                  await heroAPI.updateHero(hero.id, {
-                                    inventory: updatedInventory,
-                                    gold: (hero.gold || 0) + goldGain
-                                  });
-                                  alert(`✅ Sold ${totalQuantity}x ${itemName} for ${goldGain}g!`);
-                                  if (onUpdate) onUpdate();
-                                }
-                              } catch (error: any) {
-                                console.error('Failed to sell item:', error);
-                                alert(error.response?.data?.error || 'Failed to sell item');
-                              }
+                                },
+                                onCancel: () => setConfirmDialog(null)
+                              });
                             }}
                             className="w-full bg-yellow-600 hover:bg-yellow-700 text-white py-1.5 rounded text-xs font-semibold transition-colors"
                             title={`Sell for ${(firstItem as any).cost ? Math.floor((firstItem as any).cost * 0.5) : 5}g each`}
@@ -894,6 +906,21 @@ export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, 
                     >
                       {batchMode ? 'Cancel' : 'Batch Select'}
                     </button>
+                    {batchMode && (
+                      <button
+                        onClick={() => {
+                          // Select all items that aren't locked
+                          const allSelectableItems = regularItems
+                            .filter(item => item.id && !(item as any).locked)
+                            .map(item => item.id!);
+                          setSelectedItems(new Set(allSelectableItems));
+                        }}
+                        className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-semibold transition-colors"
+                        title="Select all items (excluding locked items)"
+                      >
+                        Select All
+                      </button>
+                    )}
                     {batchMode && selectedItems.size > 0 && (
                       <>
                         <button
@@ -921,30 +948,35 @@ export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, 
                             });
                             
                             if (totalGold === 0) {
-                              alert('Selected items are locked or have no value.');
+                              setMessageAlert({ message: 'Selected items are locked or have no value.' });
                               return;
                             }
                             
-                            if (!window.confirm(`Sell ${itemsToSell.length} item(s) for ${totalGold}g?`)) return;
-                            
-                            try {
-                              const updatedInventory = (hero.inventory || []).filter(
-                                invItem => !invItem.id || !selectedItems.has(invItem.id) || (invItem as any).locked
-                              );
-                              
-                              if (hero.id) {
-                                await heroAPI.updateHeroById(hero.id, {
-                                  inventory: updatedInventory,
-                                  gold: (hero.gold || 0) + totalGold
-                                });
-                                alert(`✅ Sold ${itemsToSell.length} item(s) for ${totalGold}g!`);
-                                setSelectedItems(new Set());
-                                if (onUpdate) onUpdate();
-                              }
-                            } catch (error: any) {
-                              console.error('Failed to batch sell items:', error);
-                              alert(error.response?.data?.error || 'Failed to sell items');
-                            }
+                            setConfirmDialog({
+                              message: `Sell ${itemsToSell.length} item(s) for ${totalGold}g?`,
+                              onConfirm: async () => {
+                                setConfirmDialog(null);
+                                try {
+                                  const updatedInventory = (hero.inventory || []).filter(
+                                    invItem => !invItem.id || !selectedItems.has(invItem.id) || (invItem as any).locked
+                                  );
+                                  
+                                  if (hero.id) {
+                                    await heroAPI.updateHeroById(hero.id, {
+                                      inventory: updatedInventory,
+                                      gold: (hero.gold || 0) + totalGold
+                                    });
+                                    setMessageAlert({ message: `✅ Sold ${itemsToSell.length} item(s) for ${totalGold}g!` });
+                                    setSelectedItems(new Set());
+                                    if (onUpdate) onUpdate();
+                                  }
+                                } catch (error: any) {
+                                  console.error('Failed to batch sell items:', error);
+                                  setMessageAlert({ message: error.response?.data?.error || 'Failed to sell items' });
+                                }
+                              },
+                              onCancel: () => setConfirmDialog(null)
+                            });
                           }}
                           className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs font-semibold transition-colors"
                         >
@@ -977,39 +1009,44 @@ export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, 
                               });
                               
                               if (totalEssence === 0) {
-                                alert('Selected items are locked or have no value.');
+                                setMessageAlert({ message: 'Selected items are locked or have no value.' });
                                 return;
                               }
                               
-                              if (!window.confirm(`Disenchant ${itemsToDisenchant.length} item(s) for ${totalEssence} essence?`)) return;
-                              
-                              try {
-                                const updatedInventory = (hero.inventory || []).filter(
-                                  invItem => !invItem.id || !selectedItems.has(invItem.id) || (invItem as any).locked
-                                );
-                                
-                                const currentEssence = hero.profession.materials?.essence || 0;
-                                const updatedMaterials = {
-                                  ...(hero.profession.materials || {}),
-                                  essence: currentEssence + totalEssence
-                                };
-                                
-                                if (hero.id) {
-                                  await heroAPI.updateHeroById(hero.id, {
-                                    inventory: updatedInventory,
-                                    profession: {
-                                      ...hero.profession,
-                                      materials: updatedMaterials
+                              setConfirmDialog({
+                                message: `Disenchant ${itemsToDisenchant.length} item(s) for ${totalEssence} essence?`,
+                                onConfirm: async () => {
+                                  setConfirmDialog(null);
+                                  try {
+                                    const updatedInventory = (hero.inventory || []).filter(
+                                      invItem => !invItem.id || !selectedItems.has(invItem.id) || (invItem as any).locked
+                                    );
+                                    
+                                    const currentEssence = hero.profession.materials?.essence || 0;
+                                    const updatedMaterials = {
+                                      ...(hero.profession.materials || {}),
+                                      essence: currentEssence + totalEssence
+                                    };
+                                    
+                                    if (hero.id) {
+                                      await heroAPI.updateHeroById(hero.id, {
+                                        inventory: updatedInventory,
+                                        profession: {
+                                          ...hero.profession,
+                                          materials: updatedMaterials
+                                        }
+                                      });
+                                      setMessageAlert({ message: `✅ Disenchanted ${itemsToDisenchant.length} item(s) for ${totalEssence} essence!` });
+                                      setSelectedItems(new Set());
+                                      if (onUpdate) onUpdate();
                                     }
-                                  });
-                                  alert(`✅ Disenchanted ${itemsToDisenchant.length} item(s) for ${totalEssence} essence!`);
-                                  setSelectedItems(new Set());
-                                  if (onUpdate) onUpdate();
-                                }
-                              } catch (error: any) {
-                                console.error('Failed to disenchant items:', error);
-                                alert(error.response?.data?.error || 'Failed to disenchant items');
-                              }
+                                  } catch (error: any) {
+                                    console.error('Failed to disenchant items:', error);
+                                    setMessageAlert({ message: error.response?.data?.error || 'Failed to disenchant items' });
+                                  }
+                                },
+                                onCancel: () => setConfirmDialog(null)
+                              });
                             }}
                             className="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded text-xs font-semibold transition-colors"
                           >
@@ -1070,6 +1107,7 @@ export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, 
                         <ItemTooltip 
                           item={item} 
                           position="above"
+                          hero={hero}
                           compareWith={item.slot ? (hero.equipment[item.slot as keyof typeof hero.equipment] as Item | null) || null : null}
                         >
                           <div className="hover:bg-gray-600/30 rounded p-1 -m-1 transition-colors pointer-events-auto flex-grow">
@@ -1314,7 +1352,7 @@ export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, 
                                   e.stopPropagation();
                             e.preventDefault();
                             if ((item as any).locked) {
-                              alert('Cannot sell locked item. Unlock it first.');
+                              setMessageAlert({ message: 'Cannot sell locked item. Unlock it first.' });
                               return;
                             }
                                   // Calculate sell value: 25% of item value * rarity multiplier
@@ -1330,23 +1368,28 @@ export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, 
                                   const multiplier = rarityMult[item.rarity] || 1;
                                   const sellValue = Math.floor(itemValue * multiplier * 0.25);
                                   
-                                  if (!window.confirm(`Sell ${item.name} for ${sellValue}g?`)) return;
-                                  
-                                  try {
-                                    const updatedInventory = (hero.inventory || []).filter(invItem => invItem.id !== item.id);
-                                    
-                                    if (hero.id) {
-                                      await heroAPI.updateHeroById(hero.id, {
-                                        inventory: updatedInventory,
-                                        gold: (hero.gold || 0) + sellValue
-                                      });
-                                      alert(`✅ Sold ${item.name} for ${sellValue}g!`);
-                                      if (onUpdate) onUpdate();
-                                    }
-                                  } catch (error: any) {
-                                    console.error('Failed to sell item:', error);
-                                    alert(error.response?.data?.error || 'Failed to sell item');
-                                  }
+                                  setConfirmDialog({
+                                    message: `Sell ${item.name} for ${sellValue}g?`,
+                                    onConfirm: async () => {
+                                      setConfirmDialog(null);
+                                      try {
+                                        const updatedInventory = (hero.inventory || []).filter(invItem => invItem.id !== item.id);
+                                        
+                                        if (hero.id) {
+                                          await heroAPI.updateHeroById(hero.id, {
+                                            inventory: updatedInventory,
+                                            gold: (hero.gold || 0) + sellValue
+                                          });
+                                          setMessageAlert({ message: `✅ Sold ${item.name} for ${sellValue}g!` });
+                                          if (onUpdate) onUpdate();
+                                        }
+                                      } catch (error: any) {
+                                        console.error('Failed to sell item:', error);
+                                        setMessageAlert({ message: error.response?.data?.error || 'Failed to sell item' });
+                                      }
+                                    },
+                                    onCancel: () => setConfirmDialog(null)
+                                  });
                                 }}
                           disabled={(item as any).locked}
                           className={`flex-1 min-w-[55px] text-white text-[10px] py-1 rounded font-semibold transition-colors ${
@@ -1364,7 +1407,7 @@ export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, 
                                   e.stopPropagation();
                               e.preventDefault();
                               if ((item as any).locked) {
-                                alert('Cannot disenchant locked item. Unlock it first.');
+                                setMessageAlert({ message: 'Cannot disenchant locked item. Unlock it first.' });
                                 return;
                               }
                               
@@ -1381,31 +1424,36 @@ export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, 
                               const upgradeBonus = ((item as any).upgradeLevel || 0) * 2;
                               const totalEssence = baseEssence + upgradeBonus;
                               
-                              if (!window.confirm(`Disenchant ${item.name} for ${totalEssence} essence?`)) return;
-                                  
+                              setConfirmDialog({
+                                message: `Disenchant ${item.name} for ${totalEssence} essence?`,
+                                onConfirm: async () => {
+                                  setConfirmDialog(null);
                                   try {
                                     const updatedInventory = (hero.inventory || []).filter(invItem => invItem.id !== item.id);
-                                const currentEssence = hero.profession.materials?.essence || 0;
-                                const updatedMaterials = {
-                                  ...(hero.profession.materials || {}),
-                                  essence: currentEssence + totalEssence
-                                };
+                                    const currentEssence = hero.profession.materials?.essence || 0;
+                                    const updatedMaterials = {
+                                      ...(hero.profession.materials || {}),
+                                      essence: currentEssence + totalEssence
+                                    };
                                     
                                     if (hero.id) {
                                       await heroAPI.updateHeroById(hero.id, {
                                         inventory: updatedInventory,
-                                    profession: {
-                                      ...hero.profession,
-                                      materials: updatedMaterials
-                                    }
+                                        profession: {
+                                          ...hero.profession,
+                                          materials: updatedMaterials
+                                        }
                                       });
-                                  alert(`✅ Disenchanted ${item.name} for ${totalEssence} essence!`);
+                                      setMessageAlert({ message: `✅ Disenchanted ${item.name} for ${totalEssence} essence!` });
                                       if (onUpdate) onUpdate();
                                     }
                                   } catch (error: any) {
-                                console.error('Failed to disenchant item:', error);
-                                alert(error.response?.data?.error || 'Failed to disenchant item');
-                              }
+                                    console.error('Failed to disenchant item:', error);
+                                    setMessageAlert({ message: error.response?.data?.error || 'Failed to disenchant item' });
+                                  }
+                                },
+                                onCancel: () => setConfirmDialog(null)
+                              });
                             }}
                             disabled={(item as any).locked}
                             className={`flex-1 min-w-[55px] text-white text-[10px] py-1 rounded font-semibold transition-colors ${
@@ -1801,6 +1849,30 @@ export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, 
           </div>
         </div>
       )}
+
+      {/* Custom Confirmation Dialog (replaces window.confirm) */}
+      <ConfirmationDialog
+        isOpen={!!confirmDialog}
+        message={confirmDialog?.message || ''}
+        onConfirm={() => {
+          if (confirmDialog) {
+            confirmDialog.onConfirm();
+          }
+        }}
+        onCancel={() => {
+          if (confirmDialog?.onCancel) {
+            confirmDialog.onCancel();
+          }
+          setConfirmDialog(null);
+        }}
+      />
+
+      {/* Custom Message Alert (replaces window.alert) */}
+      <MessageAlert
+        isOpen={!!messageAlert}
+        message={messageAlert?.message || ''}
+        onClose={() => setMessageAlert(null)}
+      />
     </div>
   );
 }

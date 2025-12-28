@@ -543,7 +543,7 @@ export default function CraftingStation({ hero, onChooseProfession, onCraft, onU
               {Object.entries(recipesByTier).sort(([a], [b]) => Number(a) - Number(b)).map(([tier, recipes]) => (
                 <div key={tier}>
                   <h4 className="text-lg font-semibold text-purple-400 mb-3">Tier {tier}</h4>
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {recipes.map(([key, recipe]) => {
               const isRune = key.startsWith('rune_');
               
@@ -567,35 +567,40 @@ export default function CraftingStation({ hero, onChooseProfession, onCraft, onU
               return (
                 <div 
                   key={key}
-                  className={`bg-gray-700 rounded-lg p-3 border-2 transition-all ${
+                  className={`bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl p-4 border-2 transition-all shadow-lg hover:shadow-xl ${
                     canCraft && meetsLevel
-                      ? 'border-purple-500 hover:border-purple-400' 
-                      : 'border-gray-600 opacity-75'
+                      ? 'border-purple-500/60 hover:border-purple-400 hover:scale-[1.02]' 
+                      : 'border-gray-700/50 opacity-75'
                   }`}
                 >
-                  <div className={`font-semibold text-sm mb-2 ${canCraft && meetsLevel ? 'text-purple-400' : 'text-gray-400'}`}>
+                  {/* Title */}
+                  <div className={`text-xl font-bold mb-1 ${canCraft && meetsLevel ? 'text-purple-400' : 'text-gray-400'}`}>
                     {recipe.name}
                   </div>
 
-                  <div className={`text-xs mb-2 ${meetsLevel ? 'text-gray-500' : 'text-red-400'}`}>
+                  {/* Proficiency Level */}
+                  <div className={`text-xs font-medium mb-3 ${meetsLevel ? 'text-gray-400' : 'text-red-400'}`}>
                     Prof. Lvl {recipe.minProfessionLevel}
                   </div>
 
-                  <div className="text-xs text-blue-300 mb-2 line-clamp-2">{recipe.description}</div>
+                  {/* Effect Description */}
+                  <div className="text-sm text-blue-300/90 mb-4 line-clamp-2 leading-relaxed">{recipe.description}</div>
                   
-                  <div className="bg-gray-800 rounded p-2 mb-2">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-gray-300">✨</span>
-                      <span className={canCraft ? 'text-green-400' : 'text-red-400'}>
-                        {profession.materials.essence || 0}/{recipe.cost.essence}
+                  {/* Resource Cost */}
+                  <div className="bg-gray-900/80 rounded-lg p-3 mb-4 border border-gray-700/50">
+                    <div className="flex items-center justify-between">
+                      <span className="text-lg">✨</span>
+                      <span className={`text-base font-semibold ${canCraft ? 'text-green-400' : 'text-red-400'}`}>
+                        {profession.materials.essence || 0}<span className="text-gray-500">/{recipe.cost.essence}</span>
                       </span>
                     </div>
                   </div>
 
+                  {/* Quantity Selector and Craft Button */}
                   {canCraft && meetsLevel ? (
-                    <div className="space-y-2">
+                    <div className="space-y-3">
                       <div className="flex items-center gap-2">
-                        <label className="text-xs text-gray-400">Qty:</label>
+                        <label className="text-sm text-gray-400 font-medium whitespace-nowrap">Qty:</label>
                         <input
                           type="number"
                           min="1"
@@ -605,20 +610,20 @@ export default function CraftingStation({ hero, onChooseProfession, onCraft, onU
                             const val = parseInt(e.target.value) || 1;
                             setQuantity(key, Math.min(Math.max(1, val), maxCraftable));
                           }}
-                          className="w-16 px-2 py-1 bg-gray-800 text-white text-xs rounded border border-gray-600 focus:border-purple-500 focus:outline-none"
+                          className="flex-1 min-w-0 px-3 py-1.5 bg-gray-800 text-white text-sm rounded-md border border-gray-600 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 focus:outline-none"
                         />
-                        <span className="text-xs text-gray-500">/ {maxCraftable}</span>
+                        <span className="text-xs text-gray-500 whitespace-nowrap">/ {maxCraftable}</span>
                       </div>
                       <button 
                         onClick={() => onCraft(key, recipe.cost, recipe.tier, getQuantity(key))}
-                        className="w-full bg-purple-600 hover:bg-purple-700 text-white py-1.5 rounded text-sm font-semibold transition-colors"
+                        className="w-full bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-600 text-white py-2.5 rounded-lg text-sm font-bold transition-all shadow-md hover:shadow-purple-500/50 transform hover:scale-[1.02]"
                       >
                         Craft {getQuantity(key) > 1 ? `x${getQuantity(key)}` : ''}
                       </button>
                     </div>
                   ) : (
-                    <div className="text-center text-xs text-gray-500 py-1.5">
-                      {!meetsLevel ? `Prof ${recipe.minProfessionLevel}` : 'Need mats'}
+                    <div className="text-center text-xs text-gray-500 py-2 bg-gray-900/50 rounded-lg border border-gray-700/30">
+                      {!meetsLevel ? `Requires Prof Lvl ${recipe.minProfessionLevel}` : 'Insufficient Essence'}
                     </div>
                   )}
                 </div>

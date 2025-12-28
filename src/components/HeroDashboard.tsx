@@ -10,6 +10,7 @@ import { AURA_EFFECTS, AuraEffectType, getAuraFilter } from '../utils/auraEffect
 import { SPELL_EFFECTS, SpellEffectType } from '../utils/spellEffects';
 import { createExhaustEffect, shouldShowExhaustEffect } from '../utils/exhaustEffects';
 import HeroSpriteJS from './HeroSpriteJS';
+import PrestigeModal from './PrestigeModal';
 
 interface HeroDashboardProps {
   hero: Hero;
@@ -98,10 +99,12 @@ export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: Hero
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState<string>('');
   const [renaming, setRenaming] = useState(false);
+  const [showPrestigeModal, setShowPrestigeModal] = useState(false);
   const spritePreviewRef = useRef<HTMLDivElement>(null);
   const hpPercent = (hero.hp / hero.maxHp) * 100;
   const xpPercent = (Math.floor(hero.xp) / Math.floor(hero.maxXp)) * 100;
   const itemScore = getItemScore(hero.equipment, hero.role);
+  const canPrestige = hero.level >= 100;
   
   // Warn if hero has founder features but no founderPackTier
   useEffect(() => {
@@ -513,6 +516,26 @@ export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: Hero
                   {hero.role}
                 </span>
                 <span className="text-gray-400">Level {hero.level}</span>
+                {hero.prestigeLevel && hero.prestigeLevel > 0 && (
+                  <>
+                    <span className="text-gray-400">•</span>
+                    <span className="text-amber-400 font-semibold">
+                      ⭐ Prestige {hero.prestigeLevel}
+                    </span>
+                  </>
+                )}
+                {canPrestige && (
+                  <>
+                    <span className="text-gray-400">•</span>
+                    <button
+                      onClick={() => setShowPrestigeModal(true)}
+                      className="px-3 py-1 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white text-sm font-semibold rounded transition-all shadow-md"
+                      title="Ready to Prestige! Click to see what happens when you prestige."
+                    >
+                      ⭐ Ready to Prestige
+                    </button>
+                  </>
+                )}
                 {user?.twitchUsername && (
                   <>
                     <span className="text-gray-400">•</span>
@@ -1001,6 +1024,36 @@ export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: Hero
                 </div>
               </div>
             )}
+            {/* Prestige Benefits */}
+            {hero.prestigeLevel && hero.prestigeLevel > 0 && hero.prestigeBoosts && (
+              <div className="mt-2 p-2 bg-purple-900/30 border border-purple-700/50 rounded text-left">
+                <div className="text-xs font-semibold text-purple-400 mb-1">⭐ Prestige {hero.prestigeLevel} Benefits</div>
+                <div className="text-xs text-gray-300 space-y-0.5">
+                  {hero.prestigeBoosts.xpGain && hero.prestigeBoosts.xpGain > 1 && (
+                    <div>📈 +{((hero.prestigeBoosts.xpGain - 1) * 100).toFixed(1)}% XP from kills</div>
+                  )}
+                  {hero.prestigeBoosts.goldGain && hero.prestigeBoosts.goldGain > 1 && (
+                    <div>💰 +{((hero.prestigeBoosts.goldGain - 1) * 100).toFixed(1)}% Gold from kills</div>
+                  )}
+                  {hero.prestigeBoosts.idleTicketGain && hero.prestigeBoosts.idleTicketGain > 1 && (
+                    <div>💎 +{((hero.prestigeBoosts.idleTicketGain - 1) * 100).toFixed(1)}% Idle Tickets/hour</div>
+                  )}
+                  {hero.prestigeBoosts.statBoost && (
+                    <>
+                      {hero.prestigeBoosts.statBoost.attack > 0 && (
+                        <div>⚔️ +{hero.prestigeBoosts.statBoost.attack} Attack</div>
+                      )}
+                      {hero.prestigeBoosts.statBoost.defense > 0 && (
+                        <div>🛡️ +{hero.prestigeBoosts.statBoost.defense} Defense</div>
+                      )}
+                      {hero.prestigeBoosts.statBoost.hp > 0 && (
+                        <div>❤️ +{hero.prestigeBoosts.statBoost.hp} Max HP</div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
             <div className="flex items-center space-x-2 mt-2">
               {!showDeleteConfirm ? (
                 <button
@@ -1137,6 +1190,19 @@ export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: Hero
         </div>
       </div>
 
+      {/* Prestige Modal */}
+      {showPrestigeModal && (
+        <PrestigeModal
+          hero={hero}
+          onClose={() => setShowPrestigeModal(false)}
+          onPrestige={(updatedHero) => {
+            if (onHeroUpdate) {
+              onHeroUpdate(updatedHero);
+            }
+            setShowPrestigeModal(false);
+          }}
+        />
+      )}
     </div>
   );
 }

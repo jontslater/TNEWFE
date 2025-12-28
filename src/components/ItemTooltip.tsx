@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Item, Socket } from '../types/Hero';
+import { Item, Socket, Hero } from '../types/Hero';
 import { getRarityColor, getMaxSockets, getGemColor } from '../utils/format';
 
 interface ItemTooltipProps {
@@ -7,9 +7,10 @@ interface ItemTooltipProps {
   children: React.ReactNode;
   position?: 'above' | 'below';
   compareWith?: Item | null; // Optional item to compare with (e.g., equipped item)
+  hero?: Hero; // Hero object to check for slot prestige cores
 }
 
-export default function ItemTooltip({ item, children, position: initialPosition = 'below', compareWith }: ItemTooltipProps) {
+export default function ItemTooltip({ item, children, position: initialPosition = 'below', compareWith, hero }: ItemTooltipProps) {
   const [actualPosition, setActualPosition] = useState<'above' | 'below'>(initialPosition);
   const tooltipRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -357,6 +358,44 @@ export default function ItemTooltip({ item, children, position: initialPosition 
             }
             return null;
           })()}
+
+          {/* Prestige Core */}
+          {/* Show prestige core for this slot (cores are attached to slots, not items) */}
+          {hero && item.slot && hero.prestigeSlotCores?.[item.slot] && (() => {
+            const slotCore = hero.prestigeSlotCores[item.slot];
+            return (
+              <div className="border-t border-gray-700 pt-3 mt-3">
+                <div className="text-xs font-semibold mb-2" style={{ color: slotCore.color || '#FFD700' }}>
+                  ⭐ Prestige Core: {slotCore.name}
+                </div>
+                <div className="space-y-1">
+                  {slotCore.statBonus && (
+                    <>
+                      {slotCore.statBonus.attack > 0 && (
+                        <div className="text-red-400 text-sm">⚔️ +{slotCore.statBonus.attack} Attack</div>
+                      )}
+                      {slotCore.statBonus.defense > 0 && (
+                        <div className="text-blue-400 text-sm">🛡️ +{slotCore.statBonus.defense} Defense</div>
+                      )}
+                      {slotCore.statBonus.hp > 0 && (
+                        <div className="text-green-400 text-sm">❤️ +{slotCore.statBonus.hp} Max HP</div>
+                      )}
+                    </>
+                  )}
+                  {slotCore.bonus && (
+                    <>
+                      {slotCore.bonus.xpGain > 0 && (
+                        <div className="text-yellow-400 text-sm">📈 +{(slotCore.bonus.xpGain * 100).toFixed(1)}% XP Gain</div>
+                      )}
+                      {slotCore.bonus.goldGain > 0 && (
+                        <div className="text-amber-400 text-sm">💰 +{(slotCore.bonus.goldGain * 100).toFixed(1)}% Gold Gain</div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
           </div>
           
           {/* Comparison Item Tooltip (if compareWith provided) */}
@@ -610,6 +649,40 @@ export default function ItemTooltip({ item, children, position: initialPosition 
                   }
                   return null;
                 })()}
+
+                {/* Prestige Core */}
+                {(compareWith as any).prestigeCore && (
+                  <div className="border-t border-gray-700 pt-3 mt-3">
+                    <div className="text-xs font-semibold mb-2" style={{ color: (compareWith as any).prestigeCore.color || '#FFD700' }}>
+                      ⭐ Prestige Core: {(compareWith as any).prestigeCore.name}
+                    </div>
+                    <div className="space-y-1">
+                      {(compareWith as any).prestigeCore.statBonus && (
+                        <>
+                          {(compareWith as any).prestigeCore.statBonus.attack > 0 && (
+                            <div className="text-red-400 text-sm">⚔️ +{(compareWith as any).prestigeCore.statBonus.attack} Attack</div>
+                          )}
+                          {(compareWith as any).prestigeCore.statBonus.defense > 0 && (
+                            <div className="text-blue-400 text-sm">🛡️ +{(compareWith as any).prestigeCore.statBonus.defense} Defense</div>
+                          )}
+                          {(compareWith as any).prestigeCore.statBonus.hp > 0 && (
+                            <div className="text-green-400 text-sm">❤️ +{(compareWith as any).prestigeCore.statBonus.hp} Max HP</div>
+                          )}
+                        </>
+                      )}
+                      {(compareWith as any).prestigeCore.bonus && (
+                        <>
+                          {(compareWith as any).prestigeCore.bonus.xpGain > 0 && (
+                            <div className="text-yellow-400 text-sm">📈 +{(((compareWith as any).prestigeCore.bonus.xpGain) * 100).toFixed(1)}% XP Gain</div>
+                          )}
+                          {(compareWith as any).prestigeCore.bonus.goldGain > 0 && (
+                            <div className="text-amber-400 text-sm">💰 +{(((compareWith as any).prestigeCore.bonus.goldGain) * 100).toFixed(1)}% Gold Gain</div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </>
           )}

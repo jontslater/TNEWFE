@@ -2028,20 +2028,24 @@ export default function CleanBattlefieldSource() {
           uniqueHeroes.forEach(firebaseHero => {
             const existingHero = current.find(h => h.id === firebaseHero.id);
             if (existingHero) {
-              // CRITICAL: Protect prestiged heroes from invalid level data in Firebase
-              let firebaseLevel = firebaseHero.level !== undefined ? firebaseHero.level : existingHero.level;
+              // CRITICAL: Always trust Firebase level, default to 1 if undefined (not existing level)
+              let firebaseLevel = firebaseHero.level !== undefined && firebaseHero.level !== null ? firebaseHero.level : 1;
               const firebasePrestigeLevel = firebaseHero.prestigeLevel !== undefined ? firebaseHero.prestigeLevel : (existingHero.prestigeLevel || 0);
               const MAX_LEVEL = 100;
               
-              // CRITICAL: If hero has prestiged, protect against invalid level data from Firebase
+              // CRITICAL: If hero has prestiged, ensure level is valid (1-100)
+              // Trust Firebase as source of truth - if invalid, force to 1 (don't preserve old level)
               if (firebasePrestigeLevel > 0) {
                 // Prestiged heroes should NEVER be above level 100
                 if (firebaseLevel > MAX_LEVEL) {
-                  console.error(`[Firebase Listener] 🚨 BLOCKED: Prestiged hero ${firebaseHero.name} (P${firebasePrestigeLevel}) has invalid level ${firebaseLevel} in Firebase. Keeping existing level ${existingHero.level}.`);
-                  firebaseLevel = existingHero.level; // Keep existing level instead of using invalid Firebase level
-                  // Also reset XP if we're keeping level 1
-                  if (firebaseLevel === 1 && firebaseHero.xp !== undefined && firebaseHero.xp > 0) {
+                  console.error(`[Firebase Listener] 🚨 BLOCKED: Prestiged hero ${firebaseHero.name} (P${firebasePrestigeLevel}) has invalid level ${firebaseLevel} in Firebase. Forcing to 1.`);
+                  firebaseLevel = 1; // Force to 1 instead of preserving old level
+                  // Also reset XP if level is invalid
+                  if (firebaseHero.xp !== undefined && firebaseHero.xp > 0) {
                     firebaseHero.xp = 0;
+                  }
+                  if (firebaseHero.maxXp !== undefined) {
+                    firebaseHero.maxXp = 100; // Level 1 maxXp
                   }
                 }
                 // Also ensure level is at least 1 for prestiged heroes
@@ -2108,16 +2112,24 @@ export default function CleanBattlefieldSource() {
           return current.map(combatHero => {
             const firebaseHero = uniqueHeroes.find(h => h.id === combatHero.id);
             if (firebaseHero) {
-              // CRITICAL: Protect prestiged heroes from invalid level data in Firebase
-              let firebaseLevel = firebaseHero.level !== undefined ? firebaseHero.level : combatHero.level;
+              // CRITICAL: Always trust Firebase level, default to 1 if undefined (not combat hero level)
+              let firebaseLevel = firebaseHero.level !== undefined && firebaseHero.level !== null ? firebaseHero.level : 1;
               const firebasePrestigeLevel = firebaseHero.prestigeLevel !== undefined ? firebaseHero.prestigeLevel : (combatHero.prestigeLevel || 0);
               const MAX_LEVEL = 100;
               
-              // CRITICAL: If hero has prestiged, protect against invalid level data from Firebase
+              // CRITICAL: If hero has prestiged, ensure level is valid (1-100)
+              // Trust Firebase as source of truth - if invalid, force to 1 (don't preserve old level)
               if (firebasePrestigeLevel > 0) {
                 if (firebaseLevel > MAX_LEVEL) {
-                  console.error(`[Firebase Listener] 🚨 BLOCKED: Prestiged hero ${firebaseHero.name} (P${firebasePrestigeLevel}) has invalid level ${firebaseLevel} in Firebase. Keeping existing level ${combatHero.level}.`);
-                  firebaseLevel = combatHero.level; // Keep existing level
+                  console.error(`[Firebase Listener] 🚨 BLOCKED: Prestiged hero ${firebaseHero.name} (P${firebasePrestigeLevel}) has invalid level ${firebaseLevel} in Firebase. Forcing to 1.`);
+                  firebaseLevel = 1; // Force to 1 instead of preserving old level
+                  // Also reset XP if level is invalid
+                  if (firebaseHero.xp !== undefined && firebaseHero.xp > 0) {
+                    firebaseHero.xp = 0;
+                  }
+                  if (firebaseHero.maxXp !== undefined) {
+                    firebaseHero.maxXp = 100; // Level 1 maxXp
+                  }
                 }
                 if (firebaseLevel < 1) {
                   console.warn(`[Firebase Listener] ⚠️ Prestiged hero ${firebaseHero.name} has level ${firebaseLevel}, forcing to 1.`);
@@ -6089,13 +6101,15 @@ export default function CleanBattlefieldSource() {
               newHero.maxXp = leveledHero.maxXp;
               
               // Track level up and stat changes for sync
+              // When leveling up, XP should be set to absolute value (excess XP), not a delta
+              // This prevents sync conflicts where delta calculation causes incorrect XP values
               trackHeroStatChange(hero.id, {
                 level: newLevel,
                 maxHp: newHero.maxHp,
                 attack: newHero.attack,
                 defense: newHero.defense,
-                hp: newHero.hp,
-                xp: -(maxXP) // Subtract the XP used for level up (since we're tracking deltas)
+                hp: newHero.hp
+                // Don't track XP delta here - we'll sync absolute XP value when level changes in sync function
               });
             }
             
@@ -6878,29 +6892,16 @@ export default function CleanBattlefieldSource() {
             // Build update object with current hero state + accumulated changes
             const updateData: Partial<Hero> = {};
             
-            // Apply XP delta (add to current XP)
-            if (changes.xp !== undefined && changes.xp !== 0) {
-              const currentXP = hero.xp || 0;
-              let newXP = Math.max(0, currentXP + changes.xp);
-              
-              // CRITICAL: Cap XP at maxXp for level 100
-              const MAX_LEVEL = 100;
-              if ((hero.level || 1) >= MAX_LEVEL) {
-                const maxXpForLevel100 = hero.maxXp || 100000; // Fallback
-                newXP = Math.min(newXP, maxXpForLevel100);
-              }
-              
-              updateData.xp = newXP;
-            }
-            
-            // Apply gold delta (add to current gold)
-            if (changes.gold !== undefined && changes.gold !== 0) {
-              const currentGold = hero.gold || 0;
-              updateData.gold = Math.max(0, currentGold + changes.gold);
-            }
-            
             // CRITICAL: Level sync protection for prestiged heroes and level cap
+            // If level is changing, use absolute XP and maxXp from local state (excess after level up)
             if (changes.level !== undefined) {
+              // When level changes, sync absolute XP value from local state to avoid delta calculation issues
+              // The local state already has the correct excess XP after level up
+              updateData.xp = hero.xp !== undefined ? Math.max(0, hero.xp) : 0;
+              // Also sync maxXp when level changes (it's already set correctly in local state)
+              if (hero.maxXp !== undefined) {
+                updateData.maxXp = hero.maxXp;
+              }
               const prestigeLevel = (hero as any).prestigeLevel || 0;
               const MAX_LEVEL = 100;
               let newLevel = changes.level;
@@ -6927,6 +6928,27 @@ export default function CleanBattlefieldSource() {
               } else {
                 console.error(`[Hero Stat Sync] 🚨 Invalid level ${newLevel} for hero ${hero.name}, skipping level sync`);
               }
+            } else {
+              // Apply XP delta (add to current XP) - only when level is NOT changing
+              if (changes.xp !== undefined && changes.xp !== 0) {
+                const currentXP = hero.xp || 0;
+                let newXP = Math.max(0, currentXP + changes.xp);
+                
+                // CRITICAL: Cap XP at maxXp for level 100
+                const MAX_LEVEL = 100;
+                if ((hero.level || 1) >= MAX_LEVEL) {
+                  const maxXpForLevel100 = hero.maxXp || 100000; // Fallback
+                  newXP = Math.min(newXP, maxXpForLevel100);
+                }
+                
+                updateData.xp = newXP;
+              }
+            }
+            
+            // Apply gold delta (add to current gold)
+            if (changes.gold !== undefined && changes.gold !== 0) {
+              const currentGold = hero.gold || 0;
+              updateData.gold = Math.max(0, currentGold + changes.gold);
             }
             if (changes.hp !== undefined) {
               updateData.hp = changes.hp;
@@ -8590,7 +8612,7 @@ export default function CleanBattlefieldSource() {
                 backgroundColor: 'rgba(0,0,0,0.7)',
                 border: '1px solid #4a5568',
                 borderRadius: '3px',
-                marginBottom: '8px',
+                marginBottom: '4px',
                 overflow: 'hidden',
                 transform: 'translateY(-40px)'
               }}>
@@ -8614,6 +8636,41 @@ export default function CleanBattlefieldSource() {
                   textShadow: '1px 1px 2px rgba(0,0,0,1)'
                 }}>
                   {Math.floor(hero.hp)} / {hero.maxHp}
+                </div>
+              </div>
+
+              {/* XP Bar - Smaller for OBS */}
+              <div style={{
+                width: '120px',
+                height: '12px',
+                backgroundColor: 'rgba(0,0,0,0.7)',
+                border: '1px solid #6366f1',
+                borderRadius: '3px',
+                marginBottom: '8px',
+                overflow: 'hidden',
+                transform: 'translateY(-40px)',
+                position: 'relative'
+              }}>
+                {/* XP Fill */}
+                <div style={{
+                  width: `${Math.min(100, ((hero.xp || 0) / (hero.maxXp || 100)) * 100)}%`,
+                  height: '100%',
+                  background: 'linear-gradient(90deg, #3b82f6 0%, #8b5cf6 100%)',
+                  transition: 'width 0.3s ease'
+                }} />
+                
+                {/* XP Text */}
+                <div style={{
+                  position: 'absolute',
+                  width: '120px',
+                  textAlign: 'center',
+                  marginTop: '-11px',
+                  color: 'white',
+                  fontSize: '9px',
+                  fontWeight: 'bold',
+                  textShadow: '1px 1px 2px rgba(0,0,0,1)'
+                }}>
+                  {Math.floor(hero.xp || 0)} / {hero.maxXp || 100} XP
                 </div>
               </div>
 
@@ -9015,7 +9072,7 @@ export default function CleanBattlefieldSource() {
                 backgroundColor: 'rgba(0,0,0,0.7)',
                 border: '1px solid #4a5568',
                 borderRadius: '3px',
-                marginBottom: '8px',
+                marginBottom: '4px',
                 overflow: 'hidden',
                 transform: 'translateY(-40px)'
               }}>
@@ -9036,6 +9093,41 @@ export default function CleanBattlefieldSource() {
                   textShadow: '1px 1px 2px rgba(0,0,0,1)'
                 }}>
                   {Math.floor(hero.hp)} / {hero.maxHp}
+                </div>
+              </div>
+              
+              {/* XP Bar - Smaller for OBS */}
+              <div style={{
+                width: '120px',
+                height: '12px',
+                backgroundColor: 'rgba(0,0,0,0.7)',
+                border: '1px solid #6366f1',
+                borderRadius: '3px',
+                marginBottom: '8px',
+                overflow: 'hidden',
+                transform: 'translateY(-40px)',
+                position: 'relative'
+              }}>
+                {/* XP Fill */}
+                <div style={{
+                  width: `${Math.min(100, ((hero.xp || 0) / (hero.maxXp || 100)) * 100)}%`,
+                  height: '100%',
+                  background: 'linear-gradient(90deg, #3b82f6 0%, #8b5cf6 100%)',
+                  transition: 'width 0.3s ease'
+                }} />
+                
+                {/* XP Text */}
+                <div style={{
+                  position: 'absolute',
+                  width: '120px',
+                  textAlign: 'center',
+                  marginTop: '-11px',
+                  color: 'white',
+                  fontSize: '9px',
+                  fontWeight: 'bold',
+                  textShadow: '1px 1px 2px rgba(0,0,0,1)'
+                }}>
+                  {Math.floor(hero.xp || 0)} / {hero.maxXp || 100} XP
                 </div>
               </div>
               
@@ -9503,7 +9595,7 @@ export default function CleanBattlefieldSource() {
               backgroundColor: 'rgba(0,0,0,0.7)',
               border: '1px solid #4a5568',
               borderRadius: '3px',
-              marginBottom: '8px',
+              marginBottom: '4px',
               overflow: 'hidden',
               transform: 'translateY(-40px)' // Move UP by 40px to match name
             }}>
@@ -9527,6 +9619,41 @@ export default function CleanBattlefieldSource() {
                 textShadow: '1px 1px 2px rgba(0,0,0,1)'
               }}>
                 {Math.floor(hero.hp)} / {hero.maxHp}
+              </div>
+            </div>
+
+            {/* XP Bar - Smaller for OBS */}
+            <div style={{
+              width: '120px',
+              height: '12px',
+              backgroundColor: 'rgba(0,0,0,0.7)',
+              border: '1px solid #6366f1',
+              borderRadius: '3px',
+              marginBottom: '8px',
+              overflow: 'hidden',
+              transform: 'translateY(-40px)',
+              position: 'relative'
+            }}>
+              {/* XP Fill */}
+              <div style={{
+                width: `${Math.min(100, ((hero.xp || 0) / (hero.maxXp || 100)) * 100)}%`,
+                height: '100%',
+                background: 'linear-gradient(90deg, #3b82f6 0%, #8b5cf6 100%)',
+                transition: 'width 0.3s ease'
+              }} />
+              
+              {/* XP Text */}
+              <div style={{
+                position: 'absolute',
+                width: '120px',
+                textAlign: 'center',
+                marginTop: '-11px',
+                color: 'white',
+                fontSize: '9px',
+                fontWeight: 'bold',
+                textShadow: '1px 1px 2px rgba(0,0,0,1)'
+              }}>
+                {Math.floor(hero.xp || 0)} / {hero.maxXp || 100} XP
               </div>
             </div>
 

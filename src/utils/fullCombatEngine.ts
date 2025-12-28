@@ -1140,12 +1140,17 @@ export class FullCombatEngine {
       if (!hero) return;
       // Grant travel XP (matches Electron app: hero.xp += 3)
       hero.xp = (hero.xp || 0) + 3;
-      // Calculate exponential XP requirement: 100 * (1.5 ^ (level - 1))
-      hero.maxXp = hero.maxXp || Math.floor(100 * Math.pow(1.5, (hero.level || 1) - 1));
+      // Calculate maxXp using polynomial formula (matches backend)
+      hero.maxXp = hero.maxXp || this.calculateMaxXp(hero.level || 1);
       
-      // Handle level ups (matches Electron app lines 8930-8932)
-      while (hero.xp >= hero.maxXp) {
+      // Handle level ups (cap at level 100)
+      while (hero.xp >= hero.maxXp && (hero.level || 1) < 100) {
         this.levelUpHero(hero);
+      }
+      
+      // Cap XP at maxXp if at level 100
+      if ((hero.level || 1) >= 100) {
+        hero.xp = Math.min(hero.xp, hero.maxXp || this.calculateMaxXp(100));
       }
     });
   }
@@ -1215,12 +1220,17 @@ export class FullCombatEngine {
       
       // Grant travel XP (matches Electron app line 8928)
       hero.xp = (hero.xp || 0) + 3;
-      // Calculate exponential XP requirement: 100 * (1.5 ^ (level - 1))
-      hero.maxXp = hero.maxXp || Math.floor(100 * Math.pow(1.5, (hero.level || 1) - 1));
+      // Calculate maxXp using polynomial formula (matches backend)
+      hero.maxXp = hero.maxXp || this.calculateMaxXp(hero.level || 1);
       
-      // Handle level ups (matches Electron app lines 8930-8932)
-      while (hero.xp >= hero.maxXp) {
+      // Handle level ups (cap at level 100)
+      while (hero.xp >= hero.maxXp && (hero.level || 1) < 100) {
         this.levelUpHero(hero);
+      }
+      
+      // Cap XP at maxXp if at level 100
+      if ((hero.level || 1) >= 100) {
+        hero.xp = Math.min(hero.xp, hero.maxXp || this.calculateMaxXp(100));
       }
       
       // Profession gathering during travel (matches Electron app lines 8935-8940)
@@ -1376,10 +1386,25 @@ export class FullCombatEngine {
   /**
    * Level up hero - matches Electron app lines 8622-8649
    */
+  /**
+   * Calculate maxXp for a given level (matches backend polynomial formula)
+   */
+  private calculateMaxXp(level: number): number {
+    if (level <= 1) return 100;
+    // Polynomial growth: 40 * level² + 300 * level - 240 (matches backend)
+    return Math.floor(40 * level * level + 300 * level - 240);
+  }
+
   private levelUpHero(hero: Hero) {
+    // Cap at level 100
+    if ((hero.level || 1) >= 100) {
+      hero.xp = hero.maxXp || this.calculateMaxXp(100);
+      return;
+    }
+    
     hero.level = (hero.level || 1) + 1;
     hero.xp = 0;
-    hero.maxXp = Math.floor((hero.maxXp || 100) * 1.5);
+    hero.maxXp = this.calculateMaxXp(hero.level);
     
     // Recalculate stats including equipment
     const stats = this.getCharacterStats(hero);
@@ -1969,6 +1994,13 @@ export class FullCombatEngine {
     stats.attack += skillBonuses.attack;
     stats.defense += skillBonuses.defense;
     stats.maxHp += skillBonuses.hp;
+
+    // Apply prestige stat boosts (flat values, additive)
+    if (hero.prestigeBoosts && hero.prestigeBoosts.statBoost) {
+      stats.attack += hero.prestigeBoosts.statBoost.attack || 0;
+      stats.defense += hero.prestigeBoosts.statBoost.defense || 0;
+      stats.maxHp += hero.prestigeBoosts.statBoost.hp || 0;
+    }
 
     // Store skill bonuses for use in combat
     stats.skillBonuses = skillBonuses;
@@ -2900,9 +2932,17 @@ export class FullCombatEngine {
     }
     
     // Apply armor enchantment thorns effects BEFORE damage reductions
+    // Collect all enchantment effects first to stack them properly
     if (target.hero.enchantedItems) {
       const equipment = target.hero.equipment || {};
       const armorSlots = ['armor', 'helm', 'cloak', 'gloves', 'boots', 'shield'];
+      
+      // Collect all enchantment proc chances and values
+      let totalThornsChance = 0;
+      let thornsReflectPercent = 0;
+      let totalFrozenChance = 0;
+      let frozenSlowValue = 0;
+      let frozenArmorCount = 0;
       
       armorSlots.forEach(slot => {
         const item = equipment[slot];
@@ -2915,27 +2955,54 @@ export class FullCombatEngine {
           const value = (ench.baseValue || 5) * (ench.level || 1);
           
           if (ench.type === 'thorns_armor') {
-            // Reflect damage back to attacker
-            const thornsDamage = Math.floor(actualDamage * (value / 100));
-            const result = this.applyEnemyDamage(enemy, thornsDamage);
-            const enemyDied = result.died;
-            this.triggerAnimation(this.enemyElementId(enemy), 'hurt', false);
-            this.log('damage', `🌿 ${target.username}'s Thorns Armor reflects ${Math.floor(result.actualDamage)} damage to ${enemy.name}!`);
-            if (enemyDied) {
-              this.log('success', `${enemy.name} is defeated!`);
-            }
+            // Stack thorns proc chance (5% per tier, additive)
+            totalThornsChance += value; // value is the proc chance percentage
+            thornsReflectPercent = 15; // Fixed 15% damage reflection when it procs
           } else if (ench.type === 'frozen_armor') {
-            // Slow the attacker
-            if (!enemy.activeDebuffs) enemy.activeDebuffs = {};
-            enemy.activeDebuffs.slowed = {
-              expiresAt: now + 3000, // 3 seconds
-              appliedBy: target.username,
-              value: value // Slow percentage
-            };
-            this.log('combat', `❄️ ${target.username}'s Frozen Armor slows ${enemy.name}!`);
+            // Stack frozen armor proc chance (5% per tier, additive)
+            totalFrozenChance += value; // value is the proc chance percentage
+            frozenSlowValue = Math.max(frozenSlowValue, 20); // Slow value when it procs (20% per tier)
+            frozenArmorCount++;
           }
         });
       });
+      
+      // Cap proc chances at 50%
+      totalThornsChance = Math.min(totalThornsChance, 50);
+      totalFrozenChance = Math.min(totalFrozenChance, 50);
+      
+      // Roll for thorns armor proc
+      if (totalThornsChance > 0) {
+        const thornsRoll = Math.random() * 100;
+        if (thornsRoll < totalThornsChance) {
+          const thornsDamage = Math.floor(actualDamage * (thornsReflectPercent / 100));
+          const result = this.applyEnemyDamage(enemy, thornsDamage);
+          const enemyDied = result.died;
+          this.triggerAnimation(this.enemyElementId(enemy), 'hurt', false);
+          this.log('damage', `🌿 ${target.username}'s Thorns Armor reflects ${Math.floor(result.actualDamage)} damage to ${enemy.name}!`);
+          if (enemyDied) {
+            this.log('success', `${enemy.name} is defeated!`);
+          }
+        }
+      }
+      
+      // Roll for frozen armor proc
+      if (totalFrozenChance > 0) {
+        const frozenRoll = Math.random() * 100;
+        if (frozenRoll < totalFrozenChance) {
+          if (!enemy.activeDebuffs) enemy.activeDebuffs = {};
+          enemy.activeDebuffs.slowed = {
+            expiresAt: now + 3000, // 3 seconds
+            appliedBy: target.username,
+            value: frozenSlowValue // Slow percentage when it procs
+          };
+          if (frozenArmorCount > 1) {
+            this.log('combat', `❄️ ${target.username}'s ${frozenArmorCount}x Frozen Armor (${Math.floor(totalFrozenChance)}% chance) slows ${enemy.name} by ${Math.floor(frozenSlowValue)}%!`);
+          } else {
+            this.log('combat', `❄️ ${target.username}'s Frozen Armor slows ${enemy.name} by ${Math.floor(frozenSlowValue)}%!`);
+          }
+        }
+      }
     }
     
     // Track original damage before reductions for blocked damage calculation
@@ -3347,33 +3414,147 @@ export class FullCombatEngine {
       totalGold += Math.floor(enemyXP / 10);
     });
     
-    // Distribute XP and gold to alive heroes
-    const xpPerHero = Math.floor(totalXP / aliveHeroes.length);
+    // Calculate average party level for level difference penalties
+    const avgPartyLevel = aliveHeroes.reduce((sum, h) => sum + (h.level || 1), 0) / aliveHeroes.length;
+    const avgEnemyLevel = enemies.length > 0 
+      ? enemies.reduce((sum, e) => sum + (e.level || 1), 0) / enemies.length 
+      : 1;
+    
+    // Base XP split (before penalties)
+    const baseXPSplit = Math.floor(totalXP / aliveHeroes.length);
     const goldPerHero = Math.floor(totalGold / aliveHeroes.length);
     
     aliveHeroes.forEach(hero => {
       if (!hero) return;
       
-      // Grant XP
-      const oldXP = hero.xp || 0;
-      hero.xp = oldXP + xpPerHero;
-      // Calculate exponential XP requirement: 100 * (1.5 ^ (level - 1))
-      hero.maxXp = hero.maxXp || Math.floor(100 * Math.pow(1.5, (hero.level || 1) - 1));
+      const heroLevel = hero.level || 1;
       
-      // Check for level up
-      while (hero.xp >= hero.maxXp) {
+      // CRITICAL: Apply level difference penalties (power-leveling protection)
+      // 1. Overlevel penalty: Hero much higher than enemy
+      let levelMultiplier = 1.0;
+      const levelDiff = heroLevel - avgEnemyLevel;
+      
+      if (levelDiff > 10) {
+        // Hero is overleveled - reduce XP
+        const overLevel = levelDiff - 10;
+        let penalty = 0;
+        if (overLevel <= 100) {
+          penalty = overLevel * 0.05; // 5% per level
+        } else {
+          const logFactor = Math.log10(overLevel);
+          penalty = 5.0 + (logFactor - 2.0) * 15.0;
+          penalty = Math.min(penalty, 75.0); // Cap at 75%
+        }
+        levelMultiplier = Math.max(0.1, 1.0 - (penalty / 100));
+      }
+      
+      // 2. Party level difference penalty (CRITICAL for power-leveling protection)
+      const partyLevelDiff = heroLevel - avgPartyLevel;
+      
+      // Severely underleveled heroes (e.g., level 4 with level 500+ party)
+      if (partyLevelDiff < -50) {
+        const underLevel = Math.abs(partyLevelDiff) - 50;
+        const logFactor = Math.log10(Math.max(underLevel, 1));
+        const severePenalty = 0.95 + (logFactor * 0.01); // 95% to 98%+
+        levelMultiplier *= Math.max(0.01, 1.0 - Math.min(severePenalty, 0.99)); // Cap at 99% reduction
+      } else if (Math.abs(partyLevelDiff) > 20) {
+        // Normal party level difference penalty
+        const diff = Math.abs(partyLevelDiff) - 20;
+        let penalty = 0;
+        if (diff <= 50) {
+          penalty = diff * 0.02; // 2% per level
+        } else {
+          const logFactor = Math.log10(diff);
+          penalty = 1.0 + (logFactor - 1.7) * 5.0;
+          penalty = Math.min(penalty, 40.0); // Cap at 40%
+        }
+        levelMultiplier *= Math.max(0.6, 1.0 - (penalty / 100));
+      }
+      
+      // Apply level penalty to base XP
+      let xpAfterPenalty = Math.floor(baseXPSplit * levelMultiplier);
+      
+      // Grant XP (apply prestige level boost + prestige core bonuses + shop buffs)
+      let xpMultiplier = 1.0;
+      
+      // CRITICAL: For severely underleveled heroes, reduce or remove bonuses to prevent power-leveling
+      const isSeverelyUnderleveled = partyLevelDiff < -50;
+      const bonusReduction = isSeverelyUnderleveled ? 0.5 : 1.0; // 50% reduction for severely underleveled
+      
+      // Prestige level boost (permanent multiplier)
+      if (hero.prestigeBoosts && hero.prestigeBoosts.xpGain) {
+        const prestigeBoost = (hero.prestigeBoosts.xpGain - 1.0) * bonusReduction + 1.0; // Reduce bonus portion
+        xpMultiplier *= prestigeBoost;
+      }
+      
+      // Prestige slot core bonuses (cores are attached to slots, not items - stacks additively)
+      if (hero.prestigeSlotCores) {
+        Object.values(hero.prestigeSlotCores).forEach((core: any) => {
+          if (core && core.bonus && core.bonus.xpGain) {
+            xpMultiplier += core.bonus.xpGain * bonusReduction; // Reduce bonus
+          }
+        });
+      }
+      
+      // Shop buffs (XP Boost scrolls) - check shopBuffs
+      if (hero.shopBuffs && hero.shopBuffs.xpBoost) {
+        const xpBoost = hero.shopBuffs.xpBoost;
+        const now = Date.now();
+        const lastUpdate = xpBoost.lastUpdateTime || now;
+        const elapsed = now - lastUpdate;
+        const remaining = xpBoost.remainingDuration - elapsed;
+        
+        if (remaining > 0) {
+          // XP Boost gives +50% XP (1.5x multiplier)
+          const boostAmount = 0.5 * bonusReduction; // Reduce bonus for underleveled
+          xpMultiplier *= (1.0 + boostAmount);
+        }
+      }
+      
+      // Active buffs (from combat system)
+      if (hero.activeBuffs && hero.activeBuffs.xpBoost) {
+        const boostAmount = 0.5 * bonusReduction; // Reduce bonus for underleveled
+        xpMultiplier *= (1.0 + boostAmount);
+      }
+      
+      const xpToAdd = Math.floor(xpAfterPenalty * xpMultiplier);
+      const oldXP = hero.xp || 0;
+      hero.xp = oldXP + xpToAdd;
+      // Calculate maxXp using polynomial formula (matches backend)
+      hero.maxXp = hero.maxXp || this.calculateMaxXp(hero.level || 1);
+      
+      // Check for level up (cap at level 100)
+      while (hero.xp >= hero.maxXp && (hero.level || 1) < 100) {
         this.levelUpHero(hero);
       }
       
-      // Grant gold
-      hero.gold = (hero.gold || 0) + goldPerHero;
+      // Cap XP at maxXp if at level 100
+      if ((hero.level || 1) >= 100) {
+        hero.xp = Math.min(hero.xp, hero.maxXp || this.calculateMaxXp(100));
+      }
+      
+      // Grant gold (apply prestige level boost + prestige core bonuses)
+      let goldMultiplier = 1.0;
+      if (hero.prestigeBoosts && hero.prestigeBoosts.goldGain) {
+        goldMultiplier *= hero.prestigeBoosts.goldGain;
+      }
+      // Prestige slot core bonuses (cores are attached to slots, not items - stacks additively)
+      if (hero.prestigeSlotCores) {
+        Object.values(hero.prestigeSlotCores).forEach((core: any) => {
+          if (core && core.bonus && core.bonus.goldGain) {
+            goldMultiplier += core.bonus.goldGain;
+          }
+        });
+      }
+      const goldToAdd = Math.floor(goldPerHero * goldMultiplier);
+      hero.gold = (hero.gold || 0) + goldToAdd;
       
       // Log rewards (only if meaningful amounts)
-      if (xpPerHero > 0) {
-        this.log('success', `✨ ${hero.username} gained ${xpPerHero} XP!`);
+      if (xpToAdd > 0) {
+        this.log('success', `✨ ${hero.username} gained ${xpToAdd} XP!`);
       }
-      if (goldPerHero > 0) {
-        this.log('loot', `💰 ${hero.username} gained ${goldPerHero} gold!`);
+      if (goldToAdd > 0) {
+        this.log('loot', `💰 ${hero.username} gained ${goldToAdd} gold!`);
       }
     });
     
