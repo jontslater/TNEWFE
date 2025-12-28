@@ -2858,6 +2858,14 @@ export default function CleanBattlefieldSource() {
           // Remove potion from inventory
           const updatedInventory = inventory.filter((item: any) => item.id !== healthPotion.id);
           
+          // Call backend API to use elixir (for quest tracking)
+          // Use itemKey or itemId - backend will figure it out
+          const itemIdentifier = healthPotion.itemKey || healthPotion.id;
+          heroAPI.useElixir(hero.id, itemIdentifier).catch(err => {
+            console.error(`[Auto-Potion] Failed to call useElixir API:`, err);
+            // Non-critical - combat can continue
+          });
+          
           // Track HP and inventory changes for batch sync
           trackHeroStatChange(hero.id, {
             hp: Math.round(newHp)
@@ -2878,6 +2886,7 @@ export default function CleanBattlefieldSource() {
           
           // Note: HP change is tracked via trackHeroStatChange above, will be synced in batch
           // Inventory changes are synced via Firebase listener automatically
+          // Backend API call handles quest tracking
           
           // Show heal SCT
           const heroElement = document.querySelector(`[data-hero-id="${hero.id}"]`);
