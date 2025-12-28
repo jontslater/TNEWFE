@@ -622,6 +622,126 @@ export const heroAPI = {
 
     const response = await apiClient.post(`/api/heroes/${userId}/equipment/${slot}/unlock`);
     return response.data;
+  },
+
+  async prestigeHero(userId: string): Promise<{
+    success: boolean;
+    message: string;
+    hero: Hero;
+    prestigeLevel: number;
+    prestigeTokens: number;
+    boosts: {
+      xpGain: number;
+      goldGain: number;
+      idleTicketGain: number;
+      statBoost: {
+        attack: number;
+        defense: number;
+        hp: number;
+      };
+    };
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          success: true,
+          message: 'Prestige successful!',
+          hero: mockHero,
+          prestigeLevel: 1,
+          prestigeTokens: 1,
+          boosts: {
+            xpGain: 1.02,
+            goldGain: 1.025,
+            idleTicketGain: 1.01,
+            statBoost: { attack: 2, defense: 1, hp: 5 }
+          }
+        }), 300);
+      });
+    }
+
+    const response = await apiClient.post(`/api/heroes/${userId}/prestige`);
+    return response.data;
+  },
+
+  async getPrestigeStore(userId: string): Promise<{
+    success: boolean;
+    prestigeLevel: number;
+    prestigeTokens: number;
+    catalog: Array<{
+      tier: string;
+      name: string;
+      tokenCost: number;
+      prestigeRequired: number;
+      statBonus: { attack: number; defense: number; hp: number };
+      bonus: { xpGain: number; goldGain: number };
+      color: string;
+      canAfford: boolean;
+    }>;
+    availableTiers: string[];
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          success: true,
+          prestigeLevel: 1,
+          prestigeTokens: 2,
+          catalog: [],
+          availableTiers: ['bronze']
+        }), 300);
+      });
+    }
+
+    const response = await apiClient.get(`/api/heroes/${userId}/prestige-store`);
+    return response.data;
+  },
+
+  async purchasePrestigeCore(userId: string, tier: string): Promise<{
+    success: boolean;
+    message: string;
+    item: any;
+    prestigeTokens: number;
+    tokensSpent: number;
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          success: true,
+          message: 'Purchased prestige core!',
+          item: {},
+          prestigeTokens: 1,
+          tokensSpent: 1
+        }), 300);
+      });
+    }
+
+    const response = await apiClient.post(`/api/heroes/${userId}/prestige-store/purchase`, {
+      tier
+    });
+    return response.data;
+  },
+
+  async applyPrestigeCore(userId: string, coreId: string, slot: string): Promise<{
+    success: boolean;
+    message: string;
+    prestigeSlotCores: any;
+    replacedCore: any;
+  }> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({
+          success: true,
+          message: 'Applied prestige core to slot!',
+          prestigeSlotCores: {},
+          replacedCore: null
+        }), 300);
+      });
+    }
+
+    const response = await apiClient.post(`/api/heroes/${userId}/prestige-store/apply`, {
+      coreId,
+      slot
+    });
+    return response.data;
   }
 };
 
@@ -2658,6 +2778,16 @@ export const streamSettingsAPI = {
     settings: any;
   }> {
     const response = await apiClient.put(`/api/stream/settings/${twitchId}`, settings);
+    return response.data;
+  },
+
+  async testChatUpdate(twitchId: string): Promise<{
+    success: boolean;
+    message: string;
+    testMessage?: string;
+    error?: string;
+  }> {
+    const response = await apiClient.post(`/api/stream/settings/${twitchId}/test`);
     return response.data;
   }
 };

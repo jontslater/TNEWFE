@@ -31,6 +31,8 @@ function ChatUpdateSettingsSection({ user }: { user: any }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
+  const [testing, setTesting] = useState(false);
+  const [testMessage, setTestMessage] = useState('');
 
   useEffect(() => {
     if (user?.twitchId) {
@@ -70,6 +72,29 @@ function ChatUpdateSettingsSection({ user }: { user: any }) {
       setTimeout(() => setSaveMessage(''), 3000);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleTest = async () => {
+    if (!user?.twitchId) return;
+
+    try {
+      setTesting(true);
+      setTestMessage('');
+      const response = await streamSettingsAPI.testChatUpdate(user.twitchId);
+      if (response.success) {
+        setTestMessage(`✅ ${response.message}`);
+        setTimeout(() => setTestMessage(''), 5000);
+      } else {
+        setTestMessage(`❌ ${response.error || 'Failed to send test message'}`);
+        setTimeout(() => setTestMessage(''), 5000);
+      }
+    } catch (error: any) {
+      console.error('Failed to test chat update:', error);
+      setTestMessage(`❌ ${error.response?.data?.error || 'Failed to send test message'}`);
+      setTimeout(() => setTestMessage(''), 5000);
+    } finally {
+      setTesting(false);
     }
   };
 
@@ -185,7 +210,7 @@ function ChatUpdateSettingsSection({ user }: { user: any }) {
                 />
               </div>
 
-              {/* Save Button */}
+              {/* Save Button and Test Button */}
               <div className="flex items-center gap-4">
                 <button
                   onClick={handleSave}
@@ -194,9 +219,22 @@ function ChatUpdateSettingsSection({ user }: { user: any }) {
                 >
                   {saving ? 'Saving...' : 'Save Settings'}
                 </button>
+                <button
+                  onClick={handleTest}
+                  disabled={testing || !settings.enabled}
+                  className="px-6 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-700 disabled:cursor-not-allowed rounded font-semibold text-sm transition-colors"
+                  title={!settings.enabled ? 'Enable chat updates first to test' : 'Send a test message to your chat (works even when offline)'}
+                >
+                  {testing ? 'Sending...' : '🧪 Test Chat Update'}
+                </button>
                 {saveMessage && (
                   <span className={`text-sm ${saveMessage.includes('Failed') ? 'text-red-400' : 'text-green-400'}`}>
                     {saveMessage}
+                  </span>
+                )}
+                {testMessage && (
+                  <span className={`text-sm ${testMessage.includes('❌') ? 'text-red-400' : 'text-green-400'}`}>
+                    {testMessage}
                   </span>
                 )}
               </div>

@@ -297,9 +297,10 @@ function getDifficultyScaling(heroes: Hero[], waveCount: number = 1, difficultyM
   const partySize = heroes.length;
   const avgGearScore = getAverageGearScore(heroes);
   
-  // Level multiplier: 1 + (avgLevel * 0.12)
-  // Reduced from 0.15 to 0.12 for better balance
-  const levelMultiplier = 1 + (avgLevel * 0.12);
+  // Level multiplier: 1 + (avgLevel * 0.04)
+  // Reduced from 0.12 to 0.04 for better balance (67% reduction)
+  // This makes leveling slower and more of a grind, especially at higher levels
+  const levelMultiplier = 1 + (avgLevel * 0.04);
   
   // Party size multiplier: More aggressive scaling for large parties
   // Matches Electron app (lines 10320-10330)
@@ -478,7 +479,12 @@ function generateSingleEnemy(
     defense: Math.floor((template.baseDefense || 0) * scaling.multiplier * defenseMultiplier * packScaling),
     isDead: false,
     isBoss: template.isBoss || false,
-    xp: Math.floor(template.xp * Math.max(1, scaling.multiplier * 0.5)),
+    // XP calculation: Apply scaling multiplier with 0.2 coefficient and cap at 8x
+    // This makes leveling slower and more balanced (60% reduction from 0.5, plus cap)
+    xp: (() => {
+      const xpMultiplier = Math.min(scaling.multiplier * 0.2, 8);
+      return Math.floor(template.xp * Math.max(1, xpMultiplier));
+    })(),
     activeDebuffs: {},
     abilities: {}
   };

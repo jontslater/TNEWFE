@@ -768,9 +768,17 @@ function applyEnemyDamageToHero(
   }
 
   // Apply armor enchantment thorns effects BEFORE damage reductions
+  // Collect all enchantment effects first to stack them properly
   if (target.hero.enchantedItems && target.hero.equipment) {
     const equipment = target.hero.equipment;
     const armorSlots = ['armor', 'helm', 'cloak', 'gloves', 'boots', 'shield'];
+
+    // Collect all enchantment proc chances and values
+    let totalThornsChance = 0;
+    let thornsReflectPercent = 0;
+    let totalFrozenChance = 0;
+    let frozenSlowValue = 0;
+    let frozenArmorCount = 0;
 
     armorSlots.forEach(slot => {
       const item = equipment[slot];
@@ -783,26 +791,53 @@ function applyEnemyDamageToHero(
         const value = (ench.baseValue || 5) * (ench.level || 1);
 
         if (ench.type === 'thorns_armor') {
-          // Reflect damage back to attacker
-          const thornsDamage = Math.floor(actualDamage * (value / 100));
-          const result = applyEnemyDamage(enemy, thornsDamage);
-          callbacks.triggerAnimation(enemyElementId(enemy), 'hurt', false);
-          callbacks.log('damage', `🌿 ${target.username}'s Thorns Armor reflects ${Math.floor(result.actualDamage)} damage to ${enemy.name}!`);
-          if (result.died) {
-            callbacks.log('success', `${enemy.name} is defeated!`);
-          }
+          // Stack thorns proc chance (5% per tier, additive)
+          totalThornsChance += value; // value is the proc chance percentage
+          thornsReflectPercent = 15; // Fixed 15% damage reflection when it procs
         } else if (ench.type === 'frozen_armor') {
-          // Slow the attacker
-          if (!enemy.activeDebuffs) enemy.activeDebuffs = {};
-          enemy.activeDebuffs.slowed = {
-            expiresAt: now + 3000, // 3 seconds
-            appliedBy: target.username,
-            value: value // Slow percentage
-          };
-          callbacks.log('combat', `❄️ ${target.username}'s Frozen Armor slows ${enemy.name}!`);
+          // Stack frozen armor proc chance (5% per tier, additive)
+          totalFrozenChance += value; // value is the proc chance percentage
+          frozenSlowValue = Math.max(frozenSlowValue, 20); // Slow value when it procs (20% per tier)
+          frozenArmorCount++;
         }
       });
     });
+
+    // Cap proc chances at 50%
+    totalThornsChance = Math.min(totalThornsChance, 50);
+    totalFrozenChance = Math.min(totalFrozenChance, 50);
+
+    // Roll for thorns armor proc
+    if (totalThornsChance > 0) {
+      const thornsRoll = Math.random() * 100;
+      if (thornsRoll < totalThornsChance) {
+        const thornsDamage = Math.floor(actualDamage * (thornsReflectPercent / 100));
+        const result = applyEnemyDamage(enemy, thornsDamage);
+        callbacks.triggerAnimation(enemyElementId(enemy), 'hurt', false);
+        callbacks.log('damage', `🌿 ${target.username}'s Thorns Armor reflects ${Math.floor(result.actualDamage)} damage to ${enemy.name}!`);
+        if (result.died) {
+          callbacks.log('success', `${enemy.name} is defeated!`);
+        }
+      }
+    }
+
+    // Roll for frozen armor proc
+    if (totalFrozenChance > 0) {
+      const frozenRoll = Math.random() * 100;
+      if (frozenRoll < totalFrozenChance) {
+        if (!enemy.activeDebuffs) enemy.activeDebuffs = {};
+        enemy.activeDebuffs.slowed = {
+          expiresAt: now + 3000, // 3 seconds
+          appliedBy: target.username,
+          value: frozenSlowValue // Slow percentage when it procs
+        };
+        if (frozenArmorCount > 1) {
+          callbacks.log('combat', `❄️ ${target.username}'s ${frozenArmorCount}x Frozen Armor (${Math.floor(totalFrozenChance)}% chance) slows ${enemy.name} by ${Math.floor(frozenSlowValue)}%!`);
+        } else {
+          callbacks.log('combat', `❄️ ${target.username}'s Frozen Armor slows ${enemy.name} by ${Math.floor(frozenSlowValue)}%!`);
+        }
+      }
+    }
   }
 
   // Track original damage before reductions for blocked damage calculation

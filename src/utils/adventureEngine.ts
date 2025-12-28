@@ -345,14 +345,24 @@ export class AdventureEngine {
 
       // Grant travel XP (matches Electron app line 8928)
       hero.xp = (hero.xp || 0) + 3;
-      // Calculate exponential XP requirement: 100 * (1.5 ^ (level - 1))
-      hero.maxXp = hero.maxXp || Math.floor(100 * Math.pow(1.5, (hero.level || 1) - 1));
+      // Calculate maxXp using polynomial formula (matches backend)
+      // Formula: 40 * level² + 300 * level - 240
+      const calculateMaxXp = (level: number): number => {
+        if (level <= 1) return 100;
+        return Math.floor(40 * level * level + 300 * level - 240);
+      };
+      hero.maxXp = hero.maxXp || calculateMaxXp(hero.level || 1);
 
-      // Handle level ups (matches Electron app lines 8930-8932)
+      // Handle level ups (cap at level 100)
       if (this.onLevelUpHero) {
-        while (hero.xp >= hero.maxXp) {
+        while (hero.xp >= hero.maxXp && (hero.level || 1) < 100) {
           this.onLevelUpHero(hero);
         }
+      }
+      
+      // Cap XP at maxXp if at level 100
+      if ((hero.level || 1) >= 100) {
+        hero.xp = Math.min(hero.xp, hero.maxXp || calculateMaxXp(100));
       }
 
       // Profession gathering during travel

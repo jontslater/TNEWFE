@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { reportsAPI, Report } from '../api/client';
 import Navigation from '../components/Navigation';
+import MessageAlert from '../components/MessageAlert';
 
 export default function ReportsViewPage() {
   const navigate = useNavigate();
@@ -13,7 +14,9 @@ export default function ReportsViewPage() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
   const [updatingStatus, setUpdatingStatus] = useState<string | null>(null);
+  const [savingNotes, setSavingNotes] = useState<string | null>(null);
   const [adminNotes, setAdminNotes] = useState<Record<string, string>>({});
+  const [messageAlert, setMessageAlert] = useState<{ message: string } | null>(null);
 
   const isAdmin = user?.twitchUsername?.toLowerCase() === 'theneverendingwar';
 
@@ -56,7 +59,7 @@ export default function ReportsViewPage() {
 
   const handleStatusUpdate = async (reportId: string, newStatus: 'open' | 'in-progress' | 'resolved' | 'closed') => {
     if (!isAdmin || !user) {
-      alert('Only admin can update report status');
+      setMessageAlert({ message: 'Only admin can update report status' });
       return;
     }
 
@@ -79,11 +82,37 @@ export default function ReportsViewPage() {
       if (selectedReport?.id === reportId) {
         setSelectedReport(null);
       }
+      
+      setMessageAlert({ message: 'Report status updated successfully' });
     } catch (err: any) {
       console.error('Error updating report status:', err);
-      alert(err.response?.data?.error || err.message || 'Failed to update report status');
+      setMessageAlert({ message: err.response?.data?.error || err.message || 'Failed to update report status' });
     } finally {
       setUpdatingStatus(null);
+    }
+  };
+
+  const handleSaveNotes = async (reportId: string) => {
+    if (!isAdmin || !user) {
+      setMessageAlert({ message: 'Only admin can save notes' });
+      return;
+    }
+
+    setSavingNotes(reportId);
+    try {
+      const notes = adminNotes[reportId] || '';
+      // Save notes by updating status to current status (no status change, just notes)
+      await reportsAPI.updateReportStatus(reportId, selectedReport?.status as any || 'open', user.twitchUsername || user.username, notes || undefined);
+      
+      // Reload reports to get updated notes
+      await loadReports();
+      
+      setMessageAlert({ message: 'Admin notes saved successfully' });
+    } catch (err: any) {
+      console.error('Error saving notes:', err);
+      setMessageAlert({ message: err.response?.data?.error || err.message || 'Failed to save notes' });
+    } finally {
+      setSavingNotes(null);
     }
   };
 
@@ -347,6 +376,20 @@ export default function ReportsViewPage() {
                             className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:border-purple-500 resize-none text-white"
                             placeholder="Add notes about this report..."
                           />
+                          <button
+                            onClick={() => handleSaveNotes(selectedReport.id)}
+                            disabled={savingNotes === selectedReport.id || !adminNotes[selectedReport.id]?.trim()}
+                            className={`mt-2 w-full px-4 py-2 rounded-lg font-semibold transition-colors ${
+                              savingNotes === selectedReport.id || !adminNotes[selectedReport.id]?.trim()
+                                ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                                : 'bg-blue-600 hover:bg-blue-500 text-white'
+                            }`}
+                          >
+                            {savingNotes === selectedReport.id ? 'Saving...' : 'Save Notes'}
+                          </button>
+                          <p className="text-xs text-gray-500 mt-1">
+                            Notes will also be saved when updating status
+                          </p>
                         </div>
 
                         <div className="space-y-2">
@@ -383,6 +426,13 @@ export default function ReportsViewPage() {
           )}
         </div>
       </div>
+
+      {/* Custom Message Alert (replaces window.alert) */}
+      <MessageAlert
+        isOpen={!!messageAlert}
+        message={messageAlert?.message || ''}
+        onClose={() => setMessageAlert(null)}
+      />
     </>
   );
 }

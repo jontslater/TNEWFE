@@ -241,8 +241,20 @@ export function getCharacterStats(hero: Hero) {
           stats.damageReduction += item.secondaryStats.damageReduction || 0;
           stats.critChance += item.secondaryStats.critChance || 0;
         }
+        
       }
     }
+  }
+
+  // Apply prestige slot core stat bonuses (cores are attached to slots, not items)
+  if (hero.prestigeSlotCores) {
+    Object.entries(hero.prestigeSlotCores).forEach(([slot, core]: [string, any]) => {
+      if (core && core.statBonus) {
+        stats.attack += core.statBonus.attack || 0;
+        stats.defense += core.statBonus.defense || 0;
+        stats.maxHp += core.statBonus.hp || 0;
+      }
+    });
   }
 
   // Cap total crit chance at 35%
@@ -255,6 +267,13 @@ export function getCharacterStats(hero: Hero) {
   stats.attack += skillBonuses.attack;
   stats.defense += skillBonuses.defense;
   stats.maxHp += skillBonuses.hp;
+
+  // Apply prestige stat boosts (flat values, additive)
+  if (hero.prestigeBoosts && hero.prestigeBoosts.statBoost) {
+    stats.attack += hero.prestigeBoosts.statBoost.attack || 0;
+    stats.defense += hero.prestigeBoosts.statBoost.defense || 0;
+    stats.maxHp += hero.prestigeBoosts.statBoost.hp || 0;
+  }
 
   // Store skill bonuses for use in combat
   stats.skillBonuses = skillBonuses;
@@ -293,4 +312,3 @@ export function getDebuffResistance(target: Hero | Enemy): number {
     return enemy.isBoss ? 0.25 : 0.10;
   }
 }
-
