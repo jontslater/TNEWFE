@@ -37,18 +37,20 @@ export function calculateHeroDamage(
       const cappedMeleeDmg = Math.min(hero.meleeDamage, 30);
       baseDamage *= (1 + (cappedMeleeDmg * 0.01));
     }
-  } else if (isRangedCasterRole) {
-    // Ranged/Caster DPS: Intellect adds 1% damage per point (CAPPED at 100 intellect)
+  } else if (isRangedCasterRole || category === 'healer') {
+    // Ranged/Caster DPS AND Healers: Intellect adds 1% damage per point (CAPPED at 100 intellect)
+    // Healers should use spell power for damage (they're spellcasters too!)
     const cappedInt = Math.min(hero.intellect || 0, 100);
     const intellectBonus = 1 + (cappedInt * 0.01);
     baseDamage *= intellectBonus;
 
-    // Wisdom adds 0.5% damage per point for casters (CAPPED at 50 wisdom)
+    // Wisdom adds 0.5% damage per point for casters/healers (CAPPED at 50 wisdom)
     const cappedWis = Math.min(hero.wisdom || 0, 50);
     const wisdomBonus = 1 + (cappedWis * 0.005);
     baseDamage *= wisdomBonus;
 
     // Apply +Spell Damage% from gear (CAPPED at 30%)
+    // Healers use spell damage (melee damage is filtered out for them)
     if (hero.spellDamage) {
       const cappedSpellDmg = Math.min(hero.spellDamage, 30);
       baseDamage *= (1 + (cappedSpellDmg * 0.01));
@@ -86,8 +88,12 @@ export function calculateHeroDamage(
     baseDamage *= 1.05; // 5% guild combat bonus (placeholder)
   }
 
-  // Check for skill-based crit chance
-  if (heroSkillBonuses.critChance > 0 && Math.random() < (heroSkillBonuses.critChance / 100)) {
+  // Check for crit chance (base 5% + gear-based + skill-based)
+  const baseCritChance = 0.05; // 5% base crit chance
+  const gearCritChance = hero.critChance || 0; // Gear-based crit chance (from gems, set bonuses, etc.)
+  const totalCritChance = baseCritChance + gearCritChance + (heroSkillBonuses.critChance / 100);
+  
+  if (totalCritChance > 0 && Math.random() < totalCritChance) {
     const critMultiplier = 2.0 + (heroSkillBonuses.critDamage / 100);
     baseDamage *= critMultiplier;
   }

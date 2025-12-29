@@ -138,15 +138,15 @@ function ChatUpdateSettingsSection({ user }: { user: any }) {
                 <input
                   type="range"
                   min="5"
-                  max="10"
-                  step="1"
+                  max="60"
+                  step="5"
                   value={settings.intervalMinutes}
                   onChange={(e) => setSettings({ ...settings, intervalMinutes: parseInt(e.target.value) })}
                   className="w-full"
                 />
                 <div className="flex justify-between text-xs text-gray-400 mt-1">
                   <span>5 min</span>
-                  <span>10 min</span>
+                  <span>60 min (1 hour)</span>
                 </div>
               </div>
 

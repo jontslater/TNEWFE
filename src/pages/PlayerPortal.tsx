@@ -502,7 +502,7 @@ export default function PlayerPortal() {
                         )}
                         <div className="flex items-center justify-between mb-2">
                           <div className="text-base font-semibold text-white truncate pr-2">{h.name}</div>
-                          <span className="text-gray-400 text-sm font-semibold whitespace-nowrap">Lv {h.level}</span>
+                          <span className="text-gray-400 text-sm font-semibold whitespace-nowrap">Lv {h.level ?? 1}</span>
                         </div>
                         <div className="flex items-center gap-2 mb-2 flex-wrap">
                           <span className={`px-2 py-1 rounded text-xs font-semibold ${categoryColors[category as keyof typeof categoryColors]}`}>
@@ -515,26 +515,26 @@ export default function PlayerPortal() {
                         <div className="grid grid-cols-3 gap-2 text-xs mb-2">
                           <div className="text-center">
                             <div className="text-yellow-400 font-semibold">
-                              {Math.round(h.maxHp || 0).toLocaleString()}
+                              {Math.round(Number(h.maxHp ?? 0) || 0).toLocaleString()}
                             </div>
                             <div className="text-gray-500 text-[10px]">HP</div>
                           </div>
                           <div className="text-center">
                             <div className="text-blue-400 font-semibold">
-                              {(h.attack || 0).toLocaleString()}
+                              {(Number(h.attack ?? 0) || 0).toLocaleString()}
                             </div>
                             <div className="text-gray-500 text-[10px]">ATK</div>
                           </div>
                           <div className="text-center">
                             <div className="text-green-400 font-semibold">
-                              {(h.defense || 0).toLocaleString()}
+                              {(Number(h.defense ?? 0) || 0).toLocaleString()}
                             </div>
                             <div className="text-gray-500 text-[10px]">DEF</div>
                           </div>
                         </div>
                         <div className="flex items-center justify-between text-xs mb-2 pt-2 border-t border-gray-700">
                           <span className="text-gray-400">Gear Score:</span>
-                          <span className="text-yellow-400 font-semibold">⚡ {(gearScore || 0).toLocaleString()}</span>
+                          <span className="text-yellow-400 font-semibold">⚡ {(Number(gearScore ?? 0) || 0).toLocaleString()}</span>
                         </div>
                         {isSelected && (
                           <div className="mt-2 pt-2 border-t border-gray-700">

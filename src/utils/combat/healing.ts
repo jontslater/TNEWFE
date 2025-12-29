@@ -56,6 +56,8 @@ export function checkShieldExpiry(hero: Hero, now: number): boolean {
 
 /**
  * Calculate healing amount with all bonuses and reductions
+ * Matches frontend healing formula: (Intellect * 1.0 + Wisdom * 0.5) * multipliers
+ * All stats are uncapped - better gear should heal more!
  */
 export function calculateHealing(
   baseHeal: number,
@@ -63,20 +65,24 @@ export function calculateHealing(
   bonuses: ViewerBonuses,
   calculateSkillBonuses: (hero: Hero) => any
 ): number {
-  // Intellect bonus (capped at 100 for 1% per point)
-  const cappedInt = Math.min(healer.intellect || 0, 100);
-  const intellectBonus = 1 + (cappedInt * 0.01);
-
-  // Healing Power bonus (capped at 30 for 1% per point)
-  const cappedHealingPower = Math.min(healer.healingPower || 0, 30);
-  const healingPowerBonus = 1 + (cappedHealingPower * 0.01);
+  // Intellect bonus (uncapped - 1% per point, better gear should heal more!)
+  const intellectBonus = 1 + ((healer.intellect || 0) * 0.01);
+  
+  // Wisdom bonus (uncapped - 0.5% per point, similar to caster damage scaling)
+  const wisdomBonus = 1 + ((healer.wisdom || 0) * 0.005);
+  
+  // Healing Power bonus (uncapped - 1% per point, better gear should heal more!)
+  const healingPowerBonus = 1 + ((healer.healingPower || 0) * 0.01);
+  
+  // Spell Damage also affects healing (healers use spell power for everything)
+  const spellDamageBonus = 1 + ((healer.spellDamage || 0) * 0.01);
 
   // Skill bonuses
   const skillBonuses = calculateSkillBonuses(healer);
   const healingMultiplier = 1 + (skillBonuses.healingMultiplier / 100);
 
-  // Calculate final healing
-  let healAmount = baseHeal * intellectBonus * healingPowerBonus * bonuses.healingMultiplier * healingMultiplier;
+  // Calculate final healing (all bonuses are multiplicative)
+  let healAmount = baseHeal * intellectBonus * wisdomBonus * healingPowerBonus * spellDamageBonus * bonuses.healingMultiplier * healingMultiplier;
 
   return Math.floor(healAmount);
 }

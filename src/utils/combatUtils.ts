@@ -289,6 +289,187 @@ export function getCharacterStats(hero: Hero) {
   stats.damageReduction += setBonuses.damageReduction || 0;
   stats.critChance += setBonuses.critChance || 0;
 
+  // Store pre-upgrade totals for upgrade calculations
+  // Upgrades are percentages of the hero's TOTAL accumulated stats (base + equipment + set bonuses)
+  const preUpgradeStats = {
+    attack: stats.attack,
+    defense: stats.defense,
+    maxHp: stats.maxHp,
+    critChance: stats.critChance,
+    healingPower: stats.healingPower,
+    spellDamage: stats.spellDamage
+  };
+
+  // Calculate gem stats from all equipped items
+  let gemStats = {
+    attack: 0,
+    defense: 0,
+    critChance: 0,
+    critDamage: 0,
+    damageReduction: 0,
+    maxHp: 0,
+    allStats: 0,
+    xpGain: 0,
+    goldGain: 0,
+    tokenGain: 0
+  };
+
+  // Calculate socket bonuses from all equipped items
+  let socketBonusStats = {
+    attack: 0,
+    defense: 0,
+    allStats: 0,
+    xpGain: 0,
+    goldGain: 0,
+    critChance: 0,
+    damageReduction: 0
+  };
+
+  // Process gems and socket bonuses from equipment
+  if (hero.equipment) {
+    const category = config.category;
+    const slots = category === 'tank' ? TANK_EQUIPMENT_SLOTS : EQUIPMENT_SLOTS;
+
+    for (const slot of slots) {
+      const item = hero.equipment[slot];
+      if (!item) continue;
+
+      // Add gem stats from sockets
+      if (item.sockets && Array.isArray(item.sockets)) {
+        item.sockets.forEach((socket: any) => {
+          if (socket.gem && socket.gem.stats) {
+            const gemStat = socket.gem.stats;
+            gemStats.attack += gemStat.attack || 0;
+            gemStats.defense += gemStat.defense || 0;
+            gemStats.critChance += gemStat.critChance || 0;
+            gemStats.critDamage += gemStat.critDamage || 0;
+            gemStats.damageReduction += gemStat.damageReduction || 0;
+            gemStats.maxHp += gemStat.maxHp || 0;
+            gemStats.allStats += gemStat.allStats || 0;
+            gemStats.xpGain += gemStat.xpGain || 0;
+            gemStats.goldGain += gemStat.goldGain || 0;
+            gemStats.tokenGain += gemStat.tokenGain || 0;
+          }
+        });
+
+        // Add socket bonuses for this item
+        if (item.socketBonuses) {
+          socketBonusStats.attack += item.socketBonuses.attack || 0;
+          socketBonusStats.defense += item.socketBonuses.defense || 0;
+          socketBonusStats.allStats += item.socketBonuses.allStats || 0;
+          socketBonusStats.xpGain += item.socketBonuses.xpGain || 0;
+          socketBonusStats.goldGain += item.socketBonuses.goldGain || 0;
+          socketBonusStats.critChance += item.socketBonuses.critChance || 0;
+          socketBonusStats.damageReduction += item.socketBonuses.damageReduction || 0;
+        }
+      }
+    }
+  }
+
+  // Apply gem stats (flat bonuses)
+  stats.attack += gemStats.attack;
+  stats.defense += gemStats.defense;
+  stats.maxHp += gemStats.maxHp;
+  stats.critChance += gemStats.critChance / 100; // Convert percentage to decimal
+  stats.damageReduction += gemStats.damageReduction;
+
+  // All stats bonus from gems (applied as percentage of current stats)
+  if (gemStats.allStats > 0) {
+    stats.attack += Math.floor(stats.attack * gemStats.allStats / 100);
+    stats.defense += Math.floor(stats.defense * gemStats.allStats / 100);
+    stats.maxHp += Math.floor(stats.maxHp * gemStats.allStats / 100);
+  }
+
+  // Apply socket bonuses (percentage bonuses)
+  if (socketBonusStats.attack > 0) {
+    stats.attack += Math.floor(stats.attack * socketBonusStats.attack / 100);
+  }
+  if (socketBonusStats.defense > 0) {
+    stats.defense += Math.floor(stats.defense * socketBonusStats.defense / 100);
+  }
+  if (socketBonusStats.allStats > 0) {
+    stats.attack += Math.floor(stats.attack * socketBonusStats.allStats / 100);
+    stats.defense += Math.floor(stats.defense * socketBonusStats.allStats / 100);
+    stats.maxHp += Math.floor(stats.maxHp * socketBonusStats.allStats / 100);
+  }
+  stats.critChance += socketBonusStats.critChance / 100; // Convert percentage to decimal
+  stats.damageReduction += socketBonusStats.damageReduction;
+
+  // Apply profession enchantments/upgrades (appliedUpgrades)
+  // These are flat bonuses from Mining/Enchanting profession items (Fiery Weapon, Vampiric Touch, etc.)
+  if (hero.equipment) {
+    const category = config.category;
+    const slots = category === 'tank' ? TANK_EQUIPMENT_SLOTS : EQUIPMENT_SLOTS;
+
+    for (const slot of slots) {
+      const item = hero.equipment[slot];
+      if (!item || !item.appliedUpgrades || !Array.isArray(item.appliedUpgrades)) continue;
+
+      item.appliedUpgrades.forEach((appliedUpgrade: any) => {
+        if (appliedUpgrade.bonus) {
+          // Apply flat bonuses from profession enchantments
+          stats.attack += appliedUpgrade.bonus.attack || 0;
+          stats.defense += appliedUpgrade.bonus.defense || 0;
+          stats.maxHp += appliedUpgrade.bonus.hp || 0;
+        }
+      });
+    }
+  }
+
+  // Apply upgrade bonuses (custom stat selection system)
+  // Upgrades are percentages of the hero's TOTAL stats, not the item's base stats
+  if (hero.equipment) {
+    const category = config.category;
+    const slots = category === 'tank' ? TANK_EQUIPMENT_SLOTS : EQUIPMENT_SLOTS;
+
+    for (const slot of slots) {
+      const item = hero.equipment[slot];
+      if (!item || !item.upgradeStats || !Array.isArray(item.upgradeStats)) continue;
+
+      item.upgradeStats.forEach((upgrade: any) => {
+        if (upgrade.selectedStats && Array.isArray(upgrade.selectedStats)) {
+          upgrade.selectedStats.forEach((selectedStat: any) => {
+            const statType = selectedStat.type;
+            const statValue = selectedStat.value || 0; // Percentage value
+
+            switch (statType) {
+              case 'attack':
+                // Percentage of hero's total attack (base + all equipment)
+                stats.attack += Math.floor(preUpgradeStats.attack * statValue / 100);
+                break;
+              case 'defense':
+                // Percentage of hero's total defense (base + all equipment)
+                stats.defense += Math.floor(preUpgradeStats.defense * statValue / 100);
+                break;
+              case 'hp':
+                // Percentage of hero's total HP (base + all equipment)
+                stats.maxHp += Math.floor(preUpgradeStats.maxHp * statValue / 100);
+                break;
+              case 'critChance':
+                // Crit chance is in percentage points (flat bonus, not percentage of base)
+                stats.critChance += statValue / 100; // Convert percentage to decimal
+                break;
+              case 'critDamage':
+                // Crit damage is percentage points (flat bonus)
+                // Could add to a separate critDamageMultiplier stat later
+                // For now, treat as flat attack bonus (smaller since it's conditional)
+                stats.attack += Math.floor(preUpgradeStats.attack * statValue / 200);
+                break;
+              case 'healingPower':
+                // Percentage of hero's total healing power
+                stats.healingPower += Math.floor(preUpgradeStats.healingPower * statValue / 100);
+                break;
+              case 'spellDamage':
+                // Percentage of hero's total spell damage
+                stats.spellDamage += Math.floor(preUpgradeStats.spellDamage * statValue / 100);
+                break;
+            }
+          });
+        }
+      });
+    }
+  }
+
   // Cap total crit chance at 35%
   stats.critChance = Math.min(stats.critChance || 0, 0.35);
 
