@@ -803,25 +803,114 @@ export const guildAPI = {
     return response.data;
   },
   
-  async joinGuild(guildId: string, userId: string): Promise<{success: boolean}> {
+  async joinGuild(
+    guildId: string, 
+    heroId: string, 
+    heroName?: string, 
+    heroRole?: string, 
+    heroLevel?: number, 
+    message?: string
+  ): Promise<{success: boolean, message: string}> {
     if (USE_MOCK) {
       return new Promise((resolve) => {
-        setTimeout(() => resolve({ success: true }), 300);
+        setTimeout(() => resolve({ success: true, message: 'Joined guild successfully' }), 300);
       });
     }
     
-    const response = await apiClient.post(`/api/guilds/${guildId}/join`, { userId });
+    const response = await apiClient.post(`/api/guilds/${guildId}/join`, { 
+      heroId, 
+      heroName, 
+      heroRole, 
+      heroLevel, 
+      message 
+    });
     return response.data;
   },
   
-  async leaveGuild(guildId: string, userId: string): Promise<{success: boolean}> {
+  async applyToGuild(
+    guildId: string, 
+    heroId: string, 
+    heroName?: string, 
+    heroRole?: string, 
+    heroLevel?: number, 
+    message?: string
+  ): Promise<{success: boolean, message: string}> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({ success: true, message: 'Application submitted' }), 300);
+      });
+    }
+    
+    const response = await apiClient.post(`/api/guilds/${guildId}/apply`, { 
+      heroId, 
+      heroName, 
+      heroRole, 
+      heroLevel, 
+      message 
+    });
+    return response.data;
+  },
+  
+  async leaveGuild(guildId: string, heroId: string): Promise<{success: boolean}> {
     if (USE_MOCK) {
       return new Promise((resolve) => {
         setTimeout(() => resolve({ success: true }), 300);
       });
     }
     
-    const response = await apiClient.post(`/api/guilds/${guildId}/leave`, { userId });
+    const response = await apiClient.post(`/api/guilds/${guildId}/leave`, { heroId });
+    return response.data;
+  },
+  
+  async updateGuildSettings(
+    guildId: string, 
+    heroId: string, 
+    joinMode: 'open' | 'approval'
+  ): Promise<Guild> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({ ...mockGuild, joinMode }), 300);
+      });
+    }
+    
+    const response = await apiClient.put(`/api/guilds/${guildId}/settings`, { 
+      heroId, 
+      joinMode 
+    });
+    return response.data;
+  },
+  
+  async approveApplication(
+    guildId: string, 
+    applicantHeroId: string, 
+    approverHeroId: string
+  ): Promise<{success: boolean, message: string}> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({ success: true, message: 'Application approved' }), 300);
+      });
+    }
+    
+    const response = await apiClient.post(`/api/guilds/${guildId}/approve/${applicantHeroId}`, { 
+      approverHeroId 
+    });
+    return response.data;
+  },
+  
+  async rejectApplication(
+    guildId: string, 
+    applicantHeroId: string, 
+    approverHeroId: string
+  ): Promise<{success: boolean, message: string}> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({ success: true, message: 'Application rejected' }), 300);
+      });
+    }
+    
+    const response = await apiClient.post(`/api/guilds/${guildId}/reject/${applicantHeroId}`, { 
+      approverHeroId 
+    });
     return response.data;
   },
   
@@ -839,7 +928,92 @@ export const guildAPI = {
   async getGuildMembersWithHeroes(guildId: string): Promise<{members: Array<{userId: string, username: string, hero: any | null}>}> {
     const response = await apiClient.get(`/api/guilds/${guildId}/members-with-heroes`);
     return response.data;
-  }
+  },
+  
+  async inviteToGuild(
+    guildId: string,
+    inviteeHeroId: string,
+    inviteeHeroName: string,
+    inviterHeroId: string,
+    inviterHeroName: string
+  ): Promise<{success: boolean, inviteId: string, invite: any}> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({ 
+          success: true, 
+          inviteId: 'mock-invite-id',
+          invite: { id: 'mock-invite-id', guildId, inviteeHeroId, status: 'pending' }
+        }), 300);
+      });
+    }
+    
+    const response = await apiClient.post(`/api/guilds/${guildId}/invite`, {
+      inviteeHeroId,
+      inviteeHeroName,
+      inviterHeroId,
+      inviterHeroName
+    });
+    return response.data;
+  },
+  
+  async getInvite(inviteId: string): Promise<any> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({ 
+          id: inviteId, 
+          guildId: 'mock-guild',
+          status: 'pending' 
+        }), 300);
+      });
+    }
+    
+    const response = await apiClient.get(`/api/guilds/invite/${inviteId}`);
+    return response.data;
+  },
+  
+  async acceptInvite(
+    inviteId: string,
+    heroId: string,
+    heroName?: string,
+    heroRole?: string,
+    heroLevel?: number
+  ): Promise<{success: boolean, message: string}> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({ success: true, message: 'Joined guild successfully' }), 300);
+      });
+    }
+    
+    const response = await apiClient.post(`/api/guilds/invite/${inviteId}/accept`, {
+      heroId,
+      heroName,
+      heroRole,
+      heroLevel
+    });
+    return response.data;
+  },
+  
+  async getPendingInvites(heroId: string): Promise<{invites: any[]}> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({ invites: [] }), 300);
+      });
+    }
+    
+    const response = await apiClient.get(`/api/guilds/invites/pending/${heroId}`);
+    return response.data;
+  },
+  
+  async getGuildInvites(guildId: string): Promise<{invites: any[]}> {
+    if (USE_MOCK) {
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({ invites: [] }), 300);
+      });
+    }
+    
+    const response = await apiClient.get(`/api/guilds/${guildId}/invites`);
+    return response.data;
+  },
 };
 
 // Raid API
@@ -2152,9 +2326,10 @@ export const webChatAPI = {
   async sendMessage(
     userId: string,
     heroId: string,
-    channel: 'party' | 'world' | 'whisper',
+    channel: 'party' | 'world' | 'whisper' | 'guild',
     message: string,
     partyId?: string,
+    guildId?: string,
     recipientId?: string
   ): Promise<{
     success: boolean;
@@ -2185,6 +2360,7 @@ export const webChatAPI = {
       channel,
       message,
       partyId,
+      guildId,
       recipientId
     });
     return response.data;
@@ -2194,8 +2370,9 @@ export const webChatAPI = {
    * Get chat history
    */
   async getHistory(
-    channel: 'party' | 'world' | 'whisper',
+    channel: 'party' | 'world' | 'whisper' | 'guild',
     partyId?: string,
+    guildId?: string,
     recipientId?: string,
     heroId?: string,
     limit: number = 50
@@ -2203,15 +2380,17 @@ export const webChatAPI = {
     success: boolean;
     messages: Array<{
       id: string;
-      channel: 'party' | 'world' | 'whisper';
+      channel: 'party' | 'world' | 'whisper' | 'guild';
       userId: string;
       username: string;
       heroId: string;
       heroName: string;
       heroRole: string;
+      heroLevel?: number;
       message: string;
       timestamp: number;
       partyId?: string;
+      guildId?: string;
       recipientId?: string;
       recipientHeroId?: string;
       recipientHeroName?: string;
@@ -2228,6 +2407,7 @@ export const webChatAPI = {
 
     const params: any = { channel, limit };
     if (partyId) params.partyId = partyId;
+    if (guildId) params.guildId = guildId;
     if (recipientId) params.recipientId = recipientId;
     if (heroId) params.heroId = heroId;
 

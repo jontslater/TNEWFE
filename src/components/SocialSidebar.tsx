@@ -1,23 +1,35 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import PartyPanel from './PartyPanel';
 import ChatPanel from './ChatPanel';
 import MailPanel from './MailPanel';
 import { Hero } from '../types/Hero';
 import { useAuth } from '../hooks/useAuth';
-import { partyAPI } from '../api/client';
+import { partyAPI, guildAPI } from '../api/client';
 
 interface SocialSidebarProps {
   hero: Hero | null;
   onPartyUpdate?: () => void;
+  whisperRequest?: { heroId: string; heroName: string } | null;
+  onWhisperRequestHandled?: () => void;
 }
 
-export default function SocialSidebar({ hero, onPartyUpdate }: SocialSidebarProps) {
+export default function SocialSidebar({ hero, onPartyUpdate, whisperRequest, onWhisperRequestHandled }: SocialSidebarProps) {
   const { user } = useAuth();
   const [activeSection, setActiveSection] = useState<'party' | 'chat' | 'mail'>('party');
   const [currentPartyId, setCurrentPartyId] = useState<string | undefined>(undefined);
   const [party, setParty] = useState<any>(null);
   const [queueTime, setQueueTime] = useState<number | null>(null);
   const [cancellingQueue, setCancellingQueue] = useState(false);
+  const [guildId, setGuildId] = useState<string | undefined>(undefined);
+
+  // Switch to chat section when whisper is requested
+  useEffect(() => {
+    if (whisperRequest) {
+      console.log('[SocialSidebar] Switching to chat for whisper:', whisperRequest);
+      setActiveSection('chat');
+      // Ensure we stay on chat section
+    }
+  }, [whisperRequest]);
 
   // Load current party ID and queue status for all tabs
   useEffect(() => {
@@ -67,6 +79,74 @@ export default function SocialSidebar({ hero, onPartyUpdate }: SocialSidebarProp
     const interval = setInterval(loadParty, 5000);
     return () => clearInterval(interval);
   }, [user]);
+
+  // Load hero's guild (guilds are per-hero, not per-user)
+  // Use a ref to track if we're currently loading to prevent multiple simultaneous calls
+  const loadingGuildRef = useRef(false);
+  const lastGuildCheckRef = useRef<{ heroId: string | null; guildId: string | null }>({ heroId: null, guildId: null });
+  
+  useEffect(() => {
+    const loadGuild = async () => {
+      if (!hero || !hero.id) {
+        setGuildId(undefined);
+        lastGuildCheckRef.current = { heroId: null, guildId: null };
+        return;
+      }
+
+      // Prevent multiple simultaneous calls
+      if (loadingGuildRef.current) {
+        return;
+      }
+
+      // Guilds store memberIds as hero IDs, so we need to look up by hero ID
+      const heroId = hero.id;
+      
+      // Skip if we just checked this hero and got the same result
+      if (lastGuildCheckRef.current.heroId === heroId) {
+        // Only skip if we're polling (not initial load)
+        const timeSinceLastCheck = Date.now() - (lastGuildCheckRef.current as any).lastCheckTime || 0;
+        if (timeSinceLastCheck < 4000) { // Less than 4 seconds since last check
+          return;
+        }
+      }
+      
+      try {
+        loadingGuildRef.current = true;
+        const guild = await guildAPI.getMyGuild(heroId);
+        const currentGuildId = guild?.id || null;
+        
+        // Only update if guild ID actually changed
+        if (lastGuildCheckRef.current.guildId !== currentGuildId) {
+          console.log('[SocialSidebar] Guild lookup for hero:', { heroId, heroName: hero.name, guild: currentGuildId || null });
+          if (guild && guild.id) {
+            console.log('[SocialSidebar] Guild found for hero:', { heroId, heroName: hero.name, guildId: guild.id });
+            setGuildId(guild.id);
+          } else {
+            setGuildId(undefined);
+          }
+          lastGuildCheckRef.current = { 
+            heroId, 
+            guildId: currentGuildId,
+            lastCheckTime: Date.now() as any
+          };
+        } else {
+          // Same guild, just update timestamp
+          (lastGuildCheckRef.current as any).lastCheckTime = Date.now();
+        }
+      } catch (error) {
+        console.error(`[SocialSidebar] Failed to load guild for hero ${heroId}:`, error);
+        setGuildId(undefined);
+        lastGuildCheckRef.current = { heroId, guildId: null, lastCheckTime: Date.now() as any };
+      } finally {
+        loadingGuildRef.current = false;
+      }
+    };
+
+    loadGuild();
+    // Poll for guild updates every 10 seconds (reduced frequency to prevent spam)
+    const interval = setInterval(loadGuild, 10000);
+    return () => clearInterval(interval);
+  }, [hero]);
 
   const handleCancelQueue = async () => {
     if (!party || !user) return;
@@ -152,7 +232,15 @@ export default function SocialSidebar({ hero, onPartyUpdate }: SocialSidebarProp
         ) : activeSection === 'mail' && hero ? (
           <MailPanel hero={hero} />
         ) : activeSection === 'chat' ? (
-          <ChatPanel hero={hero} partyId={currentPartyId} partyLeaderId={party?.leaderId} onPartyUpdate={onPartyUpdate} />
+          <ChatPanel 
+            hero={hero} 
+            partyId={currentPartyId} 
+            partyLeaderId={party?.leaderId} 
+            guildId={guildId} 
+            onPartyUpdate={onPartyUpdate}
+            whisperRequest={whisperRequest}
+            onWhisperRequestHandled={onWhisperRequestHandled}
+          />
         ) : null}
       </div>
 

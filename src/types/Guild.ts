@@ -1,18 +1,30 @@
 export interface Guild {
   id: string;
   name: string;
-  createdBy: string;
+  createdBy: string; // Hero ID who created the guild
+  createdByHeroName?: string; // Hero name for display
   level: number;
   gold: number;
   maxMembers: number;
-  members: GuildMember[];
-  perks: GuildPerks;
-  craftingStations: CraftingStation[];
+  memberIds?: string[]; // Array of hero IDs
+  members?: GuildMember[];
+  joinMode?: 'open' | 'approval'; // Join mode: 'open' = auto-join, 'approval' = requires approval
+  pendingApplications?: Array<{
+    heroId: string;
+    heroName: string;
+    heroRole?: string;
+    heroLevel?: number;
+    appliedAt: any; // Firestore Timestamp
+    message?: string;
+  }>;
+  perks?: GuildPerks;
+  craftingStations?: CraftingStation[];
   createdAt: number;
 }
 
 export interface GuildMember {
-  userId: string;
+  userId: string; // Hero ID
+  twitchUserId?: string; // User's Twitch ID for party invites
   username: string;
   rank: 'leader' | 'officer' | 'member';
   contributionPoints: number;

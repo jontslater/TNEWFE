@@ -4,15 +4,17 @@ import { webChatAPI } from '../api/client';
 
 export interface ChatMessage {
   id: string;
-  channel: 'party' | 'world' | 'whisper';
+  channel: 'party' | 'world' | 'whisper' | 'guild';
   userId: string;
   username: string;
   heroId: string;
   heroName: string;
   heroRole: string;
+  heroLevel?: number; // Hero level for display
   message: string;
   timestamp: number;
   partyId?: string;
+  guildId?: string; // For guild chat
   recipientId?: string; // For whispers
   recipientHeroId?: string; // For whispers
   recipientHeroName?: string; // For whispers
@@ -21,14 +23,16 @@ export interface ChatMessage {
 }
 
 interface UseChatOptions {
-  channel: 'party' | 'world' | 'whisper';
+  channel: 'party' | 'world' | 'whisper' | 'guild';
   partyId?: string;
+  guildId?: string; // For guild chat
   recipientId?: string; // For whispers - recipient hero ID
   enabled?: boolean;
   heroId?: string; // Current user's hero ID (required for whispers)
 }
 
-export function useChat({ channel, partyId, recipientId, enabled = true, heroId }: UseChatOptions) {
+
+export function useChat({ channel, partyId, guildId, recipientId, enabled = true, heroId }: UseChatOptions) {
   const { user } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [connected, setConnected] = useState(false);
@@ -42,23 +46,44 @@ export function useChat({ channel, partyId, recipientId, enabled = true, heroId 
     if (!enabled || !user) return;
 
     try {
-      // For whispers, only load history if we have a recipient and hero ID
-      // Otherwise, we'll rely on WebSocket messages
-      if (channel === 'whisper' && (!recipientId || !heroId)) {
-        console.log('[useChat] Skipping whisper history load - no recipient or hero ID');
-        setMessages([]);
+      // For whispers, load all whispers involving this hero (not just for a specific recipient)
+      // This ensures recipients can see whispers sent to them even if they haven't selected the sender
+      if (channel === 'whisper' && !heroId) {
+        console.log('[useChat] Skipping whisper history load - no hero ID');
+        // Don't clear messages - keep existing whispers that came via WebSocket
         return;
       }
       
-      const response = await webChatAPI.getHistory(channel, partyId, recipientId, heroId);
+      // For whispers, if no recipientId provided, load all whispers for this hero
+      // This allows seeing all whispers when switching to whisper channel
+      if (channel === 'whisper') {
+        console.log('[useChat] Loading whisper history for hero:', { heroId, recipientId: recipientId || 'all whispers' });
+      }
+      
+      const currentGuildId = channel === 'guild' ? guildId : undefined;
+      const response = await webChatAPI.getHistory(channel, partyId, currentGuildId, recipientId, heroId);
       if (response.success) {
-        setMessages(response.messages || []);
+        const historyMessages = response.messages || [];
+        // For whispers, merge with existing messages to preserve WebSocket messages
+        // For other channels, replace (since we're switching channels)
+        if (channel === 'whisper') {
+          setMessages(prev => {
+            // Merge history with existing messages, avoiding duplicates
+            const existingIds = new Set(prev.map(m => m.id));
+            const newMessages = historyMessages.filter(m => !existingIds.has(m.id));
+            return [...prev, ...newMessages].sort((a, b) => a.timestamp - b.timestamp);
+          });
+        } else {
+          setMessages(historyMessages);
+        }
       } else if (response.error === 'Firestore index required' && response.indexUrl) {
         // Show index creation link in console
         console.warn('[useChat] Firestore index required for chat history');
         console.warn('[useChat] Create index at:', response.indexUrl);
-        // Still set empty messages so chat works, just without history
-        setMessages([]);
+        // For whispers, don't clear - keep WebSocket messages. For other channels, clear is OK
+        if (channel !== 'whisper') {
+          setMessages([]);
+        }
       }
     } catch (error: any) {
       console.error('[useChat] Error loading history:', error);
@@ -115,21 +140,24 @@ export function useChat({ channel, partyId, recipientId, enabled = true, heroId 
               let shouldAdd = false;
               
               // Special handling: whispers are always relevant if hero is involved, regardless of active channel
+              // This ensures recipients see whispers even if they're on a different channel
               if (message.channel === 'whisper' && currentHeroId) {
                 // Accept all whispers where current hero is sender or recipient
                 shouldAdd = normalizedMessageHeroId === currentHeroId || normalizedMessageRecipientHeroId === currentHeroId;
                 
                 if (shouldAdd) {
-                  console.log('[useChat] Adding whisper message (regardless of channel):', {
+                  console.log('[useChat] ✅ Adding whisper message (hero involved, regardless of channel):', {
                     messageId: message.id,
                     messageHeroId: normalizedMessageHeroId,
                     messageRecipientHeroId: normalizedMessageRecipientHeroId,
                     currentHeroId: currentHeroId,
                     currentChannel: channel,
-                    activeRecipientId: recipientId ? String(recipientId) : null
+                    activeRecipientId: recipientId ? String(recipientId) : null,
+                    senderIsCurrentHero: normalizedMessageHeroId === currentHeroId,
+                    recipientIsCurrentHero: normalizedMessageRecipientHeroId === currentHeroId
                   });
                 } else {
-                  console.log('[useChat] Whisper message does not involve current hero:', {
+                  console.log('[useChat] ❌ Whisper message does not involve current hero:', {
                     messageId: message.id,
                     messageHeroId: normalizedMessageHeroId,
                     messageRecipientHeroId: normalizedMessageRecipientHeroId,
@@ -140,6 +168,27 @@ export function useChat({ channel, partyId, recipientId, enabled = true, heroId 
                 // For non-whisper channels, only add if matching current channel
                 if (channel === 'party') {
                   shouldAdd = message.partyId === partyId;
+                } else if (channel === 'guild') {
+                  // Normalize guildIds to strings for comparison
+                  const messageGuildId = String(message.guildId || '');
+                  const currentGuildId = String(guildId || '');
+                  shouldAdd = messageGuildId === currentGuildId;
+                  
+                  if (!shouldAdd) {
+                    console.log('[useChat] Guild message filtered out:', {
+                      messageId: message.id,
+                      messageGuildId,
+                      currentGuildId,
+                      messageChannel: message.channel,
+                      currentChannel: channel
+                    });
+                  } else {
+                    console.log('[useChat] Adding guild message:', {
+                      messageId: message.id,
+                      guildId: messageGuildId,
+                      heroName: message.heroName
+                    });
+                  }
                 } else {
                   shouldAdd = true; // world chat
                 }
@@ -198,12 +247,12 @@ export function useChat({ channel, partyId, recipientId, enabled = true, heroId 
       // Only close if user changes (not channel/party change)
       // We'll keep the connection alive for channel switches
     };
-  }, [enabled, user?.twitchId, user?.id, channel, partyId, recipientId]); // Include channel, partyId, recipientId for filtering
+  }, [enabled, user?.twitchId, user?.id, channel, partyId, guildId, recipientId]); // Include channel, partyId, guildId, recipientId for filtering
 
   // Load history on mount and when channel/party/recipient changes
   useEffect(() => {
     loadHistory();
-  }, [loadHistory, channel, partyId, recipientId]); // Reload when these change
+  }, [loadHistory, channel, partyId, guildId, recipientId]); // Reload when these change
 
   // Send message
   const sendMessage = useCallback(async (message: string) => {
@@ -222,12 +271,14 @@ export function useChat({ channel, partyId, recipientId, enabled = true, heroId 
         messageLength: message.length
       });
       
+      const currentGuildId = channel === 'guild' ? guildId : undefined;
       const response = await webChatAPI.sendMessage(
         userId,
         heroId,
         channel,
         message,
         partyId,
+        currentGuildId,
         recipientId
       );
 
@@ -246,7 +297,7 @@ export function useChat({ channel, partyId, recipientId, enabled = true, heroId 
     } finally {
       setSending(false);
     }
-  }, [user, channel, partyId, recipientId, sending, heroId]);
+  }, [user, channel, partyId, guildId, recipientId, sending, heroId]);
 
   // Delete message
   const deleteMessage = useCallback(async (messageId: string) => {

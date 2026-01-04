@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useHero } from '../hooks/useHero';
@@ -43,10 +43,25 @@ export default function PlayerPortal() {
   const [activeTab, setActiveTab] = useState<'hero' | 'inventory' | 'profession' | 'guild' | 'raids' | 'skills' | 'dungeon' | 'browserSource' | 'achievements' | 'allHeroes' | 'auction' | 'quests' | 'prestige'>('hero');
   const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
   const [adminSelectedHero, setAdminSelectedHero] = useState<Hero | null>(null);
+  const [testHeroId, setTestHeroId] = useState<string>('9CcbfbvtTt3ckqyn7sBH'); // Dingo Dynasty hero ID
+  const [testHero, setTestHero] = useState<Hero | null>(null);
+  const [loadingTestHero, setLoadingTestHero] = useState(false);
   const [showLoginReward, setShowLoginReward] = useState(false);
   const [loginRewardStatus, setLoginRewardStatus] = useState<any>(null);
   const [dungeonQueueStatus, setDungeonQueueStatus] = useState<any>(null);
   const [grantingFounderPack, setGrantingFounderPack] = useState<{ userId: string; tier: string } | null>(null);
+  const [whisperRequest, setWhisperRequest] = useState<{ heroId: string; heroName: string } | null>(null);
+
+  // Refresh guild data when switching to guild tab (to catch application approvals)
+  // Use a ref to track if we've already refreshed for this tab switch
+  const prevActiveTabRef = useRef(activeTab);
+  useEffect(() => {
+    // Only refresh if we just switched TO the guild tab (not if we're already on it)
+    if (activeTab === 'guild' && prevActiveTabRef.current !== 'guild' && hero?.id) {
+      refetchGuild();
+    }
+    prevActiveTabRef.current = activeTab;
+  }, [activeTab, hero?.id]); // Removed refetchGuild from dependencies to prevent loops
   
   // Handle navigation state and URL params (for setting active tab from other pages)
   useEffect(() => {
@@ -60,7 +75,20 @@ export default function PlayerPortal() {
     if (tabParam && ['hero', 'inventory', 'profession', 'guild', 'raids', 'skills', 'dungeon', 'browserSource', 'achievements', 'allHeroes', 'auction', 'quests', 'prestige'].includes(tabParam)) {
       setActiveTab(tabParam as any);
     }
-  }, [location.state, location.search]);
+    
+    // Handle guild invite link
+    const guildInviteParam = params.get('guildInvite');
+    if (guildInviteParam && hero) {
+      // Switch to guild tab and show invite acceptance
+      setActiveTab('guild');
+      // Store the invite ID (not guild ID) for GuildPanel to handle
+      sessionStorage.setItem('pendingGuildInvite', guildInviteParam);
+      // Clean up URL
+      const newParams = new URLSearchParams(params);
+      newParams.delete('guildInvite');
+      navigate({ search: newParams.toString() }, { replace: true });
+    }
+  }, [location.state, location.search, hero, navigate]);
 
   const groupedAllHeroes = useMemo(() => {
     const groups = new Map<string, { twitchId: string; label: string; heroes: Hero[] }>();
@@ -162,6 +190,57 @@ export default function PlayerPortal() {
       console.error('Failed to load world boss', err);
     }
   };
+
+  // Debug: Log hero data when it changes (MUST be before early returns to follow Rules of Hooks)
+  useEffect(() => {
+    if (hero) {
+      console.log('[PlayerPortal] Hero loaded:', {
+        id: hero.id,
+        name: hero.name,
+        role: hero.role,
+        level: hero.level,
+        hasStats: !!hero.stats,
+        hasEquipment: !!hero.equipment,
+        twitchUserId: (hero as any).twitchUserId,
+        allKeys: Object.keys(hero)
+      });
+      
+      // Check for missing critical fields
+      const criticalFields = ['id', 'name', 'role', 'level'];
+      const missing = criticalFields.filter(field => !hero[field as keyof Hero]);
+      if (missing.length > 0) {
+        console.error('[PlayerPortal] ⚠️ Hero missing critical fields:', missing, hero);
+      }
+    }
+  }, [hero]);
+
+  // Debug: Fetch the specific "Dingo Dynasty" hero by ID (MUST be before early returns to follow Rules of Hooks)
+  useEffect(() => {
+    const debugHeroId = '9CcbfbvtTt3ckqyn7sBH';
+    if (isAdmin) {
+      heroAPI.getHeroById(debugHeroId)
+        .then(hero => {
+          console.log('[PlayerPortal] 🔍 DEBUG: Fetched Dingo Dynasty hero:', {
+            id: hero.id,
+            name: hero.name,
+            role: hero.role,
+            level: hero.level,
+            twitchUserId: (hero as any).twitchUserId,
+            twitchId: (hero as any).twitchId,
+            hasStats: !!hero.stats,
+            hasEquipment: !!hero.equipment,
+            stats: hero.stats,
+            equipment: hero.equipment,
+            allFields: Object.keys(hero),
+            fullHero: hero
+          });
+        })
+        .catch(err => {
+          console.error('[PlayerPortal] ❌ Failed to fetch Dingo Dynasty hero:', err);
+        });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin]);
 
   if (!isAuthenticated) {
     return (
@@ -445,6 +524,8 @@ export default function PlayerPortal() {
                 onPartyUpdate={() => {
                   // Refresh party data if needed
                 }}
+                whisperRequest={whisperRequest}
+                onWhisperRequestHandled={() => setWhisperRequest(null)}
               />
             </div>
           )}
@@ -712,7 +793,17 @@ export default function PlayerPortal() {
             }}
           />
         )}
-            {activeTab === 'guild' && <GuildPanel guild={guild} refetchGuild={refetchGuild} />}
+            {activeTab === 'guild' && (
+              <GuildPanel 
+                guild={guild} 
+                refetchGuild={refetchGuild}
+                heroes={heroes} // Pass all user's heroes for invite selection
+                onStartWhisper={(heroId, heroName) => {
+                  setWhisperRequest({ heroId, heroName });
+                  setActiveTab('hero'); // Switch to hero tab where SocialSidebar is visible
+                }}
+              />
+            )}
             {activeTab === 'raids' && <RaidBrowser hero={hero} userId={hero?.id || user?.id} />}
             {activeTab === 'skills' && <SkillsPage hero={hero} userId={user?.id} />}
             {activeTab === 'achievements' && <AchievementsPanel hero={hero} onUpdate={refetchHero} />}
@@ -768,6 +859,119 @@ export default function PlayerPortal() {
 
             {activeTab === 'allHeroes' && isAdmin && (
               <div className="mt-4 space-y-6">
+                {/* Test Hero Loader - For debugging specific heroes */}
+                <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+                  <h3 className="text-lg font-bold text-white mb-3">🔍 Test Hero by ID</h3>
+                  <div className="flex gap-2 mb-3">
+                    <input
+                      type="text"
+                      value={testHeroId}
+                      onChange={(e) => setTestHeroId(e.target.value)}
+                      placeholder="Enter hero ID..."
+                      className="flex-1 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+                    />
+                    <button
+                      onClick={async () => {
+                        if (!testHeroId.trim()) return;
+                        setLoadingTestHero(true);
+                        try {
+                          const hero = await heroAPI.getHeroById(testHeroId.trim());
+                          setTestHero(hero);
+                          console.log('[Test Hero] Loaded hero:', {
+                            id: hero.id,
+                            name: hero.name,
+                            role: hero.role,
+                            level: hero.level,
+                            twitchUserId: (hero as any).twitchUserId,
+                            twitchId: (hero as any).twitchId,
+                            hasStats: !!hero.stats,
+                            hasEquipment: !!hero.equipment,
+                            stats: hero.stats,
+                            equipment: hero.equipment,
+                            allFields: Object.keys(hero),
+                            fullHero: hero
+                          });
+                        } catch (err: any) {
+                          console.error('[Test Hero] Failed to load:', err);
+                          alert(`Failed to load hero: ${err.response?.data?.error || err.message}`);
+                          setTestHero(null);
+                        } finally {
+                          setLoadingTestHero(false);
+                        }
+                      }}
+                      disabled={loadingTestHero || !testHeroId.trim()}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white text-sm rounded font-semibold transition-colors"
+                    >
+                      {loadingTestHero ? 'Loading...' : 'Load Hero'}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setTestHeroId('9CcbfbvtTt3ckqyn7sBH');
+                      }}
+                      className="px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white text-xs rounded font-semibold transition-colors"
+                      title="Load Dingo Dynasty hero"
+                    >
+                      Dingo
+                    </button>
+                  </div>
+                  {testHero && (
+                    <div className="mt-3 p-3 bg-gray-900 rounded border border-gray-600">
+                      <div className="text-sm text-white font-semibold mb-2">
+                        {testHero.name} (Lv {testHero.level} {testHero.role})
+                      </div>
+                      <div className="text-xs text-gray-400 space-y-1">
+                        <div>Hero ID: {testHero.id}</div>
+                        <div>Twitch User ID: {(testHero as any).twitchUserId || 'Missing'}</div>
+                        <div>Twitch ID: {(testHero as any).twitchId || 'Missing'}</div>
+                        <div>Has Stats: {testHero.stats ? 'Yes' : 'No'}</div>
+                        <div>Has Equipment: {testHero.equipment ? 'Yes' : 'No'}</div>
+                        <div>Has Name: {testHero.name ? 'Yes' : 'No'}</div>
+                        <div>Has Role: {testHero.role ? 'Yes' : 'No'}</div>
+                        <div>Has Level: {testHero.level !== undefined && testHero.level !== null ? 'Yes' : 'No'}</div>
+                      </div>
+                      <div className="mt-3 flex gap-2">
+                        <button
+                          onClick={() => {
+                            // Temporarily set this hero as the active hero to test their experience
+                            console.log('[Test Hero] Setting as admin selected hero:', testHero);
+                            setAdminSelectedHero(testHero);
+                            alert(`Hero loaded! Scroll down to the "Selected Hero Details" section to see their dashboard. This will help identify what's causing the black screen.`);
+                          }}
+                          className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs rounded font-semibold transition-colors"
+                        >
+                          View Hero Dashboard
+                        </button>
+                        <button
+                          onClick={() => {
+                            // Try to simulate what happens when this hero loads in the portal
+                            console.log('[Test Hero] Simulating portal load for hero:', testHero);
+                            
+                            // Check for missing critical fields
+                            const criticalFields = ['id', 'name', 'role', 'level'];
+                            const missing = criticalFields.filter(field => !testHero[field as keyof Hero]);
+                            
+                            if (missing.length > 0) {
+                              alert(`⚠️ CRITICAL: Hero is missing required fields: ${missing.join(', ')}\n\nThis will cause the black screen!`);
+                            } else if (!testHero.stats) {
+                              alert(`⚠️ WARNING: Hero is missing stats object. This may cause rendering issues.`);
+                            } else if (!testHero.equipment) {
+                              alert(`⚠️ WARNING: Hero is missing equipment object. This may cause rendering issues.`);
+                            } else {
+                              alert(`✅ Hero data looks complete. Check console for full details.`);
+                            }
+                            
+                            // Log full hero structure
+                            console.log('[Test Hero] Full hero structure:', JSON.stringify(testHero, null, 2));
+                          }}
+                          className="px-3 py-1.5 bg-yellow-600 hover:bg-yellow-700 text-white text-xs rounded font-semibold transition-colors"
+                        >
+                          Check for Issues
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 {allHeroesLoading && (
                   <p className="text-gray-300 text-sm">Loading all heroes...</p>
                 )}
@@ -946,9 +1150,25 @@ export default function PlayerPortal() {
                       <div className="lg:w-1/2">
                         {adminSelectedHero && (
                           <div className="bg-gray-900 rounded-lg p-4 border border-blue-700 lg:sticky lg:top-4 max-h-[80vh] overflow-y-auto">
-                            <h3 className="text-lg font-bold text-white mb-3">
-                              Selected Hero Details
-                            </h3>
+                            <div className="flex items-center justify-between mb-3">
+                              <h3 className="text-lg font-bold text-white">
+                                Selected Hero Details
+                              </h3>
+                              <button
+                                onClick={() => setAdminSelectedHero(null)}
+                                className="text-xs px-2 py-1 bg-gray-700 hover:bg-gray-600 text-white rounded"
+                              >
+                                Close
+                              </button>
+                            </div>
+                            <div className="mb-3 p-2 bg-gray-800 rounded text-xs text-gray-300">
+                              <div>Hero ID: {adminSelectedHero.id}</div>
+                              <div>Name: {adminSelectedHero.name || 'MISSING'}</div>
+                              <div>Role: {adminSelectedHero.role || 'MISSING'}</div>
+                              <div>Level: {adminSelectedHero.level ?? 'MISSING'}</div>
+                              <div>Has Stats: {adminSelectedHero.stats ? 'Yes' : 'No'}</div>
+                              <div>Has Equipment: {adminSelectedHero.equipment ? 'Yes' : 'No'}</div>
+                            </div>
                             <HeroDashboard hero={adminSelectedHero} />
                           </div>
                         )}

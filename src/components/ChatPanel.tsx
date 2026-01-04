@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useChat, ChatMessage } from '../hooks/useChat';
 import { useAuth } from '../hooks/useAuth';
 import { Hero } from '../types/Hero';
-import { webChatAPI, partyAPI } from '../api/client';
+import { webChatAPI, partyAPI, guildAPI } from '../api/client';
 import { getFilterSettings, saveFilterSettings, shouldFilterMessage, FilterSettings, MaturityLevel } from '../utils/contentFilter';
 import '../utils/testContentFilter'; // Load test utilities
 
@@ -10,12 +10,15 @@ interface ChatPanelProps {
   hero: Hero | null;
   partyId?: string;
   partyLeaderId?: string; // To check if current user can invite
+  guildId?: string; // Current user's guild ID
   onPartyUpdate?: () => void; // Callback to refresh party data
+  whisperRequest?: { heroId: string; heroName: string } | null; // Request to start whisper
+  onWhisperRequestHandled?: () => void; // Callback when whisper is handled
 }
 
-export default function ChatPanel({ hero, partyId, partyLeaderId, onPartyUpdate }: ChatPanelProps) {
+export default function ChatPanel({ hero, partyId, partyLeaderId, guildId, onPartyUpdate, whisperRequest, onWhisperRequestHandled }: ChatPanelProps) {
   const { user } = useAuth();
-  const [activeChannel, setActiveChannel] = useState<'party' | 'world' | 'whisper'>('world');
+  const [activeChannel, setActiveChannel] = useState<'party' | 'world' | 'whisper' | 'guild'>('world');
   const [messageInput, setMessageInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -37,13 +40,20 @@ export default function ChatPanel({ hero, partyId, partyLeaderId, onPartyUpdate 
     heroLevel: number;
   }>>([]);
   const [skipAutoSelect, setSkipAutoSelect] = useState(false); // Flag to prevent auto-select after manual clear
+  const [selectedConversation, setSelectedConversation] = useState<{ heroId: string; heroName: string } | null>(null); // Selected whisper conversation
   
   // Admin check
   const isAdmin = user?.twitchUsername?.toLowerCase() === 'theneverendingwar';
 
   // Determine if user is in a party and is the leader
   const isInParty = !!partyId;
+  const isInGuild = !!guildId;
   const userId = user?.twitchId || user?.id || '';
+  
+  // Debug logging for guild chat
+  if (guildId) {
+    console.log('[ChatPanel] Guild chat available:', { guildId, isInGuild });
+  }
   // Normalize IDs to strings for comparison
   const normalizedUserId = String(userId);
   const normalizedPartyLeaderId = partyLeaderId ? String(partyLeaderId) : null;
@@ -59,7 +69,19 @@ export default function ChatPanel({ hero, partyId, partyLeaderId, onPartyUpdate 
     });
   }
   const currentPartyId = activeChannel === 'party' ? partyId : undefined;
+  const currentGuildId = activeChannel === 'guild' ? guildId : undefined;
   const currentRecipientHeroId = activeChannel === 'whisper' ? activeWhisperRecipient?.heroId : undefined;
+  
+  // Debug logging for whisper recipient
+  useEffect(() => {
+    if (activeChannel === 'whisper') {
+      console.log('[ChatPanel] Whisper channel active, recipient:', {
+        activeWhisperRecipient,
+        currentRecipientHeroId,
+        heroId: hero?.id
+      });
+    }
+  }, [activeChannel, activeWhisperRecipient, currentRecipientHeroId, hero?.id]);
 
   // Load blocked users
   useEffect(() => {
@@ -163,6 +185,7 @@ export default function ChatPanel({ hero, partyId, partyLeaderId, onPartyUpdate 
   } = useChat({
     channel: activeChannel,
     partyId: currentPartyId,
+    guildId: currentGuildId,
     recipientId: currentRecipientHeroId,
     enabled: true,
     heroId: hero?.id
@@ -170,6 +193,7 @@ export default function ChatPanel({ hero, partyId, partyLeaderId, onPartyUpdate 
 
   // Handle starting a whisper from user menu or search
   const handleStartWhisper = (heroId: string, heroName: string) => {
+    console.log('[ChatPanel] Starting whisper with:', { heroId, heroName });
     // Use hero ID for hero-to-hero messaging
     setActiveWhisperRecipient({ heroId, heroName });
     setActiveChannel('whisper');
@@ -177,7 +201,53 @@ export default function ChatPanel({ hero, partyId, partyLeaderId, onPartyUpdate 
     // Clear search when starting a whisper
     setWhisperSearch('');
     setWhisperSearchResults([]);
+    console.log('[ChatPanel] Whisper started, channel set to whisper, recipient:', { heroId, heroName });
   };
+
+  // Handle whisper request from external component (e.g., GuildPanel)
+  // Use a ref to track if we've processed this request to avoid re-processing
+  const processedWhisperRequestRef = useRef<string | null>(null);
+  
+  useEffect(() => {
+    if (whisperRequest && whisperRequest.heroId && whisperRequest.heroName) {
+      // Check if we've already processed this request
+      const requestKey = `${whisperRequest.heroId}-${whisperRequest.heroName}`;
+      if (processedWhisperRequestRef.current === requestKey) {
+        console.log('[ChatPanel] Already processed this whisper request, skipping');
+        return;
+      }
+      
+      console.log('[ChatPanel] Handling whisper request:', whisperRequest);
+      processedWhisperRequestRef.current = requestKey;
+      
+      // Store the request values to avoid stale closure
+      const requestHeroId = whisperRequest.heroId;
+      const requestHeroName = whisperRequest.heroName;
+      
+      // Use a delay to ensure SocialSidebar has switched to chat section and ChatPanel is mounted
+      const timer = setTimeout(() => {
+        console.log('[ChatPanel] Executing whisper request after delay');
+        // Use the same handleStartWhisper function that works from chat messages
+        handleStartWhisper(requestHeroId, requestHeroName);
+        
+        // Clear the request after processing - delay to ensure state updates are applied
+        // Don't clear immediately to prevent any race conditions
+        if (onWhisperRequestHandled) {
+          setTimeout(() => {
+            console.log('[ChatPanel] Clearing whisper request');
+            onWhisperRequestHandled();
+            // Reset the processed ref after clearing
+            processedWhisperRequestRef.current = null;
+          }, 1000); // Longer delay to ensure state is fully set and stable
+        }
+      }, 200); // Delay to ensure component is fully mounted and chat section is active
+      return () => clearTimeout(timer);
+    } else {
+      // Reset processed ref when whisperRequest is cleared
+      processedWhisperRequestRef.current = null;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [whisperRequest]);
 
   // Handle inviting user to party
   const handleInviteToParty = async (inviteeId: string, inviteeName: string, inviteeHeroId: string, inviteeHeroName: string, inviteeHeroRole: string, inviteeHeroLevel: number) => {
@@ -269,44 +339,65 @@ export default function ChatPanel({ hero, partyId, partyLeaderId, onPartyUpdate 
     return () => clearTimeout(timeoutId);
   }, [whisperSearch]);
 
-  // Auto-select whisper recipient when receiving a whisper message (only if no recipient is selected and not manually cleared)
+  // Auto-select whisper recipient when receiving a whisper message
+  // This runs when:
+  // 1. User switches to whisper channel and there's a recent whisper
+  // 2. A new whisper arrives and no recipient is selected
+  // 3. A new whisper arrives from someone different than the currently selected recipient
   useEffect(() => {
-    if (activeChannel !== 'whisper' || !hero?.id || activeWhisperRecipient || skipAutoSelect) return;
+    if (!hero?.id) return;
     
-    // Find the most recent whisper message that involves this hero
     const currentHeroId = String(hero.id);
-    const mostRecentWhisper = messages
+    
+    // Find all whispers involving this hero, sorted by most recent
+    const relevantWhispers = messages
       .filter(m => {
         if (m.channel !== 'whisper' || m.deletedAt) return false;
         const messageHeroId = String(m.heroId || '');
         const messageRecipientHeroId = String(m.recipientHeroId || '');
-        const involvesHero = messageHeroId === currentHeroId || messageRecipientHeroId === currentHeroId;
-        return involvesHero;
+        return messageHeroId === currentHeroId || messageRecipientHeroId === currentHeroId;
       })
-      .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))[0];
+      .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
     
-    if (mostRecentWhisper) {
-      // Determine which hero is the other party (sender or recipient)
-      const messageHeroId = String(mostRecentWhisper.heroId || '');
-      const messageRecipientHeroId = String(mostRecentWhisper.recipientHeroId || '');
-      
-      // If current hero is the sender, the recipient is the other party
-      // If current hero is the recipient, the sender is the other party
-      const otherHeroId = messageHeroId === currentHeroId ? messageRecipientHeroId : messageHeroId;
-      const otherHeroName = messageHeroId === currentHeroId 
-        ? (mostRecentWhisper.recipientHeroName || 'Unknown')
-        : (mostRecentWhisper.heroName || 'Unknown');
-      
-      if (otherHeroId && otherHeroId !== currentHeroId) {
-        console.log('[ChatPanel] Auto-selecting whisper recipient:', {
-          otherHeroId,
-          otherHeroName,
-          messageId: mostRecentWhisper.id
-        });
-        setActiveWhisperRecipient({ heroId: otherHeroId, heroName: otherHeroName });
+    if (relevantWhispers.length === 0) return;
+    
+    const mostRecentWhisper = relevantWhispers[0];
+    const messageHeroId = String(mostRecentWhisper.heroId || '');
+    const messageRecipientHeroId = String(mostRecentWhisper.recipientHeroId || '');
+    
+    // Determine the other party (sender or recipient)
+    const otherHeroId = messageHeroId === currentHeroId ? messageRecipientHeroId : messageHeroId;
+    const otherHeroName = messageHeroId === currentHeroId 
+      ? (mostRecentWhisper.recipientHeroName || 'Unknown')
+      : (mostRecentWhisper.heroName || 'Unknown');
+    
+    if (!otherHeroId || otherHeroId === currentHeroId) return;
+    
+    // Auto-select if:
+    // 1. No recipient is selected and we're on whisper channel (or just switched to it)
+    // 2. We're on whisper channel and the most recent whisper is from someone different
+    const shouldAutoSelect = 
+      (!activeWhisperRecipient && !skipAutoSelect) ||
+      (activeChannel === 'whisper' && activeWhisperRecipient && 
+       String(activeWhisperRecipient.heroId) !== otherHeroId && 
+       !skipAutoSelect &&
+       // Only auto-select if the most recent whisper is very recent (within last 30 seconds)
+       (Date.now() - (mostRecentWhisper.timestamp || 0)) < 30000);
+    
+    if (shouldAutoSelect) {
+      console.log('[ChatPanel] Auto-selecting whisper recipient:', {
+        otherHeroId,
+        otherHeroName,
+        messageId: mostRecentWhisper.id,
+        reason: !activeWhisperRecipient ? 'no recipient selected' : 'new whisper from different user'
+      });
+      setActiveWhisperRecipient({ heroId: otherHeroId, heroName: otherHeroName });
+      // If we're not on whisper channel, switch to it
+      if (activeChannel !== 'whisper') {
+        setActiveChannel('whisper');
       }
     }
-  }, [messages, activeChannel, hero?.id, activeWhisperRecipient]);
+  }, [messages, activeChannel, hero?.id, activeWhisperRecipient, skipAutoSelect]);
 
   // Auto-scroll to bottom on new messages (but not when channel changes)
   const prevChannelRef = useRef(activeChannel);
@@ -369,6 +460,7 @@ export default function ChatPanel({ hero, partyId, partyLeaderId, onPartyUpdate 
     }
   };
 
+  // Get color for the entire role (legacy, used for hero name)
   const getRoleColor = (role: string) => {
     const roleLower = role.toLowerCase();
     if (['guardian', 'paladin', 'warden', 'bloodknight', 'vanguard', 'brewmaster'].includes(roleLower)) {
@@ -377,6 +469,60 @@ export default function ChatPanel({ hero, partyId, partyLeaderId, onPartyUpdate 
       return 'text-green-400'; // Healer
     }
     return 'text-red-400'; // DPS
+  };
+
+  // Get class-specific color for individual class names in chat
+  const getClassColor = (role: string): string => {
+    const roleLower = role.toLowerCase();
+    
+    // Tanks - various shades of blue/cyan
+    const tankColors: Record<string, string> = {
+      guardian: 'text-blue-300',      // Light blue
+      paladin: 'text-cyan-300',       // Cyan
+      warden: 'text-teal-300',        // Teal
+      bloodknight: 'text-red-400',    // Red (blood theme)
+      vanguard: 'text-indigo-300',    // Indigo
+      brewmaster: 'text-amber-400',   // Amber (brew theme)
+    };
+    
+    // Healers - various shades of green/emerald
+    const healerColors: Record<string, string> = {
+      cleric: 'text-green-300',       // Light green
+      atoner: 'text-emerald-300',     // Emerald
+      druid: 'text-lime-400',         // Lime
+      lightbringer: 'text-yellow-300', // Yellow (light theme)
+      shaman: 'text-purple-300',      // Purple (spirit theme)
+      mistweaver: 'text-sky-300',     // Sky blue (mist theme)
+      chronomancer: 'text-violet-300', // Violet (time theme)
+      bard: 'text-pink-300',          // Pink (music theme)
+    };
+    
+    // DPS - various shades of red/orange/yellow
+    const dpsColors: Record<string, string> = {
+      berserker: 'text-red-500',      // Bright red
+      crusader: 'text-orange-400',     // Orange
+      assassin: 'text-gray-400',       // Gray (stealth theme)
+      reaper: 'text-slate-400',        // Slate (death theme)
+      bladedancer: 'text-fuchsia-400', // Fuchsia
+      monk: 'text-yellow-400',        // Yellow
+      stormwarrior: 'text-blue-400',  // Blue (storm theme)
+      hunter: 'text-green-500',        // Green (nature theme)
+      mage: 'text-purple-400',         // Purple (magic theme)
+      warlock: 'text-purple-600',      // Dark purple (dark magic)
+      ranger: 'text-emerald-400',      // Emerald (nature theme)
+      shadowpriest: 'text-indigo-400', // Indigo (shadow theme)
+      mooncaller: 'text-blue-200',    // Light blue (moon theme)
+      stormcaller: 'text-cyan-400',   // Cyan (storm theme)
+      dragonsorcerer: 'text-red-600', // Dark red (dragon theme)
+    };
+    
+    // Check all color maps
+    if (tankColors[roleLower]) return tankColors[roleLower];
+    if (healerColors[roleLower]) return healerColors[roleLower];
+    if (dpsColors[roleLower]) return dpsColors[roleLower];
+    
+    // Default fallback
+    return 'text-gray-300';
   };
 
   const getFounderBadgePath = (tier: string | null | undefined): string | null => {
@@ -403,21 +549,41 @@ export default function ChatPanel({ hero, partyId, partyLeaderId, onPartyUpdate 
     return titleMap[tierLower] || 'Founder';
   };
 
-  // Filter messages by current channel, party, blocked users, and content
+    // Filter messages by current channel, party, guild, blocked users, and content
   const filteredMessages = messages.filter(m => {
     if (m.deletedAt) return false;
-    if (m.channel !== activeChannel) return false;
+    
+    // Special case: whispers should be visible when on whisper channel, even if not from active recipient
+    // This ensures recipients can see whispers sent to them
+    if (m.channel === 'whisper' && activeChannel === 'whisper') {
+      // Will be handled in the whisper-specific filtering below
+    } else if (m.channel !== activeChannel) {
+      return false;
+    }
     if (activeChannel === 'party' && m.partyId !== partyId) return false;
+    if (activeChannel === 'guild') {
+      // Normalize guildIds to strings for comparison
+      const messageGuildId = String(m.guildId || '');
+      const currentGuildId = String(guildId || '');
+      if (messageGuildId !== currentGuildId) {
+        console.log('[ChatPanel] Filtering out guild message (guildId mismatch):', {
+          messageId: m.id,
+          messageGuildId,
+          currentGuildId,
+          messageChannel: m.channel,
+          activeChannel
+        });
+        return false;
+      }
+    }
     if (activeChannel === 'whisper') {
-      // For whispers, filter based on active recipient hero
+      // For whispers, filter based on selected conversation
       // Normalize IDs to strings for consistent comparison
       const currentHeroId = String(hero?.id || '');
       const messageHeroId = String(m.heroId || '');
       const messageRecipientHeroId = String(m.recipientHeroId || '');
-      const activeRecipientHeroId = activeWhisperRecipient ? String(activeWhisperRecipient.heroId) : null;
       
-      // If no active recipient selected, show all whispers involving current hero
-      // This allows receiving whispers even when no recipient is selected
+      // If no current hero, filter out
       if (!currentHeroId) {
         return false;
       }
@@ -428,27 +594,19 @@ export default function ChatPanel({ hero, partyId, partyLeaderId, onPartyUpdate 
         return false;
       }
       
-      // If no active recipient selected, show all whispers involving current hero
-      if (!activeRecipientHeroId) {
-        return true; // Show all whispers for current hero when no recipient selected
-      }
-      
-      // If recipient is selected, only show messages with that specific recipient
-      const isRelevant = (messageHeroId === currentHeroId && messageRecipientHeroId === activeRecipientHeroId) ||
-                        (messageHeroId === activeRecipientHeroId && messageRecipientHeroId === currentHeroId);
-      
-      if (!isRelevant) {
-        // Debug log for filtering out messages
-        console.log('[ChatPanel] Filtering out whisper message:', {
-          messageId: m.id,
-          messageHeroId,
-          messageRecipientHeroId,
-          currentHeroId,
-          activeRecipientHeroId,
-          isRelevant
-        });
+      // If no conversation selected, don't show any messages (user needs to select a conversation)
+      if (!selectedConversation) {
         return false;
       }
+      
+      // Filter to only show messages from the selected conversation
+      // A conversation is between currentHeroId and selectedConversation.heroId
+      const selectedHeroId = String(selectedConversation.heroId);
+      const isFromSelectedConversation = 
+        (messageHeroId === currentHeroId && messageRecipientHeroId === selectedHeroId) ||
+        (messageHeroId === selectedHeroId && messageRecipientHeroId === currentHeroId);
+      
+      return isFromSelectedConversation;
     }
     // Filter blocked users
     if (blockedUserIds.has(m.userId)) return false;
@@ -460,8 +618,98 @@ export default function ChatPanel({ hero, partyId, partyLeaderId, onPartyUpdate 
     return true;
   });
 
+  // Group whispers into conversations for the conversation list
+  const whisperConversations = (() => {
+    if (!hero?.id || activeChannel !== 'whisper') return [];
+    
+    const currentHeroId = String(hero.id);
+    const conversationMap = new Map<string, {
+      heroId: string;
+      heroName: string;
+      heroRole?: string;
+      heroLevel?: number;
+      lastMessage: ChatMessage;
+      unreadCount: number;
+    }>();
+    
+    // Find all whispers involving current hero
+    messages
+      .filter(m => {
+        if (m.channel !== 'whisper' || m.deletedAt) return false;
+        const messageHeroId = String(m.heroId || '');
+        const messageRecipientHeroId = String(m.recipientHeroId || '');
+        return messageHeroId === currentHeroId || messageRecipientHeroId === currentHeroId;
+      })
+      .forEach(m => {
+        const messageHeroId = String(m.heroId || '');
+        const messageRecipientHeroId = String(m.recipientHeroId || '');
+        
+        // Determine the other participant
+        const otherHeroId = messageHeroId === currentHeroId ? messageRecipientHeroId : messageHeroId;
+        const otherHeroName = messageHeroId === currentHeroId 
+          ? (m.recipientHeroName || 'Unknown')
+          : (m.heroName || 'Unknown');
+        
+        if (!otherHeroId || otherHeroId === currentHeroId) return;
+        
+        const existing = conversationMap.get(otherHeroId);
+        if (!existing || (m.timestamp || 0) > (existing.lastMessage.timestamp || 0)) {
+          conversationMap.set(otherHeroId, {
+            heroId: otherHeroId,
+            heroName: otherHeroName,
+            heroRole: m.heroRole,
+            heroLevel: m.heroLevel,
+            lastMessage: m,
+            unreadCount: 0 // Could implement unread tracking later
+          });
+        }
+      });
+    
+    // Sort by most recent message
+    return Array.from(conversationMap.values())
+      .sort((a, b) => (b.lastMessage.timestamp || 0) - (a.lastMessage.timestamp || 0));
+  })();
+
+  // Auto-select conversation when switching to whisper channel or receiving a new whisper
+  useEffect(() => {
+    if (activeChannel === 'whisper' && whisperConversations.length > 0) {
+      // If no conversation selected, select the most recent one
+      if (!selectedConversation) {
+        const mostRecent = whisperConversations[0];
+        setSelectedConversation({ heroId: mostRecent.heroId, heroName: mostRecent.heroName });
+        setActiveWhisperRecipient({ heroId: mostRecent.heroId, heroName: mostRecent.heroName });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeChannel, whisperConversations.length, selectedConversation]);
+
+  // Sync selectedConversation with activeWhisperRecipient when starting a new whisper
+  useEffect(() => {
+    if (activeWhisperRecipient && activeChannel === 'whisper') {
+      // Check if this is a new conversation or existing one
+      const existingConversation = whisperConversations.find(
+        c => c.heroId === activeWhisperRecipient.heroId
+      );
+      
+      if (!existingConversation) {
+        // New conversation - add it to selected
+        setSelectedConversation({
+          heroId: activeWhisperRecipient.heroId,
+          heroName: activeWhisperRecipient.heroName
+        });
+      } else if (selectedConversation?.heroId !== activeWhisperRecipient.heroId) {
+        // Switch to existing conversation
+        setSelectedConversation({
+          heroId: activeWhisperRecipient.heroId,
+          heroName: activeWhisperRecipient.heroName
+        });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeWhisperRecipient, activeChannel, whisperConversations]);
+
   return (
-    <div className="bg-gray-800 rounded-lg p-5 border border-gray-700 flex flex-col h-[600px]">
+    <div className="bg-gray-800 rounded-lg p-5 border border-gray-700 flex flex-col h-[700px]">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-lg font-bold text-white">💬 Chat</h3>
         <div className="flex items-center gap-2">
@@ -522,6 +770,30 @@ export default function ChatPanel({ hero, partyId, partyLeaderId, onPartyUpdate 
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
+            if (isInGuild) {
+              setActiveChannel('guild');
+            }
+          }}
+          onMouseDown={(e) => {
+            e.preventDefault(); // Prevent focus which can cause scroll
+          }}
+          disabled={!isInGuild}
+          title={!isInGuild ? 'Join a guild to use guild chat' : 'Guild chat'}
+          className={`flex-1 px-3 py-1.5 rounded text-sm font-semibold transition-colors ${
+            !isInGuild
+              ? 'bg-gray-800 text-gray-500 cursor-not-allowed opacity-50'
+              : activeChannel === 'guild'
+              ? 'bg-orange-600 text-white'
+              : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+          }`}
+        >
+          🛡️ Guild
+        </button>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
             setActiveChannel('whisper');
           }}
           onMouseDown={(e) => {
@@ -537,8 +809,109 @@ export default function ChatPanel({ hero, partyId, partyLeaderId, onPartyUpdate 
         </button>
       </div>
 
-      {/* Whisper Recipient Selection */}
+      {/* Whisper Conversations List and Selection */}
       {activeChannel === 'whisper' && (
+        <div className="flex gap-3 mb-3 flex-1 min-h-0 overflow-hidden">
+          {/* Conversation List */}
+          <div className="flex-1 bg-gray-900 rounded p-3 flex flex-col">
+            <div className="text-sm text-gray-300 mb-3 px-1 font-semibold">Conversations</div>
+            <div className="flex-1 overflow-y-auto space-y-1.5">
+              {whisperConversations.length === 0 ? (
+                <div className="text-xs text-gray-500 px-2 py-4 text-center">
+                  No conversations yet
+                </div>
+              ) : (
+                whisperConversations.map((conv) => {
+                  const isSelected = selectedConversation?.heroId === conv.heroId;
+                  const lastMessagePreview = conv.lastMessage.message.substring(0, 30) + (conv.lastMessage.message.length > 30 ? '...' : '');
+                  const lastMessageTime = conv.lastMessage.timestamp ? new Date(conv.lastMessage.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+                  
+                  return (
+                    <button
+                      key={conv.heroId}
+                      onClick={() => {
+                        setSelectedConversation({ heroId: conv.heroId, heroName: conv.heroName });
+                        setActiveWhisperRecipient({ heroId: conv.heroId, heroName: conv.heroName });
+                      }}
+                      className={`w-full text-left px-3 py-2.5 rounded transition-colors ${
+                        isSelected 
+                          ? 'bg-blue-600 text-white' 
+                          : 'bg-gray-800 hover:bg-gray-700 text-gray-300'
+                      }`}
+                    >
+                      <div className="font-semibold text-sm truncate mb-1">{conv.heroName}</div>
+                      <div className={`text-xs truncate mb-1 ${isSelected ? 'text-blue-100' : 'text-gray-400'}`}>
+                        {lastMessagePreview}
+                      </div>
+                      <div className={`text-xs ${isSelected ? 'text-blue-200' : 'text-gray-500'}`}>
+                        {lastMessageTime}
+                      </div>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+            <button
+              onClick={() => {
+                setActiveWhisperRecipient(null);
+                setSelectedConversation(null);
+                setWhisperSearch('');
+                setWhisperSearchResults([]);
+              }}
+              className="mt-3 w-full px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded transition-colors font-semibold"
+            >
+              + New Whisper
+            </button>
+          </div>
+
+          {/* Conversation View / New Whisper Form - Only show when no conversation selected */}
+          {!selectedConversation && !activeWhisperRecipient && (
+            <div className="flex-1 bg-gray-900 rounded p-4 min-w-0 flex flex-col">
+              <div className="mb-2">
+                <label className="block text-xs text-gray-300 mb-1">Search for a user to whisper:</label>
+                <input
+                  type="text"
+                  value={whisperSearch}
+                  onChange={(e) => setWhisperSearch(e.target.value)}
+                  placeholder="Search by username or hero name..."
+                  className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+                />
+              </div>
+              {whisperSearch.trim().length > 0 && whisperSearchResults.length === 0 && (
+                <div className="text-gray-500 text-xs mt-2">
+                  No users found. Try a different search term.
+                </div>
+              )}
+              {whisperSearchResults.length > 0 && (
+                <div className="mt-2 bg-gray-700 rounded border border-gray-600 max-h-32 overflow-y-auto">
+                  {whisperSearchResults.map((result, index) => (
+                    <button
+                      key={`${result.userId}-${result.heroId}-${index}`}
+                      onClick={() => {
+                        handleStartWhisper(result.heroId, result.heroName || result.username);
+                        setWhisperSearch('');
+                        setWhisperSearchResults([]);
+                      }}
+                      className="w-full text-left px-3 py-2 hover:bg-gray-600 transition-colors border-b border-gray-600 last:border-b-0"
+                    >
+                      <div className="text-white text-sm font-semibold">{result.username}</div>
+                      <div className="text-xs text-gray-400">
+                        {result.heroName} ({result.heroRole} Lv{result.heroLevel})
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div className="text-gray-500 text-xs mt-2">
+                Or select a user from chat and click "Whisper" to start a conversation.
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Legacy Whisper Recipient Selection - Hidden now, using conversation view above */}
+      {false && activeChannel === 'whisper' && (
         <div className="bg-gray-900 rounded p-3 mb-3">
           {activeWhisperRecipient ? (
             <div className="space-y-2">
@@ -656,10 +1029,10 @@ export default function ChatPanel({ hero, partyId, partyLeaderId, onPartyUpdate 
       >
         {filteredMessages.length === 0 ? (
           <div className="text-gray-500 text-sm text-center py-8">
-            {activeChannel === 'whisper' && !activeWhisperRecipient 
-              ? 'Select a user to start whispering'
+            {activeChannel === 'whisper' && !selectedConversation 
+              ? 'Select a conversation from the list to view messages'
               : activeChannel === 'whisper'
-              ? `No messages with ${activeWhisperRecipient?.heroName} yet. Start the conversation!`
+              ? `No messages with ${selectedConversation?.heroName} yet. Start the conversation!`
               : 'No messages yet. Be the first to say something!'}
           </div>
         ) : (
@@ -686,11 +1059,11 @@ export default function ChatPanel({ hero, partyId, partyLeaderId, onPartyUpdate 
                         />
                       ) : null;
                     })()}
-                    <span className={`font-semibold text-sm ${getRoleColor(msg.heroRole)}`}>
-                      {msg.heroName}
+                    <span className="font-semibold text-sm text-white">
+                      {msg.heroName} lvl {msg.heroLevel || 1}{' '}
+                      <span className={getClassColor(msg.heroRole)}>{msg.heroRole}</span>
                     </span>
-                    <span className="text-xs text-gray-500">({msg.heroRole})</span>
-                    <span className="text-xs text-gray-600">
+                    <span className="text-xs text-gray-600 ml-2">
                       {formatTimestamp(msg.timestamp)}
                     </span>
                   </div>
@@ -822,13 +1195,17 @@ export default function ChatPanel({ hero, partyId, partyLeaderId, onPartyUpdate 
         <input
           type="text"
           value={messageInput}
-          onChange={(e) => setMessageInput(e.target.value)}
+          onChange={(e) => {
+            // Only update state, no expensive operations here
+            setMessageInput(e.target.value);
+          }}
           placeholder={
             activeChannel === 'party' ? 'Type party message...' :
+            activeChannel === 'guild' ? 'Type guild message...' :
             activeChannel === 'whisper' ? (activeWhisperRecipient ? `Type message to ${activeWhisperRecipient.heroName}...` : 'Select a user to whisper...') :
             'Type world message...'
           }
-          disabled={sending || !connected || (activeChannel === 'whisper' && !activeWhisperRecipient)}
+          disabled={sending || !connected || (activeChannel === 'whisper' && !activeWhisperRecipient) || (activeChannel === 'guild' && !guildId)}
           maxLength={500}
           className="flex-1 bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
         />

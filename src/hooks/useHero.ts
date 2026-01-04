@@ -28,6 +28,23 @@ export function useHero(userId: string | null) {
       setLoading(true);
       // Load all heroes for this Twitch ID
       const list = await heroAPI.getHeroesByTwitchId(userId);
+      
+      // Log each hero's data structure for debugging
+      console.log('[useHero] Loaded heroes:', list.length);
+      list.forEach((hero, index) => {
+        console.log(`[useHero] Hero ${index + 1}:`, {
+          id: hero.id,
+          name: hero.name,
+          role: hero.role,
+          level: hero.level,
+          twitchUserId: (hero as any).twitchUserId,
+          twitchId: (hero as any).twitchId,
+          hasStats: !!hero.stats,
+          hasEquipment: !!hero.equipment,
+          keys: Object.keys(hero).slice(0, 20) // First 20 keys
+        });
+      });
+      
       // Sort: pinned first, then by level (descending), then by name
       list.sort((a, b) => {
         const aPinned = (a as any).pinned || false;
@@ -56,11 +73,38 @@ export function useHero(userId: string | null) {
       const savedHero = savedHeroId ? list.find(h => h.id === savedHeroId) : null;
       
       // Use saved hero if it exists, otherwise default to first hero
-      setHero(savedHero || (list.length > 0 ? list[0] : null));
+      const selectedHero = savedHero || (list.length > 0 ? list[0] : null);
+      
+      // Validate selected hero has required fields
+      if (selectedHero) {
+        const missingFields: string[] = [];
+        if (!selectedHero.id) missingFields.push('id');
+        if (!selectedHero.name) missingFields.push('name');
+        if (!selectedHero.role) missingFields.push('role');
+        if (selectedHero.level === undefined || selectedHero.level === null) missingFields.push('level');
+        
+        if (missingFields.length > 0) {
+          console.error('[useHero] ⚠️ Selected hero is missing required fields:', {
+            heroId: selectedHero.id,
+            missingFields,
+            heroData: selectedHero
+          });
+          setError(`Hero data incomplete: missing ${missingFields.join(', ')}`);
+        } else {
+          console.log('[useHero] ✅ Selected hero is valid:', {
+            id: selectedHero.id,
+            name: selectedHero.name,
+            role: selectedHero.role,
+            level: selectedHero.level
+          });
+        }
+      }
+      
+      setHero(selectedHero);
       setError(null);
     } catch (err) {
       setError('Failed to load heroes');
-      console.error(err);
+      console.error('[useHero] ❌ Error loading heroes:', err);
       setHeroes([]);
       setHero(null);
     } finally {

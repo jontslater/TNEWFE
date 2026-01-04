@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Guild } from '../types/Guild';
 import { guildAPI } from '../api/client';
 
@@ -7,17 +7,12 @@ export function useGuild(userId: string | null) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const loadGuild = useCallback(async () => {
     if (!userId) {
       setLoading(false);
+      setGuild(null);
       return;
     }
-
-    loadGuild();
-  }, [userId]);
-
-  const loadGuild = async () => {
-    if (!userId) return;
     
     try {
       setLoading(true);
@@ -30,7 +25,11 @@ export function useGuild(userId: string | null) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [userId]);
+
+  useEffect(() => {
+    loadGuild();
+  }, [loadGuild]);
 
   return { guild, loading, error, refetch: loadGuild };
 }
