@@ -21,7 +21,8 @@ function ChatUpdateSettingsSection({ user }: { user: any }) {
     showXp: true,
     showLevelUps: true,
     showGold: false,
-    customMessage: null as string | null
+    customMessage: null as string | null,
+    sendWhenOffline: false
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -115,7 +116,7 @@ function ChatUpdateSettingsSection({ user }: { user: any }) {
     <div className="bg-purple-900/30 rounded-lg p-4 border border-purple-700">
       <h3 className="text-lg font-semibold text-purple-300 mb-2">💬 Periodic Chat Updates</h3>
       <p className="text-gray-300 text-sm mb-4">
-        Configure automatic stats updates in your Twitch chat. Updates only post when you're live.
+        Configure automatic stats updates in your Twitch chat. By default, updates only post when you're live.
       </p>
 
       {loading ? (
@@ -157,6 +158,23 @@ function ChatUpdateSettingsSection({ user }: { user: any }) {
                   <span>5 min</span>
                   <span>60 min (1 hour)</span>
                 </div>
+              </div>
+
+              {/* Send When Offline Toggle */}
+              <div className="flex items-center justify-between bg-purple-900/50 rounded p-3 border border-purple-700">
+                <div>
+                  <label className="text-sm font-semibold text-gray-300 cursor-pointer">Send Updates When Offline</label>
+                  <p className="text-xs text-gray-400 mt-1">Enable this to test updates even when you're not streaming</p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={settings.sendWhenOffline}
+                    onChange={(e) => setSettings({ ...settings, sendWhenOffline: e.target.checked })}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                </label>
               </div>
 
               {/* Stats Toggles */}
