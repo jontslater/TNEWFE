@@ -132,6 +132,7 @@ export interface RestedXp {
 export interface Hero {
   id?: string;
   name: string;
+  characterName?: string; // Alias for name (legacy support)
   role: string;
   level: number;
   hp: number;
