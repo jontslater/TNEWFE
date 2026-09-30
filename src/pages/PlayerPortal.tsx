@@ -577,7 +577,7 @@ export default function PlayerPortal() {
                     const isSelected = h.id === hero.id;
                     const key = `${h.id}-${(h as any).characterId || h.role || idx}`;
                     const classInfo = CLASS_DATA.find(c => c.key === h.role);
-                    const category = classInfo?.category || getCategoryFromRole(h.role);
+                    const category = classInfo?.category || (h.role === 'warrior' || h.role === 'paladin' ? 'tank' : h.role === 'priest' || h.role === 'druid' ? 'healer' : 'dps');
                     const gearScore = getItemScore(h.equipment || {}, h.role);
                     const isPinned = (h as any).pinned || false;
                     const categoryColors = {

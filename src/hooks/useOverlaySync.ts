@@ -381,13 +381,13 @@ export function useOverlaySync(
     console.log('[OverlaySync] Flushing all pending changes...');
     
     await Promise.allSettled([
-      syncHeroStats(),
+      syncAllPending(),
       syncEquipment(),
       syncInventory(),
     ]);
     
     console.log('[OverlaySync] Flush complete');
-  }, [syncHeroStats, syncEquipment, syncInventory]);
+  }, [syncAllPending, syncEquipment, syncInventory]);
 
   // Setup periodic sync
   useEffect(() => {
@@ -395,7 +395,7 @@ export function useOverlaySync(
 
     const intervalId = setInterval(async () => {
       await Promise.allSettled([
-        syncHeroStats(),
+        syncAllPending(),
         syncEquipment(),
         syncInventory(),
       ]);
@@ -407,7 +407,7 @@ export function useOverlaySync(
       clearInterval(intervalId);
       console.log('[OverlaySync] Stopped sync interval');
     };
-  }, [enabled, syncIntervalMs, syncHeroStats, syncEquipment, syncInventory]);
+  }, [enabled, syncIntervalMs, syncAllPending, syncEquipment, syncInventory]);
 
   // Setup flush on close
   useEffect(() => {

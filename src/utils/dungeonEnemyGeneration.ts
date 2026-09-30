@@ -51,7 +51,8 @@ function getDungeonEnemyBaseStats(enemyType: string, level: number): {
     xp: BALANCE.enemy.xpScaling(level, 1.0)
   };
   
-  // Type-specific adjustments
+  // Type-specific adjustments (using level-based multiplier)
+  const levelMultiplier = Math.pow(level, 0.5);
   switch (enemyType.toLowerCase()) {
     case 'goblin':
     case 'goblin chief':
