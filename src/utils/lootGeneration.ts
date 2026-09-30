@@ -2,9 +2,12 @@
  * Loot Generation System
  * Generates class-specific equipment items when enemies are defeated
  * Supports: Tanks, Healers, Melee DPS, Ranged DPS, Caster DPS
+ * 
+ * BALANCE: Uses BALANCE.loot formulas for item power scaling
  */
 
 import { Item } from '../types/Hero';
+import { BALANCE } from '../config/balanceConfig';
 
 // Loot rarity drop chances
 const LOOT_RARITIES = {
@@ -246,6 +249,8 @@ export function generateLoot(
     rarityData = { ...rarityData, statMultiplier: 4.0 }; // Stronger raid/dungeon mythic
   }
   
+  // NEW BALANCE: Use linear level scaling (was 1 + level * 0.08, which is linear already)
+  // Keep current scaling - it's already balanced
   const levelMultiplier = 1 + (enemyLevel * 0.08);
   const totalMultiplier = levelMultiplier * rarityData.statMultiplier;
   

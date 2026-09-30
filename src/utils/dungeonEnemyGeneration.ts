@@ -2,9 +2,12 @@
  * Dungeon Enemy Generation Utility
  * Generates enemies for dungeon rooms based on dungeon definitions
  * Maps dungeon enemy types to existing enemy templates or creates new ones
+ * 
+ * BALANCE: Uses linear scaling from balanceConfig
  */
 
 import { Enemy } from './combat/types';
+import { BALANCE } from '../config/balanceConfig';
 
 // Map dungeon enemy type names to existing enemy template types
 const DUNGEON_ENEMY_MAP: Record<string, string> = {
@@ -30,7 +33,7 @@ const DUNGEON_ENEMY_MAP: Record<string, string> = {
   'Mimic': 'Mimic'
 };
 
-// Get base stats for a dungeon enemy type
+// Get base stats for a dungeon enemy type using balance config
 function getDungeonEnemyBaseStats(enemyType: string, level: number): {
   baseHp: number;
   baseAttack: number;
@@ -40,15 +43,12 @@ function getDungeonEnemyBaseStats(enemyType: string, level: number): {
   // Map to existing enemy template base stats, scaled by level
   const mappedType = DUNGEON_ENEMY_MAP[enemyType] || enemyType;
   
-  // Base stats per level (similar to existing enemy templates)
-  const levelMultiplier = 1 + (level * 0.15);
-  
-  // Default base stats (can be customized per type)
+  // Use balance config for linear scaling (1.0 = normal difficulty)
   const baseStats = {
-    baseHp: Math.floor(80 * levelMultiplier),
-    baseAttack: Math.floor(12 * levelMultiplier),
-    baseDefense: Math.floor(8 * levelMultiplier),
-    xp: Math.floor(15 * level)
+    baseHp: BALANCE.enemy.hpScaling(level, 1.0),
+    baseAttack: BALANCE.enemy.attackScaling(level, 1.0),
+    baseDefense: BALANCE.enemy.defenseScaling(level, 1.0),
+    xp: BALANCE.enemy.xpScaling(level, 1.0)
   };
   
   // Type-specific adjustments
@@ -135,7 +135,8 @@ export function generateDungeonEnemies(
         maxHp: finalHp,
         attack: attack,
         defense: defense,
-        xp: isBoss ? Math.floor(baseStats.xp * 1.5) : baseStats.xp,
+        xp: isBoss ? BALANCE.enemy.xpScaling(level, 2.0) : baseStats.xp,
+        gold: isBoss ? BALANCE.enemy.goldScaling(level, 2.0) : BALANCE.enemy.goldScaling(level, 1.0),
         isBoss: isBoss || false,
         isDead: false // CRITICAL: Must match idle and raid enemy creation
       };

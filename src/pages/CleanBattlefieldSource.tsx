@@ -28,6 +28,7 @@ import { getNameFrameStyles } from '../utils/nameFrames';
 import { getFounderTitleColor, getFounderTitleDisplay, getFounderTierFromTitle } from '../utils/founderTitle';
 import { getAuraFilter } from '../utils/auraEffects';
 import { createProjectile } from '../utils/projectiles';
+import { BALANCE } from '../config/balanceConfig';
 import { createExhaustEffect, shouldShowExhaustEffect } from '../utils/exhaustEffects';
 import { createMusicalNoteEffect } from '../utils/musicalNoteEffects';
 
@@ -6051,7 +6052,8 @@ export default function CleanBattlefieldSource() {
         }
         
         // Calculate total XP from defeated enemies (with difficulty bonus above 100%)
-        let totalXP = currentEnemies.reduce((sum, enemy) => sum + (enemy.xp || enemy.level * 10), 0);
+        // NEW BALANCE: enemy.xp now comes from BALANCE.enemy.xpScaling(level, difficulty)
+        let totalXP = currentEnemies.reduce((sum, enemy) => sum + (enemy.xp || BALANCE.enemy.xpScaling(enemy.level, 1.0)), 0);
         
         // Loot quality bonus above 100% difficulty
         if (difficultyModifier > 1.0) {
@@ -6062,10 +6064,10 @@ export default function CleanBattlefieldSource() {
         
         console.log(`[Combat] Granting ${totalXP} base XP to all heroes (before XP Boost buff)`);
         
-        // Calculate total gold from defeated enemies (enemy.xp / 10 per kill)
+        // Calculate total gold from defeated enemies
+        // NEW BALANCE: enemy.gold now comes from BALANCE.enemy.goldScaling(level, difficulty)
         const totalBaseGold = currentEnemies.reduce((sum, enemy) => {
-          const enemyXP = enemy.xp || enemy.level * 10;
-          return sum + Math.floor(enemyXP / 10);
+          return sum + (enemy.gold || BALANCE.enemy.goldScaling(enemy.level, 1.0));
         }, 0);
         
         // Helper function to get founder pack gold multiplier
