@@ -1318,7 +1318,7 @@ export default function RaidBrowserSourcePage({ instanceId: propInstanceId }: Ra
         // Note: Hero deaths might not be quest objectives, but we track for stats
       }
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [heroes]);
 
   // Sync heroShields from hero.shield for display
@@ -1896,7 +1896,7 @@ export default function RaidBrowserSourcePage({ instanceId: propInstanceId }: Ra
           // All ranged heroes that use projectiles
           const spellcasters = ['mage', 'warlock', 'necromancer', 'firemage', 'frostmage', 'dragonsorcerer', 'ranger', 'shadowpriest', 'mooncaller', 'stormcaller'];
           const healers = ['cleric', 'atoner', 'druid', 'lightbringer', 'shaman', 'mistweaver', 'chronomancer', 'bard'];
-          let usesProjectile = spellcasters.includes(hero.role.toLowerCase()) || healers.includes(hero.role.toLowerCase());
+          const usesProjectile = spellcasters.includes(hero.role.toLowerCase()) || healers.includes(hero.role.toLowerCase());
 
           const heroElement = document.querySelector(`#battle-hero-${hero.id}`) as HTMLElement;
           const enemyElement = document.querySelector(`#battle-enemy-${targetEnemy.id}`) as HTMLElement;
@@ -2190,7 +2190,7 @@ export default function RaidBrowserSourcePage({ instanceId: propInstanceId }: Ra
               }
               
               let elementType: 'fire' | 'frost' | 'arcane' | undefined = undefined;
-              let projectileRole = hero.role;
+              const projectileRole = hero.role;
               
               if (hero.role.toLowerCase() === 'mage' && hero.classAbilityState?.elementRotation !== undefined) {
                 const rotation = hero.classAbilityState.elementRotation;

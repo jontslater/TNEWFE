@@ -1938,7 +1938,7 @@ export class FullCombatEngine {
     // Calculate skill bonuses first
     const skillBonuses = this.calculateSkillBonuses(hero);
 
-    let stats: any = {
+    const stats: any = {
       attack: config.baseAttack + ((hero.level - 1) * config.attackPerLevel),
       defense: config.baseDefense + ((hero.level - 1) * config.defensePerLevel),
       maxHp: config.baseHp + ((hero.level - 1) * config.hpPerLevel),
@@ -3472,7 +3472,7 @@ export class FullCombatEngine {
       }
       
       // Apply level penalty to base XP
-      let xpAfterPenalty = Math.floor(baseXPSplit * levelMultiplier);
+      const xpAfterPenalty = Math.floor(baseXPSplit * levelMultiplier);
       
       // Grant XP (apply prestige level boost + prestige core bonuses + shop buffs)
       let xpMultiplier = 1.0;

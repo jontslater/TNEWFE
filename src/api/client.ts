@@ -78,7 +78,7 @@ export const heroAPI = {
 
     // Debug logging to inspect what the backend is returning for hero + equipment
     try {
-      // eslint-disable-next-line no-console
+       
       console.log('[HeroAPI] getHero response:', {
         userId,
         id: response.data?.id,
@@ -88,7 +88,7 @@ export const heroAPI = {
         equipment: response.data?.equipment,
       });
       if (response.data?.equipment) {
-        // eslint-disable-next-line no-console
+         
         console.log('[HeroAPI] equipment slots:', Object.keys(response.data.equipment));
       }
     } catch (e) {

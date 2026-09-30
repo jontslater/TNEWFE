@@ -64,7 +64,7 @@ export function getEnemyAnimations(enemyType: string): Record<string, SpriteAnim
   }
   
   // Try exact match first
-  let key = getEnemyAnimationKey(enemyType);
+  const key = getEnemyAnimationKey(enemyType);
   let animations = ENEMY_ANIMATIONS[key];
   
   if (animations) {

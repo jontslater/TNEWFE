@@ -2534,7 +2534,7 @@ export default function CleanBattlefieldSource() {
         const updated = current.map(hero => {
           if (hero.isDead) return hero;
           
-          let newGold = (hero.gold || 0) + goldAmount;
+          const newGold = (hero.gold || 0) + goldAmount;
           
           console.log(`[Treasure] ${hero.name} finds ${goldAmount}g!`);
           
@@ -4000,7 +4000,7 @@ export default function CleanBattlefieldSource() {
       
       // Check if target is already dead (killed earlier in this round)
       const currentEnemies = enemiesRef.current;
-      let targetCheck = currentEnemies.find(e => e.id === action.targetId);
+      const targetCheck = currentEnemies.find(e => e.id === action.targetId);
       
       // If original target is dead, retarget to another alive enemy!
       if (!targetCheck || targetCheck.hp <= 0 || targetCheck.isDead) {
@@ -6063,7 +6063,7 @@ export default function CleanBattlefieldSource() {
         console.log(`[Combat] Granting ${totalXP} base XP to all heroes (before XP Boost buff)`);
         
         // Calculate total gold from defeated enemies (enemy.xp / 10 per kill)
-        let totalBaseGold = currentEnemies.reduce((sum, enemy) => {
+        const totalBaseGold = currentEnemies.reduce((sum, enemy) => {
           const enemyXP = enemy.xp || enemy.level * 10;
           return sum + Math.floor(enemyXP / 10);
         }, 0);
@@ -7914,7 +7914,7 @@ export default function CleanBattlefieldSource() {
     }
     
     // Start with base stats (from level, scaled by role)
-    let stats = {
+    const stats = {
       attack: baseAttack,
       defense: baseDefense,
       maxHp: baseHp,
@@ -7974,7 +7974,7 @@ export default function CleanBattlefieldSource() {
     };
     
     // Calculate gem stats from all equipped items
-    let gemStats = {
+    const gemStats = {
       attack: 0,
       defense: 0,
       critChance: 0,
@@ -7988,7 +7988,7 @@ export default function CleanBattlefieldSource() {
     };
     
     // Calculate socket bonuses from all equipped items
-    let socketBonusStats = {
+    const socketBonusStats = {
       attack: 0,
       defense: 0,
       allStats: 0,

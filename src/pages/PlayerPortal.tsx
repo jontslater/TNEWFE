@@ -239,7 +239,7 @@ export default function PlayerPortal() {
           console.error('[PlayerPortal] ❌ Failed to fetch Dingo Dynasty hero:', err);
         });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [isAdmin]);
 
   if (!isAuthenticated) {
