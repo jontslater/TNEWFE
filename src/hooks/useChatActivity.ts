@@ -2,9 +2,11 @@
  * Chat Activity Hook
  * 
  * Fetches real-time chat activity data from backend for stream boost display.
+ * Uses backend's smooth diminishing returns curve: bonus = 0.5 * (users / (users + 20))
  */
 
 import { useState, useEffect } from 'react';
+import { overlayAPI } from '../api/client';
 
 interface ChatActivityData {
   chatterCount: number;
@@ -42,29 +44,24 @@ export function useChatActivity(
         setLoading(true);
         setError(null);
 
-        const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-        const response = await fetch(`${API_URL}/api/chat/activity/${streamerId}`);
+        // Use overlayAPI which handles X-Streamer-Key or JWT auth
+        const activityData = await overlayAPI.getChatActivity(streamerId);
 
-        if (!response.ok) {
-          throw new Error(`Failed to fetch chat activity: ${response.statusText}`);
-        }
+        // Backend now returns full groupBoost object with smooth curve already calculated
+        const chatterCount = activityData.activeUsers || 0;
+        const { attackBonus, defenseBonus, healingBonus, multiplier } = activityData.groupBoost;
 
-        const activityData = await response.json();
-
-        // Calculate boosts from chatter count (formula from backend PR)
-        const chatterCount = activityData.chatterCount || 0;
-        const groupBonus = Math.min(0.25, chatterCount * 0.005);
-        
-        // Convert to percentage for display
-        const boostPercent = Math.round(groupBonus * 100);
+        // Calculate activity level for visual display (0-100%)
+        // At 20 users, we're at 25% boost (half-point), show as ~60% activity level
+        const chatActivityLevel = Math.min(100, Math.round(multiplier * 200));
 
         setData({
           chatterCount,
-          chatActivityLevel: Math.min(100, chatterCount * 2), // 50 chatters = 100% activity
+          chatActivityLevel,
           activeBoosts: {
-            attack: boostPercent,
-            defense: boostPercent,
-            healing: boostPercent,
+            attack: attackBonus,
+            defense: defenseBonus,
+            healing: healingBonus,
           },
         });
       } catch (err) {
