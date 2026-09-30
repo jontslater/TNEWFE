@@ -58,6 +58,7 @@ import {
 import { getEnemyPosition, getDungeonHeroPosition } from '../overlay/positioning';
 import { RareLootAnnouncement } from '../overlay/RareLootAnnouncement';
 import { WaveAnnouncement } from '../overlay/WaveAnnouncement';
+import { SyncManager } from '../overlay/syncManager';
 
 // Type aliases for backward compatibility
 type Hero = OverlayHero;
@@ -1774,7 +1775,7 @@ export default function CleanBattlefieldSource() {
   const combatInProgress = useRef(false);
   
   // CRITICAL: Refs to prevent duplicate intervals from React Strict Mode
-  const syncIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const syncManagerRef = useRef<SyncManager | null>(null);
   const syncIntervalInitializedRef = useRef(false);
   const buffCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const regenIntervalRef = useRef<NodeJS.Timeout | null>(null);
