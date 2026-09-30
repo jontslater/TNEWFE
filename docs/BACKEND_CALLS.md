@@ -135,13 +135,11 @@ This document lists all backend endpoints called by the frontend, organized by c
 - **Credential**: JWT (streamer's own token)
 - **Purpose**: Get or generate overlay key
 - **File**: `src/api/client.ts` - `streamSettingsAPI.getOverlayKey()`
-- **Status**: ⚠️ Backend endpoint not yet implemented (Gap 1)
 
 ### POST `/api/stream/settings/:twitchId/overlay-key/regenerate`
 - **Credential**: JWT (streamer's own token)
 - **Purpose**: Regenerate overlay key
 - **File**: `src/api/client.ts` - `streamSettingsAPI.regenerateOverlayKey()`
-- **Status**: ⚠️ Backend endpoint not yet implemented (Gap 1)
 
 ---
 
@@ -396,23 +394,27 @@ This document lists all backend endpoints called by the frontend, organized by c
 
 ---
 
-## Known Backend Gaps
+## Backend Integration Status
 
-### Gap 1: Overlay Key Generation (Missing)
-**Endpoints not yet implemented:**
-- `GET /api/stream/settings/:twitchId/overlay-key`
-- `POST /api/stream/settings/:twitchId/overlay-key/regenerate`
+### ✅ Overlay Key Endpoints (Implemented)
+**Endpoints now available:**
+- `GET /api/stream/settings/:twitchId/overlay-key` ✅
+- `POST /api/stream/settings/:twitchId/overlay-key/regenerate` ✅
 
-**Impact**: Frontend cannot generate browser source URLs with `?streamerKey=` until backend implements these endpoints.
+**Status**: Backend PR #9 (`cursor/fix-critical-issues-3f3e`) implements these endpoints with `requireAuth` middleware and ownership verification.
 
-**Frontend Status**: ✅ Ready (UI implemented, waiting for backend)
+**Frontend Status**: ✅ Compatible (UI implemented, ready to use)
 
-### Gap 2: Auth Middleware Coverage (Incomplete)
-**Status**: Auth middleware only applied to ~9 of ~218 backend routes
+### ✅ Auth Middleware Coverage (Complete)
+**Status**: Backend route protection audit shows:
+- **Total Routes**: 220
+- **Protected**: 176 (with requireAuth, requireInternal, or requireAdmin)
+- **Public (whitelisted)**: 44 (read-only or OAuth endpoints)
+- **Unprotected**: 0 ✅
 
-**Impact**: Most mutation routes lack auth protection, allowing cross-user exploits.
+**Impact**: All mutation routes now properly protected with auth middleware and ownership checks.
 
-**Required**: Apply `requireAuth` and ownership checks to all mutation routes (hero updates, guild ops, mail, auction, purchases).
+**Verification**: See `docs/BACKEND_MISMATCHES.md` for detailed cross-check results.
 
 ---
 
