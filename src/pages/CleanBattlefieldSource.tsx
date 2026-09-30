@@ -32,9 +32,19 @@ import { BALANCE } from '../config/balanceConfig';
 import { createLootDropAnnouncement, getRarityStyle } from '../utils/rarityDisplay';
 import { createExhaustEffect, shouldShowExhaustEffect } from '../utils/exhaustEffects';
 import { createMusicalNoteEffect } from '../utils/musicalNoteEffects';
+import type { 
+  OverlayHero, 
+  OverlayEnemy, 
+  CombatAction as OverlayCombatAction
+} from '../types/overlay';
 
-// Hero type (with full gear support)
-interface Hero {
+// Type aliases for backward compatibility
+type Hero = OverlayHero;
+type Enemy = OverlayEnemy;
+type CombatAction = OverlayCombatAction;
+
+// DEPRECATED interfaces - moved to src/types/overlay.ts
+/* interface Hero {
   id: string;
   name: string;
   role: string;
@@ -126,10 +136,10 @@ interface Hero {
   auraColor?: string;
   prestigeLevel?: number;
   spellEffect?: string;
-}
+} */
 
-// Enemy type (minimal for now)
-interface Enemy {
+// DEPRECATED Enemy interface - moved to src/types/overlay.ts
+/* interface Enemy {
   id: string;
   name: string;
   enemyType?: string; // Sprite type for animation lookup (e.g., "Skeleton Mage" instead of "Skeleton 1")
@@ -148,10 +158,10 @@ interface Enemy {
     lastTick?: number;
     value?: number;
   }>;
-}
+} */
 
-// Combat action type
-interface CombatAction {
+// DEPRECATED CombatAction interface - moved to src/types/overlay.ts
+/* interface CombatAction {
   type: 'hero' | 'enemy' | 'heal' | 'resurrect';
   actorId: string;
   actorName: string;
@@ -160,7 +170,7 @@ interface CombatAction {
   initiative: number;
   isHero: boolean;
   isAOE?: boolean; // Flag for AOE attacks (hits all targets)
-}
+} */
 
 // Main component
 export default function CleanBattlefieldSource() {
