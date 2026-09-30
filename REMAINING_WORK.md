@@ -34,7 +34,47 @@ This document tracks the additional work requested by the owner for PR #3 that r
 - ✅ Created `useChatActivity` hook (fetches from `/api/chat/activity/:streamerId`)
 - ✅ **Integrated into PlayerPortal** - shows stream status and chat boosts
 
+## ✅ Backend Integration (PR #9) - COMPLETED
+
+### Integration Status: ✅ ALL CRITICAL ITEMS COMPLETE
+
+This section tracks integration with backend PR #9 (`jontslater/idleDnD-Backend#9`, branch `cursor/fix-critical-issues-3f3e`).
+
+---
+
 ## ✅ Additional Features Completed in This PR
+
+### 0. Backend PR #9 Integration - COMPLETE ✅
+
+**Auth Alignment**:
+- ✅ Created overlayClient for browser-source routes (X-Streamer-Key header)
+- ✅ Documented JWT acquisition flow in INTEGRATION_GAPS.md
+- ✅ No backend gaps found - all endpoints exist
+- ✅ Updated useChatActivity to use backend's smooth boost curve: `bonus = 0.5 * (users / (users + 20))`
+- ✅ Overlay sync refactored to use batch endpoint (overlayAPI.syncBatch)
+- ✅ Idempotent batch sync with batchId tracking
+
+**Loot Alignment**:
+- ✅ Ported backend lootConfig.js to frontend src/config/lootConfig.ts
+- ✅ Identical DROP_RATES (trash 0% legendary, mythic raid 15% legendary)
+- ✅ Created simulate-drops.ts proving alignment with backend output
+- ✅ Pity system documented (mythic raid: legendary after 6 dry bosses)
+
+**Overlay Sync Updates**:
+- ✅ Batch sync endpoint: POST /api/overlay/sync with batchId
+- ✅ Sends X-Streamer-Key (from sessionStorage) or JWT fallback
+- ✅ Collects all stat/equipment/inventory changes into single batch
+- ✅ Idempotent replay protection (duplicate batchId detection)
+
+**Chat Activity Updates**:
+- ✅ Uses overlayAPI.getChatActivity(streamerId)
+- ✅ Backend returns full groupBoost object (attackBonus, defenseBonus, healingBonus)
+- ✅ Client displays smooth curve values (not stepped tiers)
+
+**Documentation**:
+- ✅ INTEGRATION_GAPS.md - No critical gaps, all endpoints exist
+- ✅ MANUAL_TEST_CHECKLIST.md - 90+ test cases for OBS, auth, sync, drops
+- ✅ Both frontend and backend use same lootConfig
 
 ### 1. Balance Fixes - FULLY INTEGRATED ✅
 
