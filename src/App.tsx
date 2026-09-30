@@ -1,52 +1,72 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { lazy, Suspense } from 'react';
+
+// Critical routes - loaded immediately (landing, auth)
 import LandingPage from './pages/LandingPage';
-import PlayerPortal from './pages/PlayerPortal';
-import ClassesPage from './pages/ClassesPage';
-import ProfessionsPage from './pages/ProfessionsPage';
-import RaidsInfoPage from './pages/RaidsInfoPage';
-import StorePage from './pages/StorePage';
-import QuestsPage from './pages/QuestsPage';
-import CreateHeroPage from './pages/CreateHeroPage';
 import AuthCallback from './pages/AuthCallback';
-import CombatDemo from './pages/CombatDemo';
-import SkillsPage from './pages/SkillsPage';
-import AuctionHousePage from './pages/AuctionHousePage';
-import BrowserSourcePage from './pages/BrowserSourcePage';
-import BrowserSourceConfigPage from './pages/BrowserSourceConfigPage';
-import CleanBattlefieldSource from './pages/CleanBattlefieldSource';
-import EnemyDebugPage from './pages/EnemyDebugPage';
-import EnemyAnimationTestPage from './pages/EnemyAnimationTestPage';
-import AnimationTestPage from './pages/AnimationTestPage';
-import DragonAnimationTest from './pages/DragonAnimationTest';
-import AchievementsPage from './pages/AchievementsPage';
-import LeaderboardsPage from './pages/LeaderboardsPage';
-import GuildManagementPage from './pages/GuildManagementPage';
-import DungeonFinderPage from './pages/DungeonFinderPage';
-import EnchantingPage from './pages/EnchantingPage';
-import GuildRaidSignupPage from './pages/GuildRaidSignupPage';
-import InteractiveRaidViewer from './pages/InteractiveRaidViewer';
-import InstanceViewerPage from './pages/InstanceViewerPage';
-import RaidBrowserSourcePage from './pages/RaidBrowserSourcePage';
-import UnifiedBrowserSource from './pages/UnifiedBrowserSource';
-import FoundersPackPage from './pages/FoundersPackPage';
-import FoundersHallPage from './pages/FoundersHallPage';
-import MailPage from './pages/MailPage';
-import ReportIssuePage from './pages/ReportIssuePage';
-import ReportsViewPage from './pages/ReportsViewPage';
-import PurchaseSuccessPage from './pages/PurchaseSuccessPage';
-import PurchaseCancelPage from './pages/PurchaseCancelPage';
-import PurchaseHistoryPage from './pages/PurchaseHistoryPage';
-import FAQPage from './pages/FAQPage';
-// Old UnifiedBrowserSourcePage kept for reference but route now uses new component
-// import UnifiedBrowserSourcePage from './pages/UnifiedBrowserSourcePage';
-import LoginRewardModal from './components/LoginRewardModal';
+
+// All other routes - lazy loaded for code splitting
+const PlayerPortal = lazy(() => import('./pages/PlayerPortal'));
+const ClassesPage = lazy(() => import('./pages/ClassesPage'));
+const ProfessionsPage = lazy(() => import('./pages/ProfessionsPage'));
+const RaidsInfoPage = lazy(() => import('./pages/RaidsInfoPage'));
+const StorePage = lazy(() => import('./pages/StorePage'));
+const QuestsPage = lazy(() => import('./pages/QuestsPage'));
+const CreateHeroPage = lazy(() => import('./pages/CreateHeroPage'));
+const CombatDemo = lazy(() => import('./pages/CombatDemo'));
+const SkillsPage = lazy(() => import('./pages/SkillsPage'));
+const AuctionHousePage = lazy(() => import('./pages/AuctionHousePage'));
+const BrowserSourcePage = lazy(() => import('./pages/BrowserSourcePage'));
+const BrowserSourceConfigPage = lazy(() => import('./pages/BrowserSourceConfigPage'));
+const CleanBattlefieldSource = lazy(() => import('./pages/CleanBattlefieldSource'));
+const EnemyDebugPage = lazy(() => import('./pages/EnemyDebugPage'));
+const EnemyAnimationTestPage = lazy(() => import('./pages/EnemyAnimationTestPage'));
+const AnimationTestPage = lazy(() => import('./pages/AnimationTestPage'));
+const DragonAnimationTest = lazy(() => import('./pages/DragonAnimationTest'));
+const AchievementsPage = lazy(() => import('./pages/AchievementsPage'));
+const LeaderboardsPage = lazy(() => import('./pages/LeaderboardsPage'));
+const GuildManagementPage = lazy(() => import('./pages/GuildManagementPage'));
+const DungeonFinderPage = lazy(() => import('./pages/DungeonFinderPage'));
+const EnchantingPage = lazy(() => import('./pages/EnchantingPage'));
+const GuildRaidSignupPage = lazy(() => import('./pages/GuildRaidSignupPage'));
+const InteractiveRaidViewer = lazy(() => import('./pages/InteractiveRaidViewer'));
+const InstanceViewerPage = lazy(() => import('./pages/InstanceViewerPage'));
+const RaidBrowserSourcePage = lazy(() => import('./pages/RaidBrowserSourcePage'));
+const UnifiedBrowserSource = lazy(() => import('./pages/UnifiedBrowserSource'));
+const FoundersPackPage = lazy(() => import('./pages/FoundersPackPage'));
+const FoundersHallPage = lazy(() => import('./pages/FoundersHallPage'));
+const MailPage = lazy(() => import('./pages/MailPage'));
+const ReportIssuePage = lazy(() => import('./pages/ReportIssuePage'));
+const ReportsViewPage = lazy(() => import('./pages/ReportsViewPage'));
+const PurchaseSuccessPage = lazy(() => import('./pages/PurchaseSuccessPage'));
+const PurchaseCancelPage = lazy(() => import('./pages/PurchaseCancelPage'));
+const PurchaseHistoryPage = lazy(() => import('./pages/PurchaseHistoryPage'));
+const FAQPage = lazy(() => import('./pages/FAQPage'));
+
+// Loading component for Suspense
+function PageLoader() {
+  return (
+    <div style={{
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'center',
+      height: '100vh',
+      backgroundColor: '#1a1a2e',
+      color: '#ffffff',
+      fontSize: '1.5rem',
+    }}>
+      Loading...
+    </div>
+  );
+}
 
 function App() {
   return (
     <Router>
-      <Routes>
-        <Route path="/" element={<LandingPage />} />
-        <Route path="/portal" element={<PlayerPortal />} />
+      <Suspense fallback={<PageLoader />}>
+        <Routes>
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/portal" element={<PlayerPortal />} />
         <Route path="/classes" element={<ClassesPage />} />
         <Route path="/professions" element={<ProfessionsPage />} />
         <Route path="/raids" element={<RaidsInfoPage />} />
@@ -86,7 +106,8 @@ function App() {
         <Route path="/purchases/success" element={<PurchaseSuccessPage />} />
         <Route path="/purchases/cancel" element={<PurchaseCancelPage />} />
         <Route path="/purchases/history" element={<PurchaseHistoryPage />} />
-      </Routes>
+        </Routes>
+      </Suspense>
     </Router>
   );
 }

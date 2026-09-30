@@ -26,18 +26,21 @@ export function getStripe(): Promise<Stripe | null> {
  * Create a Stripe checkout session
  * Calls the backend API to create a checkout session and redirects to Stripe
  * 
+ * ⚠️ SECURITY NOTE: Only sends purchaseId to backend. The backend must look up
+ * the actual price from its own database - never trust client-provided prices!
+ * 
  * @param purchaseId - The purchase ID from the backend
- * @param price - Price in dollars
  * @returns Checkout session URL or null if error
  */
-export async function createCheckoutSession(purchaseId: string, price: number): Promise<string | null> {
+export async function createCheckoutSession(purchaseId: string): Promise<string | null> {
   try {
     const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
     
+    // ⚠️ SECURITY: Only send purchaseId - backend looks up price from database
     const response = await fetch(`${API_URL}/api/purchases/create-checkout-session`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ purchaseId, price })
+      body: JSON.stringify({ purchaseId })
     });
 
     if (!response.ok) {
