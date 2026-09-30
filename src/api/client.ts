@@ -2974,6 +2974,7 @@ export const streamSettingsAPI = {
       showLevelUps: boolean;
       showGold: boolean;
       customMessage: string | null;
+      sendWhenOffline: boolean;
     };
   }> {
     const response = await apiClient.get(`/api/stream/settings/${twitchId}`);
@@ -2988,6 +2989,7 @@ export const streamSettingsAPI = {
     showLevelUps?: boolean;
     showGold?: boolean;
     customMessage?: string | null;
+    sendWhenOffline?: boolean;
   }): Promise<{
     success: boolean;
     message: string;
@@ -3004,6 +3006,20 @@ export const streamSettingsAPI = {
     error?: string;
   }> {
     const response = await apiClient.post(`/api/stream/settings/${twitchId}/test`);
+    return response.data;
+  },
+
+  async getOverlayKey(twitchId: string): Promise<{
+    overlayKey: string;
+  }> {
+    const response = await apiClient.get(`/api/stream/settings/${twitchId}/overlay-key`);
+    return response.data;
+  },
+
+  async regenerateOverlayKey(twitchId: string): Promise<{
+    overlayKey: string;
+  }> {
+    const response = await apiClient.post(`/api/stream/settings/${twitchId}/overlay-key/regenerate`);
     return response.data;
   }
 };

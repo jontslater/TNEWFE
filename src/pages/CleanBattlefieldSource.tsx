@@ -179,6 +179,15 @@ export default function CleanBattlefieldSource() {
   // Dark mode support - check URL parameter
   const darkMode = searchParams.get('darkMode') === 'true' || searchParams.get('dark') === '1';
   
+  // Streamer key auth: read from URL and store in sessionStorage for overlayClient
+  useEffect(() => {
+    const streamerKey = searchParams.get('streamerKey');
+    if (streamerKey) {
+      sessionStorage.setItem('streamer_key', streamerKey);
+      console.log('[CleanBattlefield] Streamer key loaded from URL');
+    }
+  }, [searchParams]);
+  
   // Inject CSS animation for SCT floating text
   useEffect(() => {
     const styleId = 'sct-float-animation';

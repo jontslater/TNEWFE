@@ -1,113 +1,208 @@
 # Backend Integration Gaps
 
-This document tracks any missing endpoints or functionality in the backend that prevents full integration with the frontend.
+This document tracks missing endpoints or functionality in the backend that prevents full integration with the frontend.
 
-## Status: ✅ NO CRITICAL GAPS
-
-The backend PR #9 (`cursor/fix-critical-issues-3f3e`) provides all required endpoints for frontend integration.
+**Last Updated**: After auditing backend PR #9 branch `cursor/fix-critical-issues-3f3e`
 
 ---
 
-## Authentication Flow (✅ Complete)
+## Status: ⚠️ 2 CRITICAL GAPS IDENTIFIED
 
-### JWT Acquisition
-**Status**: ✅ Implemented
+The backend PR #9 integration is **INCOMPLETE**. Two critical items are missing:
 
-**Flow**:
-1. User clicks "Login with Twitch" on frontend homepage
-2. Frontend redirects to Twitch OAuth: `https://id.twitch.tv/oauth2/authorize`
-3. Twitch redirects back to `/auth/callback` with `code` parameter
-4. Frontend calls `POST /api/auth/twitch` with `{code}`
-5. Backend exchanges code for Twitch tokens, creates/updates hero document
-6. Backend returns `{user: {...}, token: "jwt-string"}`
-7. Frontend stores `token` in `localStorage.auth_token`
-8. All subsequent API calls include `Authorization: Bearer <token>` header
+1. **Streamer key generation/fetching** (overlayKey)
+2. **Auth middleware applied to most routes** (only ~9 of ~218 routes protected)
 
-**No gaps**: The `/api/auth/twitch` endpoint exists and returns a JWT.
+The backend agent is currently fixing both issues.
 
 ---
 
-## Streamer/Overlay Key Flow (✅ Complete)
+## Gap 1: Streamer Key Generation (overlayKey) - ⚠️ MISSING
 
-### Overlay Key Acquisition
-**Status**: ✅ Implemented
+### Current State
+- **Backend PR #9 branch audited**: `cursor/fix-critical-issues-3f3e`
+- **Finding**: `src/routes/streamSettings.js` exists but does NOT generate or store `overlayKey`
+- **Impact**: `X-Streamer-Key` auth flow CANNOT work yet
 
-**Flow**:
-1. Streamer views "Browser Source" tab in portal
-2. Frontend displays overlay URL with `?streamerKey=<key>` parameter
-3. Backend generates and stores `overlayKey` in `streamerSettings` collection (per streamer)
-4. Overlay (CleanBattlefieldSource.tsx) reads `streamerKey` from URL param
-5. Overlay sends `X-Streamer-Key: <key>` header on all overlay-scoped API calls
+### What's Missing
+The backend needs endpoints to:
+1. **Generate overlayKey** when streamer first accesses Browser Source tab
+2. **Fetch overlayKey** for authenticated streamer (protected by their JWT)
+3. **Regenerate overlayKey** if leaked (with confirmation)
+4. **Store overlayKey** in `streamerSettings` collection (Firestore)
 
-**Endpoints using streamer key**:
-- `GET /api/chat/activity/:streamerId` - Returns chat boost metrics
-- `POST /api/overlay/sync` - Idempotent batch sync (requires `X-Streamer-Key` OR ownership)
+### Expected Backend Endpoints (PENDING)
+```
+GET  /api/stream/settings/:twitchId/overlay-key
+POST /api/stream/settings/:twitchId/overlay-key/regenerate
+```
 
-**No gaps**: Streamer key verification is implemented in `src/middleware/auth.js` (`requireStreamerAccess`).
+**Auth**: Protected by `requireAuth` + `requireOwnership` (streamer's own JWT)  
+**Response**: `{ overlayKey: "abc123..." }`
 
----
+### Frontend Impact
+- Frontend `BrowserSourceTab` component CANNOT fetch overlay key yet
+- Overlay URL generation blocked (no key to include in `?streamerKey=...`)
+- `overlayClient` X-Streamer-Key header will be empty until backend provides key
 
-## Admin Key Flow (✅ Complete)
-
-### Admin Operations
-**Status**: ✅ Implemented
-
-**Flow**:
-1. Admin sets `ADMIN_KEY` environment variable on backend
-2. Admin tools (test cleanup, debug endpoints) send `X-Admin-Key: <key>` header
-3. Backend verifies via `requireAdmin` middleware
-
-**No gaps**: Admin protection is fully implemented.
-
----
-
-## Potential Future Improvements (Non-Blocking)
-
-### 1. Token Refresh Endpoint
-**Priority**: Low  
-**Current**: JWTs expire after 30 days, user must re-login  
-**Improvement**: Add `POST /api/auth/refresh` endpoint to issue new JWT without full OAuth flow  
-**Workaround**: Current 30-day expiry is acceptable; users rarely stay logged in that long without refresh
-
-### 2. Overlay Key Rotation
-**Priority**: Low  
-**Current**: Overlay keys are generated once and never change  
-**Improvement**: Add `POST /api/streamer/regenerate-key` to allow streamers to rotate keys if leaked  
-**Workaround**: Streamers can manually update Firestore `streamerSettings` document if needed
-
-### 3. Batch JWT Validation
-**Priority**: Low  
-**Current**: JWT is verified on every request (inline in middleware)  
-**Improvement**: Add Redis/in-memory cache for decoded JWTs to reduce `jwt.verify` overhead  
-**Workaround**: JWT verification is fast enough (<1ms); caching not critical for current scale
+### Workaround
+**NONE** - This is a hard dependency. Frontend cannot proceed without backend fix.
 
 ---
 
-## Testing Checklist
+## Gap 2: Auth Middleware Coverage - ⚠️ INCOMPLETE
 
-### JWT Flow
-- [x] User can log in via Twitch OAuth
-- [x] Backend returns valid JWT in `/api/auth/twitch` response
-- [x] Frontend stores JWT in `localStorage.auth_token`
-- [x] API client includes `Authorization: Bearer <token>` on all requests
-- [x] Invalid/expired JWT triggers 401 → clears token → redirects to home
-- [x] Missing JWT on protected routes returns 401
+### Current State
+- **Audit result**: Auth middleware applied to only ~9 of ~218 backend routes
+- **Finding**: Most mutating routes (hero updates, guild ops, mail, auction) are NOT protected
+- **Impact**: Cross-user exploits still possible, security vulnerabilities remain open
 
-### Streamer Key Flow
-- [ ] Streamer can view overlay key in Browser Source tab
-- [ ] Overlay URL includes `?streamerKey=<key>` parameter
-- [ ] Overlay sends `X-Streamer-Key` header to `/api/chat/activity` and `/api/overlay/sync`
-- [ ] Invalid streamer key returns 403
-- [ ] Missing streamer key (but valid JWT ownership) allows access
+### Routes Still Lacking Auth (Partial List)
+Based on backend PR #9 audit:
+- Most `/api/heroes/:userId/*` mutation routes
+- `/api/guilds/*` operations (create, invite, promote, kick)
+- `/api/mail/*` operations (send, claim attachments)
+- `/api/auction/*` operations (bid, cancel, claim)
+- `/api/purchases/*` routes (gold shop, token shop)
 
-### Ownership Validation
-- [ ] User can only modify their own hero (`requireOwnership` middleware)
-- [ ] Cross-user hero modification attempts return 403
-- [ ] Admin operations require `X-Admin-Key` header
+### Expected Backend Fix (IN PROGRESS)
+The backend agent is:
+1. Adding `requireAuth` to all mutation routes
+2. Adding `requireOwnership` to hero/guild/resource-specific routes
+3. Adding `requireAdmin` to destructive/debug routes
+4. Adding `requireStreamerAccess` to overlay/chat activity routes
+
+### Frontend Impact
+- Frontend sends `Authorization: Bearer <token>` headers (already implemented)
+- Frontend will see 401/403 errors on unprotected routes (as intended)
+- **CANNOT VERIFY** until backend deploys auth on all routes
+
+---
+
+## Integration Testing Status
+
+### Auth Testing Checklist
+
+#### JWT Flow
+- [ ] **UNVERIFIED**: User can log in via Twitch OAuth (backend `/api/auth/twitch` exists)
+- [ ] **UNVERIFIED**: Backend returns valid JWT in response
+- [ ] ✅ **VERIFIED**: Frontend stores JWT in `localStorage.auth_token`
+- [ ] ✅ **VERIFIED**: API client includes `Authorization: Bearer <token>` header
+- [ ] **UNVERIFIED**: Invalid/expired JWT triggers 401 → clears token → redirects to home
+- [ ] **UNVERIFIED**: Missing JWT on protected routes returns 401
+
+#### Streamer Key Flow
+- [ ] **BLOCKED**: Streamer cannot view overlay key (backend endpoint missing)
+- [ ] **BLOCKED**: Overlay URL generation blocked (no key to include)
+- [ ] **BLOCKED**: Overlay cannot send `X-Streamer-Key` header (no key available)
+- [ ] **BLOCKED**: Backend cannot validate streamer key (`overlayKey` not stored)
+- [ ] **BLOCKED**: Regenerate key not implemented (backend endpoint missing)
+
+#### Ownership Validation
+- [ ] **UNVERIFIED**: User can only modify their own hero (`requireOwnership` not on all routes)
+- [ ] **UNVERIFIED**: Cross-user hero modification returns 403 (auth not applied yet)
+- [ ] **UNVERIFIED**: Admin operations require `X-Admin-Key` header
+
+---
+
+## What Frontend HAS Done (Optimistic Implementation)
+
+### API Client Infrastructure ✅
+- **overlayClient**: Separate axios instance for browser-source routes
+- **X-Streamer-Key header**: Reads from `sessionStorage.streamer_key` (when available)
+- **JWT fallback**: Uses `Authorization: Bearer` if no streamer key
+- **overlayAPI**: Methods for `syncBatch()` and `getChatActivity()`
+
+### Auth Header Coverage ✅
+All API calls use shared `apiClient` or `overlayClient`:
+- `heroAPI.*` → uses `apiClient` (sends JWT)
+- `overlayAPI.*` → uses `overlayClient` (sends streamer key OR JWT)
+- `authAPI.*` → uses `apiClient` (no auth needed for login)
+
+### Integration Hooks ✅
+- `useChatActivity`: Uses `overlayAPI.getChatActivity()` with backend smooth curve
+- `useOverlaySync`: Uses `overlayAPI.syncBatch()` with idempotent batchId
+
+---
+
+## What Backend MUST Do (Pending)
+
+### 1. Streamer Key Generation (HIGH PRIORITY)
+**File**: `src/routes/streamSettings.js`
+
+Add endpoints:
+```javascript
+// GET /api/stream/settings/:twitchId/overlay-key
+// Protected by requireAuth + requireOwnership
+router.get('/:twitchId/overlay-key', requireAuth, requireOwnership, async (req, res) => {
+  const { twitchId } = req.params;
+  
+  // Get or generate overlayKey
+  let settingsDoc = await db.collection('streamerSettings').doc(twitchId).get();
+  let overlayKey;
+  
+  if (settingsDoc.exists && settingsDoc.data().overlayKey) {
+    overlayKey = settingsDoc.data().overlayKey;
+  } else {
+    // Generate new key: random 32-char hex
+    overlayKey = crypto.randomBytes(16).toString('hex');
+    await db.collection('streamerSettings').doc(twitchId).set({
+      overlayKey,
+      generatedAt: admin.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+  }
+  
+  res.json({ overlayKey });
+});
+
+// POST /api/stream/settings/:twitchId/overlay-key/regenerate
+// Protected by requireAuth + requireOwnership
+router.post('/:twitchId/overlay-key/regenerate', requireAuth, requireOwnership, async (req, res) => {
+  const { twitchId } = req.params;
+  
+  // Generate new key
+  const overlayKey = crypto.randomBytes(16).toString('hex');
+  await db.collection('streamerSettings').doc(twitchId).set({
+    overlayKey,
+    regeneratedAt: admin.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
+  
+  res.json({ overlayKey });
+});
+```
+
+### 2. Apply Auth Middleware to All Routes (HIGH PRIORITY)
+**Files**: `src/routes/*.js` (all route files)
+
+Apply to:
+- All `PUT`, `POST`, `DELETE` routes → `requireAuth`
+- Hero-specific routes → `requireAuth` + `requireOwnership`
+- Guild/mail/auction resource routes → `requireAuth` + resource ownership checks
+- Admin/test routes → `requireAdmin`
+- Overlay/chat activity routes → `requireStreamerAccess`
+
+---
+
+## Timeline
+
+### Backend Agent (Current Work)
+- **Status**: Fixing streamer key generation + auth coverage
+- **ETA**: Unknown (backend agent autonomous)
+
+### Frontend Readiness
+- **Status**: Optimistically implemented, waiting for backend
+- **Blocker**: Cannot test or verify until backend deploys fixes
+
+### Integration Testing
+- **Status**: BLOCKED until backend fixes are deployed
+- **Checklist**: See `MANUAL_TEST_CHECKLIST.md` (most items unverified)
 
 ---
 
 ## Conclusion
 
-**All critical integration points are implemented in backend PR #9.**  
-The frontend can proceed with full integration without waiting for additional backend endpoints.
+**Frontend is READY** - All API calls use correct clients and headers.  
+**Backend is INCOMPLETE** - Missing streamer key endpoints and auth on most routes.  
+**Integration is BLOCKED** - Cannot verify or test until backend fixes are deployed.
+
+The frontend has done everything possible in advance. We wait for backend PR #9 to be completed.
