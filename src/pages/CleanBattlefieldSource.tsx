@@ -56,6 +56,7 @@ import {
   calculateItemImprovement 
 } from '../overlay/statsCalculator';
 import { getEnemyPosition, getDungeonHeroPosition } from '../overlay/positioning';
+import { RareLootAnnouncement } from '../overlay/RareLootAnnouncement';
 
 // Type aliases for backward compatibility
 type Hero = OverlayHero;
@@ -9021,55 +9022,13 @@ export default function CleanBattlefieldSource() {
         )}
         
         {/* Rare Loot Announcement - Shows when Rare/Epic/Legendary/Mythic drops */}
-        {rareLootAnnouncement && (() => {
-          const style = getRarityStyle(rareLootAnnouncement.rarity as any);
-          return (
-            <div style={{
-              position: 'absolute',
-              top: '30%',
-              left: '50%',
-              transform: 'translate(-50%, -50%)',
-              background: `linear-gradient(135deg, ${style.bgColor}ee, #000000cc)`,
-              border: `3px solid ${style.borderColor}`,
-              borderRadius: '16px',
-              padding: '24px 32px',
-              boxShadow: `0 0 40px ${style.glowColor}, inset 0 0 20px ${style.glowColor}`,
-              zIndex: 1000,
-              pointerEvents: 'none',
-              animation: 'fadeInOut 5s ease-in-out',
-              minWidth: '400px',
-              textAlign: 'center'
-            }}>
-              <div style={{
-                fontSize: '36px',
-                fontWeight: 'bold',
-                color: style.color,
-                textShadow: `0 0 15px ${style.glowColor}`,
-                marginBottom: '12px',
-                letterSpacing: '2px'
-              }}>
-                {style.emoji} {style.label.toUpperCase()} DROP! {style.emoji}
-              </div>
-              <div style={{
-                fontSize: '24px',
-                color: 'white',
-                textShadow: '2px 2px 6px rgba(0,0,0,0.9)',
-                fontWeight: '500'
-              }}>
-                {rareLootAnnouncement.heroName} looted:
-              </div>
-              <div style={{
-                fontSize: '28px',
-                color: style.color,
-                textShadow: `0 0 10px ${style.glowColor}`,
-                fontWeight: 'bold',
-                marginTop: '8px'
-              }}>
-                {rareLootAnnouncement.itemName}
-              </div>
-            </div>
-          );
-        })()}
+        {rareLootAnnouncement && (
+          <RareLootAnnouncement
+            itemName={rareLootAnnouncement.itemName}
+            rarity={rareLootAnnouncement.rarity}
+            heroName={rareLootAnnouncement.heroName}
+          />
+        )}
         
         {/* Wave Announcement - Shows between waves */}
         {showWaveAnnouncement && (
