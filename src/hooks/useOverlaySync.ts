@@ -147,6 +147,7 @@ export function useOverlaySync(
     
     // Collect all pending changes
     const heroUpdates: Array<{ heroId: string; updates: Partial<Hero> }> = [];
+    const syncPromises: Promise<void>[] = [];
     
     heroStatChanges.current.getAll().forEach((changes, heroId) => {
       const hero = heroes.find(h => h.id === heroId);
@@ -222,7 +223,7 @@ export function useOverlaySync(
 
         syncPromises.push(syncPromise);
       }
-    }
+    });
 
     await Promise.allSettled(syncPromises);
     lastStatSyncTime.current = now;
