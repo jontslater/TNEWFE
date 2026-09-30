@@ -171,7 +171,7 @@ export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: Hero
       
       if (data) {
         // Sort titles alphabetically
-        const sortedTitles = (data.titles || []).sort((a, b) => a.localeCompare(b));
+        const sortedTitles = (data.titles || []).sort((a: string, b: string) => a.localeCompare(b));
         setAvailableTitles(sortedTitles);
         setSelectedTitle(data.activeTitle || null);
       }

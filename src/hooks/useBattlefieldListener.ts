@@ -91,10 +91,10 @@ export function useBattlefieldListener(battlefieldId: string | null) {
             // Try to find any heroes to help debug - but only once to avoid spam
             if (!snapshot.metadata.fromCache) {
               const allHeroesQuery = query(collection(db, 'heroes'), where('currentBattlefieldId', '!=', null));
-              onSnapshot(allHeroesQuery, (debugSnapshot) => {
+              onSnapshot(allHeroesQuery, (debugSnapshot: any) => {
                 if (debugSnapshot.docs.length > 0) {
                   const battlefieldIds = new Set();
-                  debugSnapshot.docs.forEach(doc => {
+                  debugSnapshot.docs.forEach((doc: any) => {
                     const hero = doc.data();
                     if (hero.currentBattlefieldId) {
                       battlefieldIds.add(hero.currentBattlefieldId);

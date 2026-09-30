@@ -156,7 +156,7 @@ export default function ProfessionPanel({ hero, onUpdate }: ProfessionPanelProps
           <div className="text-gray-400 text-center py-8">No elixirs crafted yet</div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {profession.inventory.map((item, idx) => (
+            {profession.inventory.map((item: any, idx: number) => (
               <div key={idx} className="bg-gray-700 rounded-lg p-4 border border-gray-600">
                 <div className="font-semibold text-white">{item.name}</div>
                 <div className="text-sm text-gray-400 mt-1">Quantity: {item.quantity}</div>

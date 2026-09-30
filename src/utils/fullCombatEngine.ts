@@ -2951,7 +2951,7 @@ export class FullCombatEngine {
         const itemEnchantments = target.hero.enchantedItems!.find(ei => ei.itemId === item.id);
         if (!itemEnchantments || !itemEnchantments.enchantments) return;
         
-        itemEnchantments.enchantments.forEach(ench => {
+        itemEnchantments.enchantments.forEach((ench: any) => {
           const value = (ench.baseValue || 5) * (ench.level || 1);
           
           if (ench.type === 'thorns_armor') {

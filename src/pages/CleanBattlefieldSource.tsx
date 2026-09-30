@@ -712,7 +712,7 @@ export default function CleanBattlefieldSource() {
                 
                 if (raid.simulateMode) {
                   // Simulate
-                  const heroIds = raid.participants.map(p => p.heroId);
+                  const heroIds = raid.participants.map((p: any) => p.heroId);
                   fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/raids/${raid.raidId}/simulate`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -2577,7 +2577,7 @@ export default function CleanBattlefieldSource() {
             
             // Prioritize health potions when low stock
             // Count potions in inventory
-            const potionsInInventory = (hero.inventory || []).filter(item => 
+            const potionsInInventory = (hero.inventory || []).filter((item: any) => 
               (item as any).itemKey === 'healthpotion' || (item as any).type === 'potion'
             ).length;
             

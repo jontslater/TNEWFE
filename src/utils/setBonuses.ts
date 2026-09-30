@@ -181,7 +181,7 @@ export function calculateSetBonuses(
     const set = setsForCategory[setName as keyof typeof setsForCategory];
     let pieceCount = 0;
     
-    set.pieces.forEach(slot => {
+    set.pieces.forEach((slot: any) => {
       const item = equipment[slot];
       if (item && item.setName === setName) {
         pieceCount++;
