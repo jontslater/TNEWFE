@@ -842,7 +842,7 @@ export default function RaidBrowserSourcePage({ instanceId: propInstanceId }: Ra
               type: log.type
             };
           })
-          .sort((a, b) => a.timestamp - b.timestamp); // Sort by timestamp
+          .sort((a: any, b: any) => a.timestamp - b.timestamp); // Sort by timestamp
         
         // Merge with existing chat messages to avoid losing optimistic updates
         setChatMessages(prev => {
@@ -851,7 +851,7 @@ export default function RaidBrowserSourcePage({ instanceId: propInstanceId }: Ra
           const unique = merged.filter((msg, idx, self) => 
             idx === self.findIndex(m => m.timestamp === msg.timestamp && m.message === msg.message)
           );
-          return unique.sort((a, b) => a.timestamp - b.timestamp).slice(-100);
+          return unique.sort((a: any, b: any) => a.timestamp - b.timestamp).slice(-100);
         });
         
         // All combat log entries (for combat log panel)
@@ -863,7 +863,7 @@ export default function RaidBrowserSourcePage({ instanceId: propInstanceId }: Ra
             message: log.message,
             type: log.type || 'system'
           }))
-          .sort((a, b) => a.timestamp - b.timestamp); // Sort by timestamp
+          .sort((a: any, b: any) => a.timestamp - b.timestamp); // Sort by timestamp
         
         // Merge with existing combat log entries to preserve local additions
         // Only merge entries that don't already exist (prevent duplicates from backend)
@@ -884,7 +884,7 @@ export default function RaidBrowserSourcePage({ instanceId: propInstanceId }: Ra
           );
           
           // Filter out backend entries that already exist locally
-          const newEntries = allLogEntries.filter(log => {
+          const newEntries = allLogEntries.filter((log: any) => {
             const logId = log.id || `backend-${log.timestamp}-${log.message}`;
             const messageSig = `${Math.floor(log.timestamp / 100)}-${log.message}`;
             
@@ -962,7 +962,7 @@ export default function RaidBrowserSourcePage({ instanceId: propInstanceId }: Ra
           
           // Remove enemies that are no longer in instance
           const instanceEnemyIds = new Set(instanceData.enemies.map((e: any) => e.id || e.name));
-          return updatedEnemies.filter(e => instanceEnemyIds.has(e.id) || instanceEnemyIds.has(e.name));
+          return updatedEnemies.filter((e: any) => instanceEnemyIds.has(e.id) || instanceEnemyIds.has(e.name));
         });
       }
 
@@ -1318,7 +1318,7 @@ export default function RaidBrowserSourcePage({ instanceId: propInstanceId }: Ra
         // Note: Hero deaths might not be quest objectives, but we track for stats
       }
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [heroes]);
 
   // Sync heroShields from hero.shield for display
@@ -1841,7 +1841,7 @@ export default function RaidBrowserSourcePage({ instanceId: propInstanceId }: Ra
     }
 
     // Clear enemy initiative for new round
-    setEnemies(prev => prev.map(e => ({ ...e, initiative: undefined })));
+    setEnemies(prev => prev.map(e => ({ ...e, initiative: undefined as any })));
 
     // Calculate initiative for all combatants
     const combatants = calculateInitiative(heroes, enemies);
@@ -1896,7 +1896,7 @@ export default function RaidBrowserSourcePage({ instanceId: propInstanceId }: Ra
           // All ranged heroes that use projectiles
           const spellcasters = ['mage', 'warlock', 'necromancer', 'firemage', 'frostmage', 'dragonsorcerer', 'ranger', 'shadowpriest', 'mooncaller', 'stormcaller'];
           const healers = ['cleric', 'atoner', 'druid', 'lightbringer', 'shaman', 'mistweaver', 'chronomancer', 'bard'];
-          let usesProjectile = spellcasters.includes(hero.role.toLowerCase()) || healers.includes(hero.role.toLowerCase());
+          const usesProjectile = spellcasters.includes(hero.role.toLowerCase()) || healers.includes(hero.role.toLowerCase());
 
           const heroElement = document.querySelector(`#battle-hero-${hero.id}`) as HTMLElement;
           const enemyElement = document.querySelector(`#battle-enemy-${targetEnemy.id}`) as HTMLElement;
@@ -2190,7 +2190,7 @@ export default function RaidBrowserSourcePage({ instanceId: propInstanceId }: Ra
               }
               
               let elementType: 'fire' | 'frost' | 'arcane' | undefined = undefined;
-              let projectileRole = hero.role;
+              const projectileRole = hero.role;
               
               if (hero.role.toLowerCase() === 'mage' && hero.classAbilityState?.elementRotation !== undefined) {
                 const rotation = hero.classAbilityState.elementRotation;
@@ -2674,7 +2674,7 @@ export default function RaidBrowserSourcePage({ instanceId: propInstanceId }: Ra
                   role: 'enemy',
                   activeBuffs: {},
                   activeDebuffs: {},
-                  equipment: [],
+                  equipment: [] as any[],
                   shield: 0
                 }))]);
                 

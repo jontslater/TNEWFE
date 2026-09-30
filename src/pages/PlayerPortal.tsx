@@ -4,6 +4,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useHero } from '../hooks/useHero';
 import { useAllHeroes } from '../hooks/useAllHeroes';
 import { useGuild } from '../hooks/useGuild';
+import { useChatActivity } from '../hooks/useChatActivity';
 import { raidAPI, heroAPI, foundersPackAPI } from '../api/client';
 import { Raid, WorldBoss, Item } from '../types/Raid';
 import HeroDashboard from '../components/HeroDashboard';
@@ -27,6 +28,8 @@ import AuctionHousePage from './AuctionHousePage';
 import QuestsPage from './QuestsPage';
 import SocialSidebar from '../components/SocialSidebar';
 import PrestigeStore from '../components/PrestigeStore';
+import StreamStatusBanner from '../components/StreamStatusBanner';
+import GroupBoostIndicator from '../components/GroupBoostIndicator';
 
 export default function PlayerPortal() {
   const navigate = useNavigate();
@@ -38,6 +41,10 @@ export default function PlayerPortal() {
   const { heroes: allHeroes, loading: allHeroesLoading, refetch: refetchAllHeroes } = useAllHeroes(isAdmin);
   // Use hero ID for guild (hero-based guild system)
   const { guild, loading: guildLoading, refetch: refetchGuild } = useGuild(hero?.id || null);
+  
+  // Chat activity for current stream
+  const streamerId = hero?.currentBattlefieldId?.replace('twitch:', '');
+  const { data: chatActivity } = useChatActivity(streamerId, !!streamerId);
   const [raids, setRaids] = useState<Raid[]>([]);
   const [worldBoss, setWorldBoss] = useState<WorldBoss | null>(null);
   const [activeTab, setActiveTab] = useState<'hero' | 'inventory' | 'profession' | 'guild' | 'raids' | 'skills' | 'dungeon' | 'browserSource' | 'achievements' | 'allHeroes' | 'auction' | 'quests' | 'prestige'>('hero');
@@ -239,7 +246,7 @@ export default function PlayerPortal() {
           console.error('[PlayerPortal] ❌ Failed to fetch Dingo Dynasty hero:', err);
         });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [isAdmin]);
 
   if (!isAuthenticated) {
@@ -515,6 +522,24 @@ export default function PlayerPortal() {
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
+        {/* Stream Status Banner */}
+        <StreamStatusBanner 
+          currentBattlefieldId={hero.currentBattlefieldId}
+          heroName={hero.name}
+        />
+        
+        {/* Group Boost Indicator - Show when active on a stream */}
+        {chatActivity && streamerId && (
+          <div className="mb-6">
+            <GroupBoostIndicator 
+              chatActivityLevel={chatActivity.chatActivityLevel}
+              activeBoosts={chatActivity.activeBoosts}
+              groupSize={chatActivity.chatterCount}
+              enemyStrength={100}
+            />
+          </div>
+        )}
+        
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Social Sidebar (Party & Chat) - Right side, always visible except on auction/quests */}
           {activeTab !== 'auction' && activeTab !== 'quests' && (
@@ -552,7 +577,7 @@ export default function PlayerPortal() {
                     const isSelected = h.id === hero.id;
                     const key = `${h.id}-${(h as any).characterId || h.role || idx}`;
                     const classInfo = CLASS_DATA.find(c => c.key === h.role);
-                    const category = classInfo?.category || getCategoryFromRole(h.role);
+                    const category = classInfo?.category || (h.role === 'warrior' || h.role === 'paladin' ? 'tank' : h.role === 'priest' || h.role === 'druid' ? 'healer' : 'dps');
                     const gearScore = getItemScore(h.equipment || {}, h.role);
                     const isPinned = (h as any).pinned || false;
                     const categoryColors = {

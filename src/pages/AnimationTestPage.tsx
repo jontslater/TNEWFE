@@ -3379,7 +3379,7 @@ export default function AnimationTestPage() {
   const processAutoBuy = (hero: TestHero): TestHero => {
     if (!autoBuyEnabled || hero.hp <= 0) return hero;
     
-    let updatedHero = { ...hero };
+    const updatedHero = { ...hero };
     const gold = updatedHero.gold || 0;
     
     // Priority order: Health Potion (if HP < 30%), then buffs
@@ -4261,7 +4261,7 @@ export default function AnimationTestPage() {
         return;
       }
       
-      let baseDamage = latestEnemy.attack || 300;
+      const baseDamage = latestEnemy.attack || 300;
       let finalDamage = calculateDamage(latestEnemy, latestHero, baseDamage);
       
       // Check Last Stand
@@ -4395,7 +4395,7 @@ export default function AnimationTestPage() {
         return;
       }
       
-      let baseDamage = enemy.attack || 300;
+      const baseDamage = enemy.attack || 300;
       let finalDamage = calculateDamage(enemy, latestHero, baseDamage);
       
       // Check Last Stand

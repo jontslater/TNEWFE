@@ -4,6 +4,7 @@
  */
 
 import { loadStripe, Stripe } from '@stripe/stripe-js';
+import { apiClient } from '../api/client';
 
 // Get Stripe publishable key from environment variables
 // Note: Vite uses VITE_ prefix, not REACT_APP_
@@ -26,27 +27,21 @@ export function getStripe(): Promise<Stripe | null> {
  * Create a Stripe checkout session
  * Calls the backend API to create a checkout session and redirects to Stripe
  * 
+ * ⚠️ SECURITY NOTE: Only sends purchaseId to backend. The backend must look up
+ * the actual price from its own database - never trust client-provided prices!
+ * 
  * @param purchaseId - The purchase ID from the backend
- * @param price - Price in dollars
  * @returns Checkout session URL or null if error
  */
-export async function createCheckoutSession(purchaseId: string, price: number): Promise<string | null> {
+export async function createCheckoutSession(purchaseId: string): Promise<string | null> {
   try {
-    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-    
-    const response = await fetch(`${API_URL}/api/purchases/create-checkout-session`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ purchaseId, price })
+    // ⚠️ SECURITY: Only send purchaseId - backend looks up price from database
+    // Use apiClient to ensure Authorization header is sent
+    const response = await apiClient.post('/api/purchases/create-checkout-session', {
+      purchaseId
     });
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ error: 'Failed to create checkout session' }));
-      console.error('[Stripe] Error creating checkout session:', errorData);
-      throw new Error(errorData.error || 'Failed to create checkout session');
-    }
-
-    const data = await response.json();
+    const data = response.data;
     const sessionId = data.sessionId;
     const checkoutUrl = data.url;
 
@@ -56,13 +51,10 @@ export async function createCheckoutSession(purchaseId: string, price: number): 
     }
 
     // Redirect to Stripe checkout using the URL directly
-    // Note: redirectToCheckout is deprecated, so we use the URL from the session
     if (checkoutUrl) {
       window.location.href = checkoutUrl;
       return sessionId;
     } else {
-      // Fallback: construct URL from sessionId if URL not provided
-      // This shouldn't happen, but provides a fallback
       throw new Error('No checkout URL received from server');
     }
   } catch (error: any) {

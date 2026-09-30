@@ -410,7 +410,7 @@ export const MINING_RECIPES = {
     cost: { ore: { mithril: 5, adamantite: 2 } },
     description: 'Adds a socket to gear (requires 500g)',
     effect: 'Adds socket to equipment',
-    applicableSlots: [] // Transferable item, not applied to gear directly
+    applicableSlots: [] as string[] // Transferable item, not applied to gear directly
   }
 };
 
@@ -487,7 +487,7 @@ export const ENCHANTING_RECIPES = {
     effect: 'damageBonus',
     value: 0.30,
     duration: 1200000,
-    applicableSlots: [] // Consumable, not applied to gear
+    applicableSlots: [] as string[] // Consumable, not applied to gear
   },
   rune_of_warding: {
     name: 'Rune of Warding',
@@ -498,7 +498,7 @@ export const ENCHANTING_RECIPES = {
     effect: 'damageReduction',
     value: 0.30,
     duration: 1200000,
-    applicableSlots: [] // Consumable, not applied to gear
+    applicableSlots: [] as string[] // Consumable, not applied to gear
   },
   rune_of_vitality: {
     name: 'Rune of Vitality',
@@ -509,7 +509,7 @@ export const ENCHANTING_RECIPES = {
     effect: 'cheatDeath',
     value: 0.25,
     duration: 1200000,
-    applicableSlots: [] // Consumable, not applied to gear
+    applicableSlots: [] as string[] // Consumable, not applied to gear
   }
 };
 
@@ -521,7 +521,7 @@ export const HERBALISM_RECIPES = {
     cost: { herbs: { common: 5 } },
     description: '+10% Max HP (15min combat)',
     effect: '+10% HP (15min)',
-    applicableSlots: [] // Consumable, not applied to gear
+    applicableSlots: [] as string[] // Consumable, not applied to gear
   },
   strength_elixir_basic: {
     name: 'Basic Strength Elixir',
@@ -530,7 +530,7 @@ export const HERBALISM_RECIPES = {
     cost: { herbs: { common: 5, uncommon: 1 } },
     description: '+10% Attack (15min combat)',
     effect: '+10% ATK (15min)',
-    applicableSlots: [] // Consumable, not applied to gear
+    applicableSlots: [] as string[] // Consumable, not applied to gear
   },
   defense_elixir_basic: {
     name: 'Basic Defense Elixir',
@@ -539,7 +539,7 @@ export const HERBALISM_RECIPES = {
     cost: { herbs: { common: 5, uncommon: 1 } },
     description: '+10% Defense (15min combat)',
     effect: '+10% DEF (15min)',
-    applicableSlots: [] // Consumable, not applied to gear
+    applicableSlots: [] as string[] // Consumable, not applied to gear
   },
   health_elixir_advanced: {
     name: 'Advanced Health Elixir',
@@ -548,7 +548,7 @@ export const HERBALISM_RECIPES = {
     cost: { herbs: { common: 10, uncommon: 5, rare: 1 } },
     description: '+20% Max HP (20min combat)',
     effect: '+20% HP (20min)',
-    applicableSlots: [] // Consumable, not applied to gear
+    applicableSlots: [] as string[] // Consumable, not applied to gear
   },
   strength_elixir_advanced: {
     name: 'Advanced Strength Elixir',
@@ -557,7 +557,7 @@ export const HERBALISM_RECIPES = {
     cost: { herbs: { common: 10, uncommon: 5, rare: 1 } },
     description: '+20% Attack (20min combat)',
     effect: '+20% ATK (20min)',
-    applicableSlots: [] // Consumable, not applied to gear
+    applicableSlots: [] as string[] // Consumable, not applied to gear
   },
   defense_elixir_advanced: {
     name: 'Advanced Defense Elixir',
@@ -566,7 +566,7 @@ export const HERBALISM_RECIPES = {
     cost: { herbs: { common: 10, uncommon: 5, rare: 1 } },
     description: '+20% Defense (20min combat)',
     effect: '+20% DEF (20min)',
-    applicableSlots: [] // Consumable, not applied to gear
+    applicableSlots: [] as string[] // Consumable, not applied to gear
   },
   haste_elixir: {
     name: 'Haste Elixir',
@@ -575,7 +575,7 @@ export const HERBALISM_RECIPES = {
     cost: { herbs: { uncommon: 8, rare: 2 } },
     description: '+25% Combat Speed (20min)',
     effect: '+25% Speed (20min)',
-    applicableSlots: [] // Consumable, not applied to gear
+    applicableSlots: [] as string[] // Consumable, not applied to gear
   },
   health_elixir_superior: {
     name: 'Superior Health Elixir',
@@ -584,7 +584,7 @@ export const HERBALISM_RECIPES = {
     cost: { herbs: { uncommon: 15, rare: 5, epic: 1 } },
     description: '+30% Max HP (30min combat)',
     effect: '+30% HP (30min)',
-    applicableSlots: [] // Consumable, not applied to gear
+    applicableSlots: [] as string[] // Consumable, not applied to gear
   },
   strength_elixir_superior: {
     name: 'Superior Strength Elixir',
@@ -593,7 +593,7 @@ export const HERBALISM_RECIPES = {
     cost: { herbs: { uncommon: 15, rare: 5, epic: 1 } },
     description: '+30% Attack (30min combat)',
     effect: '+30% ATK (30min)',
-    applicableSlots: [] // Consumable, not applied to gear
+    applicableSlots: [] as string[] // Consumable, not applied to gear
   },
   clarity_elixir: {
     name: 'Clarity Elixir',
@@ -602,7 +602,7 @@ export const HERBALISM_RECIPES = {
     cost: { herbs: { uncommon: 10, rare: 5 } },
     description: '+40% XP Gain (30min combat)',
     effect: '+40% XP (30min)',
-    applicableSlots: [] // Consumable, not applied to gear
+    applicableSlots: [] as string[] // Consumable, not applied to gear
   },
   flask_of_titan: {
     name: 'Flask of the Titan',
@@ -611,7 +611,7 @@ export const HERBALISM_RECIPES = {
     cost: { herbs: { rare: 10, epic: 3 } },
     description: '+25% Max HP (60min, death-proof)',
     effect: '+25% HP (60min, persists)',
-    applicableSlots: [] // Consumable, not applied to gear
+    applicableSlots: [] as string[] // Consumable, not applied to gear
   },
   flask_of_power: {
     name: 'Flask of Power',
@@ -620,6 +620,6 @@ export const HERBALISM_RECIPES = {
     cost: { herbs: { rare: 10, epic: 3 } },
     description: '+15% All Stats (60min, death-proof)',
     effect: '+15% All Stats (60min, persists)',
-    applicableSlots: [] // Consumable, not applied to gear
+    applicableSlots: [] as string[] // Consumable, not applied to gear
   }
 };

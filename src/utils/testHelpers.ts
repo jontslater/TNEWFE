@@ -16,10 +16,10 @@ import { heroElementId } from './combat/enemyAttacks';
  * Test helper interface - provides access to combat engine and state
  */
 export interface TestHelperContext {
-  combatEngine: FullCombatEngine | null;
-  getHeroes: () => Hero[] | FullCombatHero[];
-  getEnemies: () => Enemy[] | FullCombatEnemy[];
-  getState: () => CombatState | FullCombatState;
+  combatEngine: any | null;
+  getHeroes: () => Hero[] | any[];
+  getEnemies: () => Enemy[] | any[];
+  getState: () => CombatState | any;
 }
 
 let testHelperContext: TestHelperContext | null = null;

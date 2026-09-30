@@ -7,7 +7,7 @@ import { mockHero, mockGuild, mockRaids, mockWorldBoss } from './mock-data';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true'; // Default to backend API
 
-// API Client
+// API Client (for portal/authenticated routes)
 const apiClient = axios.create({
   baseURL: API_URL,
   headers: {
@@ -46,6 +46,42 @@ apiClient.interceptors.response.use(
   }
 );
 
+// Overlay API Client (for browser-source/overlay routes using streamer keys)
+const overlayClient = axios.create({
+  baseURL: API_URL,
+  headers: {
+    'Content-Type': 'application/json'
+  }
+});
+
+// Add streamer key OR auth token to overlay requests
+overlayClient.interceptors.request.use((config) => {
+  // Try streamer key first (for browser source/overlay)
+  const streamerKey = sessionStorage.getItem('streamer_key');
+  if (streamerKey) {
+    config.headers['X-Streamer-Key'] = streamerKey;
+  } else {
+    // Fall back to JWT for authenticated portal access
+    const token = localStorage.getItem('auth_token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+  }
+  return config;
+});
+
+// Overlay client does NOT redirect on 401 (overlay runs in OBS, not browser)
+overlayClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401 || error.response?.status === 403) {
+      console.error('[Overlay] Auth error:', error.response?.data?.error || 'Unauthorized');
+      // Log but don't redirect (overlay context)
+    }
+    return Promise.reject(error);
+  }
+);
+
 // Hero API
 export const heroAPI = {
   async getAllHeroes(): Promise<Hero[]> {
@@ -78,7 +114,7 @@ export const heroAPI = {
 
     // Debug logging to inspect what the backend is returning for hero + equipment
     try {
-      // eslint-disable-next-line no-console
+       
       console.log('[HeroAPI] getHero response:', {
         userId,
         id: response.data?.id,
@@ -88,7 +124,7 @@ export const heroAPI = {
         equipment: response.data?.equipment,
       });
       if (response.data?.equipment) {
-        // eslint-disable-next-line no-console
+         
         console.log('[HeroAPI] equipment slots:', Object.keys(response.data.equipment));
       }
     } catch (e) {
@@ -2938,6 +2974,7 @@ export const streamSettingsAPI = {
       showLevelUps: boolean;
       showGold: boolean;
       customMessage: string | null;
+      sendWhenOffline: boolean;
     };
   }> {
     const response = await apiClient.get(`/api/stream/settings/${twitchId}`);
@@ -2952,6 +2989,7 @@ export const streamSettingsAPI = {
     showLevelUps?: boolean;
     showGold?: boolean;
     customMessage?: string | null;
+    sendWhenOffline?: boolean;
   }): Promise<{
     success: boolean;
     message: string;
@@ -2969,7 +3007,65 @@ export const streamSettingsAPI = {
   }> {
     const response = await apiClient.post(`/api/stream/settings/${twitchId}/test`);
     return response.data;
+  },
+
+  async getOverlayKey(twitchId: string): Promise<{
+    overlayKey: string;
+  }> {
+    const response = await apiClient.get(`/api/stream/settings/${twitchId}/overlay-key`);
+    return response.data;
+  },
+
+  async regenerateOverlayKey(twitchId: string): Promise<{
+    overlayKey: string;
+  }> {
+    const response = await apiClient.post(`/api/stream/settings/${twitchId}/overlay-key/regenerate`);
+    return response.data;
   }
 };
 
-export { apiClient };
+// Overlay API (uses streamer keys or JWT)
+export const overlayAPI = {
+  /**
+   * Sync hero stats/equipment/inventory in batch (idempotent with batchId)
+   * Requires X-Streamer-Key header or ownership via JWT
+   */
+  async syncBatch(batchId: string, updates: Array<{
+    heroId: string;
+    stats?: Record<string, any>;
+    equipment?: Record<string, any>;
+    inventory?: any[];
+  }>): Promise<{
+    success: boolean;
+    syncedCount: number;
+    skippedCount: number;
+    duplicate?: boolean;
+  }> {
+    const response = await overlayClient.post('/api/overlay/sync', {
+      batchId,
+      updates
+    });
+    return response.data;
+  },
+
+  /**
+   * Get current chat activity metrics for a streamer
+   * Requires X-Streamer-Key header or ownership via JWT
+   */
+  async getChatActivity(streamerId: string): Promise<{
+    streamerId: string;
+    activeUsers: number;
+    groupBoost: {
+      active: boolean;
+      multiplier: number;
+      attackBonus: number;
+      defenseBonus: number;
+      healingBonus: number;
+    };
+  }> {
+    const response = await overlayClient.get(`/api/chat/activity/${streamerId}`);
+    return response.data;
+  }
+};
+
+export { apiClient, overlayClient };

@@ -1,0 +1,202 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ⚠️ IMPORTANT: These rules require review and customization before deployment
+    // Replace placeholder auth checks with your actual authentication mechanism
+    // Current assumptions:
+    // - request.auth contains authenticated user data
+    // - Heroes are linked to users via twitchUserId or userId field
+    
+    // Helper function: Check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper function: Check if user owns a hero document
+    function isHeroOwner(heroId) {
+      return isAuthenticated() && 
+             (get(/databases/$(database)/documents/heroes/$(heroId)).data.twitchUserId == request.auth.uid ||
+              get(/databases/$(database)/documents/heroes/$(heroId)).data.userId == request.auth.uid);
+    }
+    
+    // Helper function: Check if user is admin (customize based on your admin system)
+    function isAdmin() {
+      return isAuthenticated() && 
+             request.auth.token.admin == true; // Adjust based on your custom claims
+    }
+    
+    // Heroes collection
+    // ⚠️ SECURITY ISSUE: Hero documents contain sensitive data including OAuth tokens
+    // TODO: Remove twitchAccessToken from client-accessible documents
+    match /heroes/{heroId} {
+      // Read: Users can only read their own hero
+      allow read: if isAuthenticated() && 
+                     (resource.data.twitchUserId == request.auth.uid || 
+                      resource.data.userId == request.auth.uid);
+      
+      // Write: Users can only update their own hero
+      // ⚠️ IMPORTANT: Validate data to prevent client tampering
+      allow update: if isAuthenticated() && 
+                       (resource.data.twitchUserId == request.auth.uid || 
+                        resource.data.userId == request.auth.uid) &&
+                       // Prevent modification of critical fields that should be server-controlled
+                       request.resource.data.twitchUserId == resource.data.twitchUserId &&
+                       request.resource.data.userId == resource.data.userId;
+      
+      // Create: Users can create their own hero
+      allow create: if isAuthenticated() && 
+                       (request.resource.data.twitchUserId == request.auth.uid ||
+                        request.resource.data.userId == request.auth.uid);
+      
+      // Delete: Only admins or hero owner
+      allow delete: if isAdmin() || 
+                       (isAuthenticated() && 
+                        (resource.data.twitchUserId == request.auth.uid || 
+                         resource.data.userId == request.auth.uid));
+    }
+    
+    // Guilds collection
+    match /guilds/{guildId} {
+      // Read: Anyone can read guild info (for discovery)
+      // Consider restricting to authenticated users if needed
+      allow read: if true;
+      
+      // Write: Only guild leader or officers can update
+      // ⚠️ TODO: Implement proper guild role checking
+      allow update: if isAuthenticated() && 
+                       (resource.data.leaderId == request.auth.uid ||
+                        request.auth.uid in resource.data.officerIds);
+      
+      // Create: Authenticated users can create guilds
+      allow create: if isAuthenticated() && 
+                       request.resource.data.leaderId == request.auth.uid;
+      
+      // Delete: Only guild leader or admins
+      allow delete: if isAdmin() || 
+                       (isAuthenticated() && resource.data.leaderId == request.auth.uid);
+    }
+    
+    // Raids collection
+    match /raids/{raidId} {
+      // Read: Anyone can read raids (for scheduling)
+      allow read: if true;
+      
+      // Write: Only raid creator or guild officers can update
+      // ⚠️ TODO: Implement proper raid permission checking
+      allow update: if isAdmin();
+      
+      // Create: Authenticated users or system can create raids
+      allow create: if isAuthenticated() || isAdmin();
+      
+      // Delete: Only admins
+      allow delete: if isAdmin();
+    }
+    
+    // Battlefields collection (browser source state)
+    match /battlefields/{battlefieldId} {
+      // Read: Anyone can read (for OBS overlays)
+      // Note: These should not contain sensitive data
+      allow read: if true;
+      
+      // Write: Only authenticated users can update their battlefield
+      // ⚠️ IMPORTANT: Validate battlefield ownership
+      allow update: if isAuthenticated();
+      
+      // Create: Authenticated users can create battlefields
+      allow create: if isAuthenticated();
+      
+      // Delete: Owner or admin
+      allow delete: if isAdmin();
+    }
+    
+    // Instances collection (dungeon/raid instances)
+    match /instances/{instanceId} {
+      // Read: Participants can read instance data
+      allow read: if isAuthenticated();
+      
+      // Write: Only server should write instance data
+      // ⚠️ BACKEND CHANGE NEEDED: Move instance creation/updates to server
+      allow update: if isAdmin();
+      
+      allow create: if isAdmin();
+      
+      allow delete: if isAdmin();
+    }
+    
+    // Mail collection
+    match /mail/{mailId} {
+      // Read: Only recipient can read their mail
+      allow read: if isAuthenticated() && 
+                     resource.data.recipientId == request.auth.uid;
+      
+      // Write: Sender can create, recipient can update (mark as read)
+      allow create: if isAuthenticated() && 
+                       request.resource.data.senderId == request.auth.uid;
+      
+      allow update: if isAuthenticated() && 
+                       resource.data.recipientId == request.auth.uid;
+      
+      allow delete: if isAuthenticated() && 
+                       resource.data.recipientId == request.auth.uid;
+    }
+    
+    // Profession data (materials, crafting)
+    match /professions/{userId} {
+      // Read: Only owner
+      allow read: if isAuthenticated() && 
+                     userId == request.auth.uid;
+      
+      // Write: Only owner
+      // ⚠️ BACKEND CHANGE NEEDED: Validate material gains server-side
+      allow update: if isAuthenticated() && 
+                       userId == request.auth.uid;
+      
+      allow create: if isAuthenticated() && 
+                       userId == request.auth.uid;
+      
+      allow delete: if isAuthenticated() && 
+                       userId == request.auth.uid;
+    }
+    
+    // Quest progress
+    match /quests/{userId} {
+      // Read: Only owner
+      allow read: if isAuthenticated() && 
+                     userId == request.auth.uid;
+      
+      // Write: Only owner
+      // ⚠️ BACKEND CHANGE NEEDED: Validate quest completion server-side
+      allow update: if isAuthenticated() && 
+                       userId == request.auth.uid;
+      
+      allow create: if isAuthenticated() && 
+                       userId == request.auth.uid;
+      
+      allow delete: if isAuthenticated() && 
+                       userId == request.auth.uid;
+    }
+    
+    // Auction house listings
+    match /auctionHouse/{listingId} {
+      // Read: Anyone can see listings
+      allow read: if true;
+      
+      // Create: Only authenticated users
+      allow create: if isAuthenticated() && 
+                       request.resource.data.sellerId == request.auth.uid;
+      
+      // Update: Only seller or buyer (for purchase)
+      allow update: if isAuthenticated();
+      
+      // Delete: Only seller or after expiration
+      allow delete: if isAuthenticated() && 
+                       resource.data.sellerId == request.auth.uid;
+    }
+    
+    // Default: Deny all other access
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

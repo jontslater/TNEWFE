@@ -37,7 +37,7 @@ export function createProjectile(
     }
 
   // Get projectile animation data
-  let projectileData: SpriteAnimationData | null = null;
+  let projectileData: any | null = null;
   let actualProjectileType: 'projectile' | 'projectileDiagonal' = 'projectile';
   
   if (isHero) {

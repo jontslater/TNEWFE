@@ -132,6 +132,8 @@ export interface RestedXp {
 export interface Hero {
   id?: string;
   name: string;
+  characterName?: string; // Alias for name (legacy support)
+  username?: string; // Twitch/TikTok username
   role: string;
   level: number;
   hp: number;
@@ -156,6 +158,32 @@ export interface Hero {
   profession: Profession | null;
   restedXp?: RestedXp;
   joinedAt: number;
+  // Combat-specific properties
+  hpRegen?: number;
+  damageReduction?: number;
+  critChance?: number;
+  healingPower?: number;
+  spellDamage?: number;
+  meleeDamage?: number;
+  strength?: number;
+  dexterity?: number;
+  stamina?: number;
+  wisdom?: number;
+  intellect?: number;
+  activeDebuffs?: Record<string, any>;
+  cooldowns?: Record<string, number>;
+  classAbilityState?: any;
+  enchantedItems?: any[];
+  lastStandActive?: boolean;
+  lastBigHit?: number;
+  shield?: any;
+  staggerDoT?: number;
+  staggerLastTick?: number;
+  deathAnimationPlaying?: boolean;
+  activeProcBuffs?: Record<string, number>;
+  activeThreatMod?: number;
+  guildId?: string;
+  autoBuy?: boolean;
   // Skills system
   skills?: Record<string, { points: number }>;
   skillPoints?: number;
@@ -222,6 +250,12 @@ export interface Profession {
       steel: number;
       mithril: number;
       adamantite: number;
+    };
+    gems?: {
+      ruby: number;
+      sapphire: number;
+      emerald: number;
+      diamond: number;
     };
     essence?: number;
   };
