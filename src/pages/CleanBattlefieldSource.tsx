@@ -29,6 +29,7 @@ import { getFounderTitleColor, getFounderTitleDisplay, getFounderTierFromTitle }
 import { getAuraFilter } from '../utils/auraEffects';
 import { createProjectile } from '../utils/projectiles';
 import { BALANCE } from '../config/balanceConfig';
+import { createLootDropAnnouncement, getRarityStyle } from '../utils/rarityDisplay';
 import { createExhaustEffect, shouldShowExhaustEffect } from '../utils/exhaustEffects';
 import { createMusicalNoteEffect } from '../utils/musicalNoteEffects';
 
@@ -483,6 +484,11 @@ export default function CleanBattlefieldSource() {
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [fadeOpacity, setFadeOpacity] = useState(1);
   const [showWaveAnnouncement, setShowWaveAnnouncement] = useState(false);
+  const [rareLootAnnouncement, setRareLootAnnouncement] = useState<{
+    itemName: string;
+    rarity: string;
+    heroName: string;
+  } | null>(null);
   
   // Determine twitchId for instance listener: prefer authenticated user, fallback to battlefieldId
   // This allows browser sources to work without authentication by using the battlefieldId parameter
@@ -6407,6 +6413,19 @@ export default function CleanBattlefieldSource() {
               const action = bestHero.id === targetHero.id ? 'equipped' : 'gifted';
               console.log(`[Loot] ✅ ${loot.rarity} ${loot.name} ${action} to ${bestHero.name} (${oldPower} → ${newPower} power, ${Math.round(bestImprovement * 100)}% improvement)`);
               
+              // Show rare-drop announcement for Rare/Epic/Legendary/Mythic
+              if (['rare', 'epic', 'legendary', 'mythic'].includes(loot.rarity)) {
+                setRareLootAnnouncement({
+                  itemName: loot.name,
+                  rarity: loot.rarity,
+                  heroName: bestHero.name
+                });
+                // Auto-hide after 5 seconds
+                setTimeout(() => {
+                  setRareLootAnnouncement(null);
+                }, 5000);
+              }
+              
               // Show loot SCT
               setTimeout(() => {
                 const heroElement = document.querySelector(`[data-hero-id="${bestHero!.id}"]`);
@@ -9121,6 +9140,57 @@ export default function CleanBattlefieldSource() {
             🐉 Wave {(instanceData.currentWave || 0) + 1} / {instanceData.waves || 5} 🐉
           </div>
         )}
+        
+        {/* Rare Loot Announcement - Shows when Rare/Epic/Legendary/Mythic drops */}
+        {rareLootAnnouncement && (() => {
+          const style = getRarityStyle(rareLootAnnouncement.rarity as any);
+          return (
+            <div style={{
+              position: 'absolute',
+              top: '30%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              background: `linear-gradient(135deg, ${style.bgColor}ee, #000000cc)`,
+              border: `3px solid ${style.borderColor}`,
+              borderRadius: '16px',
+              padding: '24px 32px',
+              boxShadow: `0 0 40px ${style.glowColor}, inset 0 0 20px ${style.glowColor}`,
+              zIndex: 1000,
+              pointerEvents: 'none',
+              animation: 'fadeInOut 5s ease-in-out',
+              minWidth: '400px',
+              textAlign: 'center'
+            }}>
+              <div style={{
+                fontSize: '36px',
+                fontWeight: 'bold',
+                color: style.color,
+                textShadow: `0 0 15px ${style.glowColor}`,
+                marginBottom: '12px',
+                letterSpacing: '2px'
+              }}>
+                {style.emoji} {style.label.toUpperCase()} DROP! {style.emoji}
+              </div>
+              <div style={{
+                fontSize: '24px',
+                color: 'white',
+                textShadow: '2px 2px 6px rgba(0,0,0,0.9)',
+                fontWeight: '500'
+              }}>
+                {rareLootAnnouncement.heroName} looted:
+              </div>
+              <div style={{
+                fontSize: '28px',
+                color: style.color,
+                textShadow: `0 0 10px ${style.glowColor}`,
+                fontWeight: 'bold',
+                marginTop: '8px'
+              }}>
+                {rareLootAnnouncement.itemName}
+              </div>
+            </div>
+          );
+        })()}
         
         {/* Wave Announcement - Shows between waves */}
         {showWaveAnnouncement && (
