@@ -16,6 +16,7 @@ import { processDebuffs, processHpRegeneration } from './combat/buffsDebuffs';
 import { ENEMY_SPRITES } from './enemySpriteConfig';
 import { createProjectile } from './projectiles';
 import { testLog } from './testLogging';
+import type { Hero as BaseHero } from '../types/Hero';
 
 // ============================================================================
 // CONSTANTS
@@ -97,59 +98,8 @@ export const HERB_GATHER_CHANCES = {
 // TYPES
 // ============================================================================
 
-export interface Hero {
-  id?: string;
-  username: string;
-  role: string;
-  level: number;
-  hp: number;
-  maxHp: number;
-  attack: number;
-  defense: number;
-  isDead?: boolean;
-  activeDebuffs?: Record<string, any>;
-  activeBuffs?: Record<string, any>;
-  cooldowns?: Record<string, number>;
-  classAbilityState?: any;
-  equipment?: Record<string, any>;
-  enchantedItems?: any[];
-  skills?: Record<string, any>;
-  stats?: any;
-  lastStandActive?: boolean;
-  lastBigHit?: number;
-  shield?: any;
-  staggerDoT?: number;
-  staggerLastTick?: number;
-  deathTime?: number;
-  deathAnimationPlaying?: boolean;
-  activeProcBuffs?: Record<string, number>;
-  activeThreatMod?: number;
-  strength?: number;
-  dexterity?: number;
-  intellect?: number;
-  wisdom?: number;
-  stamina?: number;
-  healingPower?: number;
-  spellDamage?: number;
-  meleeDamage?: number;
-  guildId?: string;
-  gold?: number;
-  potions?: { health: number };
-  autoBuy?: boolean; // Auto-buy enabled flag
-  xp?: number;
-  maxXp?: number;
-  profession?: { 
-    type: string;
-    level?: number;
-    materials?: {
-      herbs?: { common: number; uncommon: number; rare: number; epic: number };
-      ore?: { iron: number; steel: number; mithril: number; adamantite: number };
-      essence?: number;
-    };
-    totalGathered?: number;
-    lastGatherTime?: number;
-  };
-}
+// Use canonical Hero type from types/Hero.ts
+export type Hero = BaseHero;
 
 export interface Enemy {
   id: number | string;
@@ -190,7 +140,7 @@ export interface CombatState {
 
 export type AnimationCallback = (entityId: string, animation: 'idle' | 'attack' | 'hurt' | 'death' | 'heal', isHero: boolean) => void;
 export type LogCallback = (type: string, message: string) => void;
-export type CombatTextCallback = (entityId: string, amount: number, type: 'damage' | 'crit' | 'heal' | 'heal-hot' | 'dot', isHero: boolean) => void;
+export type CombatTextCallback = (entityId: string, amount: number, type: 'damage' | 'crit' | 'heal' | 'heal-hot' | 'dot' | 'loot', isHero: boolean) => void;
 
 // ============================================================================
 // COMBAT ENGINE
@@ -377,7 +327,7 @@ export class FullCombatEngine {
     this.triggerAnimation(entityId, animation, isHero);
   }
   
-  private triggerCombatText(entityId: string, amount: number, type: 'damage' | 'crit' | 'heal' | 'heal-hot' | 'dot', isHero: boolean) {
+  private triggerCombatText(entityId: string, amount: number, type: 'damage' | 'crit' | 'heal' | 'heal-hot' | 'dot' | 'loot', isHero: boolean) {
     this.combatTextCallbacks.forEach(cb => cb(entityId, amount, type, isHero));
   }
 
@@ -580,7 +530,7 @@ export class FullCombatEngine {
         triggerAnimation: (entityId: string, animation: string, isHero: boolean) =>
           this.triggerAnimation(entityId, animation as any, isHero),
         triggerHealAnimation: (username: string) => this.triggerAnimation(username, 'heal', true),
-        triggerCombatText: (entityId: string, amount: number, type: 'damage' | 'crit' | 'heal' | 'heal-hot' | 'dot', isHero: boolean) =>
+        triggerCombatText: (entityId: string, amount: number, type: 'damage' | 'crit' | 'heal' | 'heal-hot' | 'dot' | 'loot', isHero: boolean) =>
           this.triggerCombatText(entityId, amount, type, isHero),
         updateEnemyHealthBar: () => {},
         updateHeroUI: () => {}
@@ -601,7 +551,7 @@ export class FullCombatEngine {
         triggerAnimation: (entityId: string, animation: string, isHero: boolean) =>
           this.triggerAnimation(entityId, animation as any, isHero),
         triggerHealAnimation: (username: string) => this.triggerAnimation(username, 'heal', true),
-        triggerCombatText: (entityId: string, amount: number, type: 'damage' | 'crit' | 'heal' | 'heal-hot' | 'dot', isHero: boolean) =>
+        triggerCombatText: (entityId: string, amount: number, type: 'damage' | 'crit' | 'heal' | 'heal-hot' | 'dot' | 'loot', isHero: boolean) =>
           this.triggerCombatText(entityId, amount, type, isHero),
         triggerMusicalNoteEffect: (username: string, color?: string, count?: number) =>
           this.triggerMusicalNoteEffect(username, color, count),
