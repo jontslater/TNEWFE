@@ -138,22 +138,20 @@ export function useOverlaySync(
   }, []);
 
   /**
-   * Sync hero stat changes with retry logic
+   * Sync all pending changes using new batch overlay sync endpoint
+   * Falls back to individual updates if endpoint unavailable
    */
-  const syncHeroStats = useCallback(async () => {
-    const pending = heroStatChanges.current.getAll();
-    if (pending.size === 0) return;
-
+  const syncAllPending = useCallback(async () => {
     const now = Date.now();
-    console.log(`[OverlaySync] Syncing hero stats for ${pending.size} heroes...`);
-
-    const syncPromises: Promise<void>[] = [];
-
-    for (const [heroId, changes] of pending.entries()) {
+    const batchId = `batch-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Collect all pending changes
+    const heroUpdates: Array<{ heroId: string; updates: Partial<Hero> }> = [];
+    
+    heroStatChanges.current.getAll().forEach((changes, heroId) => {
       const hero = heroes.find(h => h.id === heroId);
-      if (!hero) continue;
+      if (!hero) return;
 
-      // Build update payload
       const updateData: Partial<Hero> = {};
 
       // Level sync protection
