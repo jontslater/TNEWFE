@@ -37,6 +37,24 @@ import type {
   OverlayEnemy, 
   CombatAction as OverlayCombatAction
 } from '../types/overlay';
+import { 
+  isTankRole, 
+  isHealerRole, 
+  isDpsRole, 
+  isMeleeRole, 
+  isCasterRole, 
+  isEvasionClass, 
+  normalizeRole 
+} from '../overlay/roleUtils';
+import { 
+  getThreatWeight, 
+  calculateGearScore, 
+  calculateAverageGearScore, 
+  getFounderGoldMultiplier, 
+  calculateMaxXp, 
+  calculateItemPower, 
+  calculateItemImprovement 
+} from '../overlay/statsCalculator';
 
 // Type aliases for backward compatibility
 type Hero = OverlayHero;
@@ -7609,24 +7627,7 @@ export default function CleanBattlefieldSource() {
     };
   }, []); // No dependencies - only runs once on mount
 
-  // Helper: Check if role is tank
-  const isTankRole = (role: string): boolean => {
-    if (!role) return false; // Safety check
-    const tankRoles = ['guardian', 'paladin', 'warden', 'bloodknight', 'vanguard', 'brewmaster'];
-    return tankRoles.includes(role.toLowerCase());
-  };
-
-  // Helper: Check if role is healer
-  const isHealerRole = (role: string): boolean => {
-    if (!role) return false; // Safety check
-    const healerRoles = ['cleric', 'atoner', 'druid', 'lightbringer', 'shaman', 'mistweaver', 'chronomancer', 'bard'];
-    return healerRoles.includes(role.toLowerCase());
-  };
-
-  // Helper: Check if role is DPS
-  const isDpsRole = (role: string): boolean => {
-    return !isTankRole(role) && !isHealerRole(role);
-  };
+  // Role checking functions now imported from overlay/roleUtils.ts
 
   // Get threat weight for hero role (with Taunt/Fade modifiers and gear scaling)
   const getThreatWeight = (hero: Hero): number => {
