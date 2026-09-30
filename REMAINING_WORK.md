@@ -34,11 +34,33 @@ This document tracks the additional work requested by the owner for PR #3 that r
 - ✅ Created `useChatActivity` hook (fetches from `/api/chat/activity/:streamerId`)
 - ✅ **Integrated into PlayerPortal** - shows stream status and chat boosts
 
-## ⏳ Deferred to Follow-Up PRs
+## ⏳ Partially Complete - Integration Needed
 
-The following items require extensive work that would make this PR too large to review effectively. Each deserves its own focused PR with proper testing.
+### 1. Balance Fixes ✅ Config Created, ⏳ Integration Pending
 
-### 1. Rare Drop Announcements in Overlay
+**What's Done**:
+- ✅ Created `src/config/balanceConfig.ts` with all formulas centralized
+- ✅ LINEAR enemy scaling (replaces quadratic)
+- ✅ XP scaling with level^1.5 (replaces flat 500)
+- ✅ Shop items 70% of dropped gear (can't beat legendaries)
+- ✅ Gold sinks defined (enchanting, repairs, respec, socketing)
+- ✅ Loot rarity tiered by difficulty (stronger = better loot)
+- ✅ Created `scripts/balance-comparison.ts` showing before/after tables
+- ✅ Verified: Level 100 enemies now do 792 attack (was 5940!)
+
+**What's Needed for Full Integration**:
+Apply the new formulas throughout the codebase:
+- `src/utils/enemyGeneration.ts` - Replace scaling formulas
+- `src/utils/dungeonEnemyGeneration.ts` - Use BALANCE config
+- `src/pages/CleanBattlefieldSource.tsx` - Use xpScaling() for rewards
+- `src/pages/StorePage.tsx` - Use calculateShopItemStats()
+- `src/utils/lootGeneration.ts` - Use rarityByDifficulty rates
+
+**Estimated Integration**: ~300-400 lines across 5-6 files
+**Risk**: Medium - formulas are tested, but needs in-game validation
+**Recommendation**: Can be done in follow-up or now if owner prefers
+
+### 2. Rare Drop Announcements in Overlay
 
 **What's Needed**:
 - Modify `CleanBattlefieldSource.tsx` loot drop logic
