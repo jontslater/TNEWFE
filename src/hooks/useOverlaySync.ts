@@ -139,27 +139,27 @@ export function useOverlaySync(
 
   /**
    * Sync all pending changes using new batch overlay sync endpoint
-   * Falls back to individual updates if endpoint unavailable
+   * Uses overlayAPI.syncBatch() which sends X-Streamer-Key or JWT
    */
   const syncAllPending = useCallback(async () => {
     const now = Date.now();
     const batchId = `batch-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
-    // Collect all pending changes
-    const heroUpdates: Array<{ heroId: string; updates: Partial<Hero> }> = [];
-    const syncPromises: Promise<void>[] = [];
+    // Collect all pending changes into batch format
+    const batchUpdates: Array<{ heroId: string; stats?: any; equipment?: any; inventory?: any }> = [];
     
+    // Collect stat changes
     heroStatChanges.current.getAll().forEach((changes, heroId) => {
       const hero = heroes.find(h => h.id === heroId);
       if (!hero) return;
 
-      const updateData: Partial<Hero> = {};
+      const statsUpdate: any = {};
 
       // Level sync protection
       if (changes.level !== undefined) {
-        updateData.xp = hero.xp !== undefined ? Math.max(0, hero.xp) : 0;
+        statsUpdate.xp = hero.xp !== undefined ? Math.max(0, hero.xp) : 0;
         if (hero.maxXp !== undefined) {
-          updateData.maxXp = hero.maxXp;
+          statsUpdate.maxXp = hero.maxXp;
         }
         
         const MAX_LEVEL = 100;
@@ -171,61 +171,92 @@ export function useOverlaySync(
         }
         
         if (newLevel >= 1 && newLevel <= MAX_LEVEL) {
-          updateData.level = newLevel;
+          statsUpdate.level = newLevel;
         }
       } else {
         // Apply XP delta
         if (changes.xp !== undefined && changes.xp !== 0) {
           const currentXP = hero.xp || 0;
-          updateData.xp = Math.max(0, currentXP + changes.xp);
+          statsUpdate.xp = Math.max(0, currentXP + changes.xp);
         }
       }
 
       // Apply gold delta
       if (changes.gold !== undefined && changes.gold !== 0) {
         const currentGold = hero.gold || 0;
-        updateData.gold = Math.max(0, currentGold + changes.gold);
+        statsUpdate.gold = Math.max(0, currentGold + changes.gold);
       }
 
       // Other stat changes
-      if (changes.hp !== undefined) updateData.hp = changes.hp;
-      if (changes.maxHp !== undefined) updateData.maxHp = changes.maxHp;
-      if (changes.attack !== undefined) updateData.attack = changes.attack;
-      if (changes.defense !== undefined) updateData.defense = changes.defense;
+      if (changes.hp !== undefined) statsUpdate.hp = changes.hp;
+      if (changes.maxHp !== undefined) statsUpdate.maxHp = changes.maxHp;
+      if (changes.attack !== undefined) statsUpdate.attack = changes.attack;
+      if (changes.defense !== undefined) statsUpdate.defense = changes.defense;
 
       // Stats
       if (changes.stats) {
         const currentStats = (hero as any).stats || {};
-        (updateData as any).stats = {
+        statsUpdate.stats = {
           totalDamage: (currentStats.totalDamage || 0) + (changes.stats.totalDamage || 0),
           totalHealing: (currentStats.totalHealing || 0) + (changes.stats.totalHealing || 0),
           damageBlocked: (currentStats.damageBlocked || 0) + (changes.stats.damageBlocked || 0),
         };
       }
 
-      if (Object.keys(updateData).length > 0) {
-        const syncPromise = retryWithBackoff(
-          () => heroAPI.updateHeroById(heroId, updateData),
-          {
-            maxRetries: 3,
-            initialDelayMs: 1000,
-            maxDelayMs: 8000,
-          }
-        )
-          .then(() => {
-            console.log(`[OverlaySync] ✅ Synced stats for ${hero.name}`);
-            heroStatChanges.current.markSynced(heroId);
-          })
-          .catch((err) => {
-            console.error(`[OverlaySync] ❌ Failed to sync stats for ${hero.name}:`, err);
-            heroStatChanges.current.markFailed(heroId);
-          });
-
-        syncPromises.push(syncPromise);
+      if (Object.keys(statsUpdate).length > 0) {
+        batchUpdates.push({ heroId, stats: statsUpdate });
       }
     });
 
-    await Promise.allSettled(syncPromises);
+    // Collect equipment changes
+    equipmentChanges.current.getAll().forEach((equipment, heroId) => {
+      const existing = batchUpdates.find(u => u.heroId === heroId);
+      if (existing) {
+        existing.equipment = equipment;
+      } else {
+        batchUpdates.push({ heroId, equipment });
+      }
+    });
+
+    // Collect inventory changes
+    inventoryChanges.current.getAll().forEach((inventory, heroId) => {
+      const existing = batchUpdates.find(u => u.heroId === heroId);
+      if (existing) {
+        existing.inventory = inventory;
+      } else {
+        batchUpdates.push({ heroId, inventory });
+      }
+    });
+
+    // Send batch sync if there are updates
+    if (batchUpdates.length > 0) {
+      try {
+        const { overlayAPI } = await import('../api/client');
+        const result = await overlayAPI.syncBatch(batchId, batchUpdates);
+        
+        if (result.duplicate) {
+          console.log(`[OverlaySync] Batch ${batchId} already processed (idempotent)`);
+        } else {
+          console.log(`[OverlaySync] ✅ Batch synced: ${result.syncedCount} heroes, ${result.skippedCount} skipped`);
+        }
+        
+        // Mark all as synced on success
+        batchUpdates.forEach(({ heroId }) => {
+          heroStatChanges.current.markSynced(heroId);
+          equipmentChanges.current.markSynced(heroId);
+          inventoryChanges.current.markSynced(heroId);
+        });
+      } catch (err) {
+        console.error(`[OverlaySync] ❌ Batch sync failed:`, err);
+        // Mark all as failed for retry
+        batchUpdates.forEach(({ heroId }) => {
+          heroStatChanges.current.markFailed(heroId);
+          equipmentChanges.current.markFailed(heroId);
+          inventoryChanges.current.markFailed(heroId);
+        });
+      }
+    }
+
     lastStatSyncTime.current = now;
   }, [heroes]);
 
