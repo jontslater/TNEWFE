@@ -653,21 +653,10 @@ export default function CleanBattlefieldSource() {
     // Query for scheduled guild raids
     const checkScheduledRaids = async () => {
       try {
-        // Fetch scheduled raids where participants include someone from this battlefield
-        const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/raids/scheduled/battlefield/${battlefieldId}`);
-        
-        if (!response.ok) {
-          // Endpoint might not exist yet (404) - that's ok, suppress error
-          if (response.status === 404) {
-            // Endpoint doesn't exist - this is expected, don't log error
-            return;
-          }
-          // Other errors - log but don't throw
-          console.warn(`[Scheduled Raids] API returned ${response.status}, skipping check`);
-          return;
-        }
-        
-        const scheduledRaids = await response.json();
+        // NOTE: Backend route /api/raids/scheduled/battlefield/:id does NOT exist
+        // This feature is not implemented on backend yet
+        const response = await overlayClient.get(`/api/raids/scheduled/battlefield/${battlefieldId}`);
+        const scheduledRaids = response.data;
         
         scheduledRaids.forEach((raid: any) => {
           // Clear existing timeout if any
@@ -693,31 +682,16 @@ export default function CleanBattlefieldSource() {
                   console.log(`[Auto-Start] 🚀 Starting "${raid.raidName}" NOW! Mode: ${raid.simulateMode ? 'SIMULATE' : 'LIVE'}`);
                   try {
                     if (raid.simulateMode) {
-                      // Simulate raid (instant, reduced rewards)
+                      // NOTE: Backend route /api/raids/:raidId/simulate does NOT exist
                       const heroIds = raid.participants.map((p: any) => p.heroId);
-                      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/raids/${raid.raidId}/simulate`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ participants: heroIds })
+                      const response = await overlayClient.post(`/api/raids/${raid.raidId}/simulate`, {
+                        participants: heroIds
                       });
-                      
-                      if (response.ok) {
-                        const result = await response.json();
-                        console.log(`[Auto-Start] ⚡ Raid simulated! Outcome: ${result.outcome}, ${result.message}`);
-                        
-                        // Show brief notification (no visual combat)
-                        // Could add a toast/notification here
-                      }
+                      console.log(`[Auto-Start] ⚡ Raid simulated! Outcome: ${response.data.outcome}, ${response.data.message}`);
                     } else {
-                      // Start live raid (visual combat)
-                      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/raids/scheduled/${raid.id}/start`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' }
-                      });
-                      
-                      if (response.ok) {
-                        console.log('[Auto-Start] ✅ Live raid started! Transition will happen automatically via useActiveInstanceListener');
-                      }
+                      // NOTE: Backend route /api/raids/scheduled/:id/start does NOT exist
+                      await overlayClient.post(`/api/raids/scheduled/${raid.id}/start`);
+                      console.log('[Auto-Start] ✅ Live raid started! Transition will happen automatically via useActiveInstanceListener');
                     }
                   } catch (err) {
                     console.error('[Auto-Start] ❌ Failed to start raid:', err);
@@ -733,20 +707,15 @@ export default function CleanBattlefieldSource() {
                 console.log(`[Auto-Start] ⚡ Starting late raid "${raid.raidName}"... Mode: ${raid.simulateMode ? 'SIMULATE' : 'LIVE'}`);
                 
                 if (raid.simulateMode) {
-                  // Simulate
+                  // NOTE: Backend route /api/raids/:raidId/simulate does NOT exist
                   const heroIds = raid.participants.map((p: any) => p.heroId);
-                  fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/raids/${raid.raidId}/simulate`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ participants: heroIds })
-                  }).then(() => console.log('[Auto-Start] ⚡ Late raid simulated!'))
+                  overlayClient.post(`/api/raids/${raid.raidId}/simulate`, { participants: heroIds })
+                    .then(() => console.log('[Auto-Start] ⚡ Late raid simulated!'))
                     .catch(err => console.error('[Auto-Start] Failed:', err));
                 } else {
-                  // Start live
-                  fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/raids/scheduled/${raid.id}/start`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                  }).then(() => console.log('[Auto-Start] ✅ Late raid started!'))
+                  // NOTE: Backend route /api/raids/scheduled/:id/start does NOT exist
+                  overlayClient.post(`/api/raids/scheduled/${raid.id}/start`)
+                    .then(() => console.log('[Auto-Start] ✅ Late raid started!'))
                     .catch(err => console.error('[Auto-Start] Failed:', err));
                 }
               }
@@ -6332,27 +6301,22 @@ export default function CleanBattlefieldSource() {
               try {
                 if (gameMode === 'dungeon' && instanceData.dungeonId) {
                   // Fetch dungeon definition to get guaranteedLoot
-                  const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/dungeon/${instanceData.dungeonId}`);
-                  if (response.ok) {
-                    const dungeonDef = await response.json();
-                    if (dungeonDef?.rewards?.guaranteedLoot) {
-                      allowedSlots = dungeonDef.rewards.guaranteedLoot;
-                      dungeonRaidDefCache.current = { id: cacheKey, allowedSlots };
-                      console.log(`[Loot] Using dungeon guaranteedLoot slots:`, allowedSlots);
-                    }
-                  } else {
-                    console.warn(`[Loot] Failed to fetch dungeon definition: ${response.status} ${response.statusText}`);
+                  const response = await overlayClient.get(`/api/dungeon/${instanceData.dungeonId}`);
+                  const dungeonDef = response.data;
+                  if (dungeonDef?.rewards?.guaranteedLoot) {
+                    allowedSlots = dungeonDef.rewards.guaranteedLoot;
+                    dungeonRaidDefCache.current = { id: cacheKey, allowedSlots };
+                    console.log(`[Loot] Using dungeon guaranteedLoot slots:`, allowedSlots);
                   }
                 } else if (gameMode === 'raid' && instanceData.raidId) {
                   // Fetch raid definition to get guaranteedLoot
-                  const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/raids/${instanceData.raidId}`);
-                  if (response.ok) {
-                    const raidDef = await response.json();
-                    if (raidDef?.rewards?.guaranteedLoot) {
-                      allowedSlots = raidDef.rewards.guaranteedLoot;
-                      dungeonRaidDefCache.current = { id: cacheKey, allowedSlots };
-                      console.log(`[Loot] Using raid guaranteedLoot slots:`, allowedSlots);
-                    }
+                  const response = await overlayClient.get(`/api/raids/${instanceData.raidId}`);
+                  const raidDef = response.data;
+                  if (raidDef?.rewards?.guaranteedLoot) {
+                    allowedSlots = raidDef.rewards.guaranteedLoot;
+                    dungeonRaidDefCache.current = { id: cacheKey, allowedSlots };
+                    console.log(`[Loot] Using raid guaranteedLoot slots:`, allowedSlots);
+                  }
                   } else {
                     console.warn(`[Loot] Failed to fetch raid definition: ${response.status} ${response.statusText}`);
                   }
@@ -6808,19 +6772,13 @@ export default function CleanBattlefieldSource() {
         // Send batch quest update to backend
         if (questUpdates.length > 0) {
           try {
-            const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/quests/update-batch-all`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ updates: questUpdates })
+            // NOTE: Backend route /api/quests/update-batch-all requires requireAuth (user JWT)
+            // Overlay only has streamer key, so this will 401 until backend accepts streamer key
+            const response = await overlayClient.post('/api/quests/update-batch-all', {
+              updates: questUpdates
             });
             
-            if (!response.ok) {
-              const errorText = await response.text();
-              console.error('[Quest Sync] ❌ Failed to sync quest progress:', response.status, errorText);
-              return;
-            }
-            
-            const result = await response.json();
+            const result = response.data;
             console.log('[Quest Sync] ✅ Quest progress synced:', result);
             
             // Check for completed quests and show SCT
