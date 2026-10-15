@@ -167,10 +167,13 @@ export async function getDungeonRoom(
 ): Promise<{ id: string; name: string; enemies: any[]; isBoss: boolean } | null> {
   try {
     // Import dungeon data (backend has it, frontend needs access)
-    const { DUNGEONS } = await import('../api/client').catch(() => 
+    const { DUNGEONS } = await import('../api/client').catch(async () => {
       // Fallback: try to get from backend API
-      fetch(`/api/dungeons/${dungeonId}`).then(r => r.json()).then(d => ({ DUNGEONS: { [dungeonId]: d } }))
-    );
+      // Note: Backend route is GET /api/dungeon/:dungeonId (singular), not /api/dungeons/:id
+      const { overlayClient } = await import('../api/client');
+      const response = await overlayClient.get(`/api/dungeon/${dungeonId}`);
+      return { DUNGEONS: { [dungeonId]: response.data } };
+    });
     
     const dungeon = DUNGEONS?.[dungeonId];
     if (!dungeon || !dungeon.rooms || roomIndex >= dungeon.rooms.length) {
