@@ -3,7 +3,6 @@ import { isStripeConfigured, createCheckoutSession } from '../services/stripe';
 
 interface StripeCheckoutProps {
   purchaseId: string;
-  price: number;
   packName: string;
   onSuccess?: () => void;
   onError?: (error: string) => void;
@@ -37,8 +36,9 @@ export default function StripeCheckout({
 
     setProcessing(true);
     try {
-      // createCheckoutSession will redirect automatically via Stripe SDK
-      await createCheckoutSession(purchaseId, price);
+      // createCheckoutSession will redirect automatically
+      // Note: Price is looked up on backend from purchaseId for security
+      await createCheckoutSession(purchaseId);
       // If we get here without redirect, there was an error (shouldn't happen)
     } catch (error: any) {
       console.error('Checkout error:', error);

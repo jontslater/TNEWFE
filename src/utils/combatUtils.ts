@@ -201,7 +201,7 @@ export function getCharacterStats(hero: Hero) {
   // Calculate skill bonuses first
   const skillBonuses = calculateSkillBonuses(hero);
 
-  let stats: any = {
+  const stats: any = {
     attack: config.baseAttack + ((hero.level - 1) * config.attackPerLevel),
     defense: config.baseDefense + ((hero.level - 1) * config.defensePerLevel),
     maxHp: config.baseHp + ((hero.level - 1) * config.hpPerLevel),
@@ -301,7 +301,7 @@ export function getCharacterStats(hero: Hero) {
   };
 
   // Calculate gem stats from all equipped items
-  let gemStats = {
+  const gemStats = {
     attack: 0,
     defense: 0,
     critChance: 0,
@@ -315,7 +315,7 @@ export function getCharacterStats(hero: Hero) {
   };
 
   // Calculate socket bonuses from all equipped items
-  let socketBonusStats = {
+  const socketBonusStats = {
     attack: 0,
     defense: 0,
     allStats: 0,

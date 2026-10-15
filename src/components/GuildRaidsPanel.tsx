@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { raidAPI } from '../api/client';
+import { FEATURES } from '../config/features';
 import { Hero } from '../types/Hero';
 import { getItemScore } from '../utils/format';
 
@@ -17,17 +18,11 @@ export default function GuildRaidsPanel({ hero, guildId }: GuildRaidsPanelProps)
   const [loading, setLoading] = useState(true);
   const [selectedRaid, setSelectedRaid] = useState<any>(null);
   const [signupModal, setSignupModal] = useState(false);
-  const scheduledStartTimeouts = useRef<Map<string, NodeJS.Timeout>>(new Map());
 
   useEffect(() => {
     loadRaids();
     const interval = setInterval(loadRaids, 10000); // Refresh every 10s
-    return () => {
-      clearInterval(interval);
-      // Cleanup: Cancel all scheduled timeouts
-      scheduledStartTimeouts.current.forEach((timeout) => clearTimeout(timeout));
-      scheduledStartTimeouts.current.clear();
-    };
+    return () => clearInterval(interval);
   }, [guildId]);
 
   const loadRaids = async () => {
@@ -44,63 +39,12 @@ export default function GuildRaidsPanel({ hero, guildId }: GuildRaidsPanelProps)
       setActiveRaids(active);
       setAvailableRaids(available);
       
-      // Get scheduled guild raids
-      const scheduled = await raidAPI.getGuildScheduledRaids(guildId);
-      setScheduledRaids(scheduled || []);
-      
-      console.log(`[Guild Raids] Active: ${active.length}, Scheduled: ${scheduled?.length || 0}`);
-      
-      // Auto-start scheduler: Schedule timeouts for future raids
-      if (scheduled) {
-        for (const raid of scheduled) {
-          // Clear existing timeout if any
-          const existingTimeout = scheduledStartTimeouts.current.get(raid.id);
-          if (existingTimeout) {
-            clearTimeout(existingTimeout);
-          }
-          
-          if (raid.scheduledTime && raid.status === 'recruiting') {
-            const scheduledDate = new Date(raid.scheduledTime._seconds * 1000);
-            const now = new Date();
-            const timeUntilStart = scheduledDate.getTime() - now.getTime();
-            
-            console.log(`[Auto-Start] Raid "${raid.raidName}" scheduled for ${scheduledDate.toLocaleString()}`);
-            
-            if (timeUntilStart > 0) {
-              // Future raid - schedule auto-start
-              const minPlayers = raid.minPlayers || 5;
-              const hasEnoughPlayers = raid.participants.length >= minPlayers;
-              
-              if (hasEnoughPlayers) {
-                console.log(`[Auto-Start] ⏰ Will auto-start in ${Math.floor(timeUntilStart / 1000)}s (${Math.floor(timeUntilStart / 60000)} minutes)`);
-                
-                const timeout = setTimeout(async () => {
-                  console.log(`[Auto-Start] 🚀 Starting "${raid.raidName}" NOW!`);
-                  try {
-                    await raidAPI.startScheduledRaid(raid.id);
-                    loadRaids(); // Refresh to show as active
-                  } catch (err: any) {
-                    console.error('[Auto-Start] Failed to start raid:', err);
-                  }
-                }, timeUntilStart);
-                
-                scheduledStartTimeouts.current.set(raid.id, timeout);
-              } else {
-                console.log(`[Auto-Start] ⚠️ Not enough players (${raid.participants.length}/${minPlayers}) - won't auto-start`);
-              }
-            } else if (timeUntilStart > -300000) {
-              // Raid should have started in last 5 minutes - start now!
-              const minPlayers = raid.minPlayers || 5;
-              if (raid.participants.length >= minPlayers) {
-                console.log(`[Auto-Start] ⚡ Raid was scheduled ${Math.abs(Math.floor(timeUntilStart / 60000))} minutes ago - starting now!`);
-                // Use promise instead of await in loop
-                raidAPI.startScheduledRaid(raid.id)
-                  .then(() => loadRaids())
-                  .catch((err: any) => console.error('[Auto-Start] Failed to start raid:', err));
-              }
-            }
-          }
-        }
+      if (FEATURES.scheduledRaids) {
+        const scheduled = await raidAPI.getGuildScheduledRaids(guildId);
+        setScheduledRaids(scheduled || []);
+        console.log(`[Guild Raids] Active: ${active.length}, Scheduled: ${scheduled?.length || 0}`);
+      } else {
+        setScheduledRaids([]);
       }
     } catch (error) {
       console.error('Failed to load raids:', error);
@@ -111,7 +55,7 @@ export default function GuildRaidsPanel({ hero, guildId }: GuildRaidsPanelProps)
 
   const handleSignup = async (raidId: string) => {
     try {
-      await raidAPI.joinRaid(raidId, hero.id);
+      await raidAPI.signupForRaid(raidId, guildId, [hero.id]);
       alert('Successfully joined raid!');
       loadRaids();
       setSignupModal(false);
@@ -120,9 +64,10 @@ export default function GuildRaidsPanel({ hero, guildId }: GuildRaidsPanelProps)
     }
   };
 
-  const handleLeave = async (raidId: string) => {
+  /** Scheduled signup doc id (`signup.id`), not catalog `raidId`. */
+  const handleLeaveScheduledSignup = async (signupId: string) => {
     try {
-      await raidAPI.leaveRaid(raidId, hero.id);
+      await raidAPI.leaveScheduledRaid(signupId, hero.id);
       alert('Left raid');
       loadRaids();
     } catch (error: any) {
@@ -206,8 +151,17 @@ export default function GuildRaidsPanel({ hero, guildId }: GuildRaidsPanelProps)
         </div>
       )}
 
-      {/* Scheduled Guild Raids */}
-      {scheduledRaids.length > 0 && (
+      {/* Scheduled Guild Raids — backend routes not live; gated by FEATURES.scheduledRaids */}
+      {!FEATURES.scheduledRaids && (
+        <div className="rounded-lg border border-gray-600 bg-gray-800/80 p-6 text-center">
+          <p className="text-lg font-semibold text-yellow-400">Scheduled guild raids — coming soon</p>
+          <p className="mt-2 text-sm text-gray-400">
+            Guild scheduling APIs are not deployed yet. Use the stream chat queue on the Hero tab to join
+            raids and dungeons on a streamer&apos;s channel.
+          </p>
+        </div>
+      )}
+      {FEATURES.scheduledRaids && scheduledRaids.length > 0 && (
         <div className="space-y-4">
           <h3 className="text-2xl font-bold text-white">📅 Scheduled Guild Raids</h3>
           
@@ -306,14 +260,7 @@ export default function GuildRaidsPanel({ hero, guildId }: GuildRaidsPanelProps)
                   <div className="flex gap-2">
                     {isSignedUp ? (
                       <button
-                        onClick={async () => {
-                          try {
-                            await raidAPI.leaveScheduledRaid(signup.id, hero.id);
-                            loadRaids();
-                          } catch (err: any) {
-                            alert(err.response?.data?.error || 'Failed to leave');
-                          }
-                        }}
+                        onClick={() => handleLeaveScheduledSignup(signup.id)}
                         className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-2 rounded transition-colors"
                       >
                         Leave

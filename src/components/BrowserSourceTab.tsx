@@ -43,7 +43,16 @@ function ChatUpdateSettingsSection({ user }: { user: any }) {
       setLoading(true);
       const response = await streamSettingsAPI.getSettings(user.twitchId);
       if (response.success && response.settings) {
-        setSettings(response.settings);
+        setSettings({
+          enabled: response.settings.enabled,
+          intervalMinutes: response.settings.intervalMinutes,
+          showWaves: response.settings.showWaves,
+          showXp: response.settings.showXp,
+          showLevelUps: response.settings.showLevelUps,
+          showGold: response.settings.showGold,
+          customMessage: response.settings.customMessage,
+          sendWhenOffline: response.settings.sendWhenOffline ?? false
+        });
       }
     } catch (error) {
       console.error('Failed to load chat update settings:', error);
@@ -280,23 +289,57 @@ export default function BrowserSourceTab({ userId: propUserId, token: propToken 
   const [activeQueue, setActiveQueue] = useState<any>(null);
   const [showQueueModal, setShowQueueModal] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
+  const [overlayKey, setOverlayKey] = useState<string | null>(null);
+  const [loadingOverlayKey, setLoadingOverlayKey] = useState(false);
+  const [showRegenerateConfirm, setShowRegenerateConfirm] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
   
-  // Get userId and token from props or auth
+  // Get userId from props or auth
   const userId = propUserId || user?.twitchId || user?.id;
-  const token = propToken || localStorage.getItem('auth_token');
 
-  // Use Twitch username for battlefieldId to match chat command format (!join uses username)
-  // The chat command uses twitch:username, not twitch:userId
-  const battlefieldIdentifier = user?.twitchUsername || user?.displayName || userId;
-  const battlefieldIdentifierString = battlefieldIdentifier ? String(battlefieldIdentifier).toLowerCase().trim() : null;
+  // Fetch overlay key when user logs in
+  useEffect(() => {
+    if (user?.twitchId) {
+      fetchOverlayKey();
+    }
+  }, [user?.twitchId]);
 
-  const browserSourceUrl = battlefieldIdentifierString && token 
-    ? generateBrowserSourceUrl(battlefieldIdentifierString, token)
-    : null;
+  const fetchOverlayKey = async () => {
+    if (!user?.twitchId) return;
+    
+    try {
+      setLoadingOverlayKey(true);
+      const response = await streamSettingsAPI.getOverlayKey(user.twitchId);
+      setOverlayKey(response.overlayKey);
+    } catch (error: any) {
+      console.error('Failed to fetch overlay key:', error);
+      if (error.response?.status === 404) {
+        console.log('Backend overlay key endpoint not yet deployed');
+      }
+    } finally {
+      setLoadingOverlayKey(false);
+    }
+  };
 
-  // Clean Battlefield URL (uses twitchId) - includes darkMode parameter
-  const cleanBattlefieldUrl = user?.twitchId 
-    ? `${window.location.origin}/clean-battlefield?battlefieldId=twitch:${user.twitchId}${darkMode ? '&darkMode=true' : ''}`
+  const handleRegenerateKey = async () => {
+    if (!user?.twitchId) return;
+    
+    try {
+      setRegenerating(true);
+      const response = await streamSettingsAPI.regenerateOverlayKey(user.twitchId);
+      setOverlayKey(response.overlayKey);
+      setShowRegenerateConfirm(false);
+    } catch (error: any) {
+      console.error('Failed to regenerate overlay key:', error);
+      alert(error.response?.data?.error || 'Failed to regenerate overlay key');
+    } finally {
+      setRegenerating(false);
+    }
+  };
+
+  // Clean Battlefield URL (uses twitchId + streamerKey) - includes darkMode parameter
+  const cleanBattlefieldUrl = user?.twitchId && overlayKey
+    ? `${window.location.origin}/clean-battlefield?battlefieldId=twitch:${user.twitchId}&streamerKey=${overlayKey}${darkMode ? '&darkMode=true' : ''}`
     : null;
 
   const [copiedClean, setCopiedClean] = useState(false);
@@ -399,6 +442,37 @@ export default function BrowserSourceTab({ userId: propUserId, token: propToken 
 
   return (
     <>
+      {/* Regenerate Key Confirmation Modal */}
+      {showRegenerateConfirm && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50" onClick={() => setShowRegenerateConfirm(false)}>
+          <div className="bg-gray-800 rounded-lg p-6 border-2 border-red-500 max-w-md w-full mx-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-2xl font-bold text-red-400 mb-4">⚠️ Regenerate Overlay Key?</h2>
+            <p className="text-gray-300 mb-4">
+              This will invalidate your current overlay key. You'll need to update the URL in OBS with the new key.
+            </p>
+            <p className="text-yellow-300 text-sm mb-6">
+              Only regenerate if you think your key has been leaked or compromised.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={handleRegenerateKey}
+                disabled={regenerating}
+                className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-gray-700 text-white font-semibold rounded"
+              >
+                {regenerating ? 'Regenerating...' : 'Yes, Regenerate Key'}
+              </button>
+              <button
+                onClick={() => setShowRegenerateConfirm(false)}
+                disabled={regenerating}
+                className="flex-1 px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white font-semibold rounded"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Queue Code Modal */}
       {showQueueModal && activeQueue && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50" onClick={() => setShowQueueModal(false)}>
@@ -582,6 +656,28 @@ export default function BrowserSourceTab({ userId: propUserId, token: propToken 
           </p>
           
           <div className="space-y-3">
+            {/* Overlay Key Status */}
+            <div className="flex items-center gap-3 p-3 bg-gray-800/50 rounded-lg border border-gray-700">
+              <div className="flex-1">
+                <div className="text-sm font-semibold text-gray-300 mb-1">🔑 Overlay Key Status</div>
+                {loadingOverlayKey ? (
+                  <div className="text-xs text-gray-400">Loading...</div>
+                ) : overlayKey ? (
+                  <div className="text-xs text-green-400">✓ Key loaded (secure)</div>
+                ) : (
+                  <div className="text-xs text-yellow-400">⚠️ Backend not deployed yet</div>
+                )}
+              </div>
+              {overlayKey && (
+                <button
+                  onClick={() => setShowRegenerateConfirm(true)}
+                  className="px-3 py-1.5 bg-orange-600 hover:bg-orange-700 text-white text-xs font-semibold rounded"
+                >
+                  🔄 Regenerate Key
+                </button>
+              )}
+            </div>
+
             {/* Dark Mode Toggle */}
             <div className="flex items-center gap-3 p-3 bg-gray-800/50 rounded-lg border border-gray-700">
               <label className="flex items-center gap-2 cursor-pointer">
@@ -607,7 +703,15 @@ export default function BrowserSourceTab({ userId: propUserId, token: propToken 
               <div className="flex gap-2">
                 <input
                   type="text"
-                  value={cleanBattlefieldUrl || 'Please log in to generate URL'}
+                  value={
+                    loadingOverlayKey 
+                      ? 'Loading overlay key...' 
+                      : !user?.twitchId 
+                      ? 'Please log in to generate URL'
+                      : !overlayKey
+                      ? 'Waiting for backend overlay key endpoint...'
+                      : cleanBattlefieldUrl || 'Error generating URL'
+                  }
                   readOnly
                   className="flex-1 px-4 py-2 bg-gray-700 text-gray-200 rounded border border-gray-600 focus:outline-none focus:border-green-500 font-mono text-xs"
                 />
@@ -625,9 +729,14 @@ export default function BrowserSourceTab({ userId: propUserId, token: propToken 
                   {copiedClean ? '✓ Copied!' : '📋 Copy'}
                 </button>
               </div>
-              {darkMode && (
+              {darkMode && cleanBattlefieldUrl && (
                 <p className="mt-2 text-xs text-yellow-400">
                   ⚠️ Dark mode is enabled. For OBS, uncheck dark mode to use transparent background.
+                </p>
+              )}
+              {!overlayKey && user?.twitchId && !loadingOverlayKey && (
+                <p className="mt-2 text-xs text-orange-400">
+                  ⚠️ Backend overlay key generation not yet deployed. URL will be available once backend is updated.
                 </p>
               )}
             </div>

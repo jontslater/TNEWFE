@@ -28,11 +28,8 @@ export default function PurchaseSuccessPage() {
         const pollStatus = async () => {
           try {
             // Use the general purchase status endpoint
-            const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/purchases/status/${purchaseId}`);
-            if (!response.ok) {
-              throw new Error('Failed to fetch purchase status');
-            }
-            const result = await response.json();
+            const response = await apiClient.get(`/api/purchases/status/${purchaseId}`);
+            const result = response.data;
             const purchaseData = result.purchase || result;
             const purchaseStatus = purchaseData.status;
             

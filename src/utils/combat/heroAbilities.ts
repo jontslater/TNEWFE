@@ -45,8 +45,8 @@ export function applyHeroAbilities(
   let modifiedDamage = baseDamage;
   let isAoE = false;
   let aoeMultiplier = 1.0;
-  let chainLightning = false;
-  let stormChain = false;
+  const chainLightning = false;
+  const stormChain = false;
   let holyStrikeHealing: number | undefined;
   let atonementHeal: number | undefined;
   let atonementTarget: Hero | undefined;

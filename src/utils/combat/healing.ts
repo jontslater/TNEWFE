@@ -82,7 +82,7 @@ export function calculateHealing(
   const healingMultiplier = 1 + (skillBonuses.healingMultiplier / 100);
 
   // Calculate final healing (all bonuses are multiplicative)
-  let healAmount = baseHeal * intellectBonus * wisdomBonus * healingPowerBonus * spellDamageBonus * bonuses.healingMultiplier * healingMultiplier;
+  const healAmount = baseHeal * intellectBonus * wisdomBonus * healingPowerBonus * spellDamageBonus * bonuses.healingMultiplier * healingMultiplier;
 
   return Math.floor(healAmount);
 }

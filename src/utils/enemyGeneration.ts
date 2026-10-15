@@ -2,9 +2,12 @@
  * Enemy Generation Utility
  * Generates enemies locally based on hero levels (scaled like the main game)
  * Extracted from IdleDnD/game.js encounterEnemy() function
+ * 
+ * BALANCE: Uses linear scaling from balanceConfig instead of quadratic
  */
 
 import { Hero, Enemy } from './combat/types';
+import { BALANCE } from '../config/balanceConfig';
 
 /**
  * DEBUG MODE: Enable only ONE enemy at a time for testing
@@ -458,33 +461,31 @@ function generateSingleEnemy(
   
   const enemyId = `enemy-${Date.now()}-${slotIndex}`;
   
-  // FIXED: The original code was double-scaling HP because:
-  // - hpMultiplier = 1.2 * difficultyMultiplier
-  // - difficultyMultiplier = 1.0 + ((scaling.multiplier - 1.0) * 0.8)
-  // - So hp = baseHp * scaling.multiplier * hpMultiplier = baseHp * scaling.multiplier * 1.2 * (1.0 + ((scaling.multiplier - 1.0) * 0.8))
-  // This applies scaling.multiplier twice (once directly, once via difficultyMultiplier).
-  // 
-  // The fix: Keep scaling.multiplier for level/party/gear/wave scaling, but remove the double-scaling from difficultyMultiplier.
-  // Use a simpler HP multiplier: 1.2x base, scaled by scaling.multiplier.
-  const finalHp = Math.max(1, Math.floor(template.baseHp * scaling.multiplier * 1.2 * packScaling));
+  // NEW BALANCE: Use linear scaling formulas from balanceConfig
+  // Difficulty factor: 1.0 = normal, 1.5 = elite, 2.0 = boss
+  const difficulty = template.isBoss ? 2.0 : 1.0;
+  const level = Math.max(1, Math.floor(scaling.avgLevel));
+  
+  // Apply balance formulas (linear, not quadratic)
+  const finalHp = BALANCE.enemy.hpScaling(level, difficulty * packScaling);
+  const finalAttack = BALANCE.enemy.attackScaling(level, difficulty * packScaling * attackMultiplier);
+  const finalDefense = BALANCE.enemy.defenseScaling(level, difficulty * packScaling * defenseMultiplier);
+  const finalXp = BALANCE.enemy.xpScaling(level, difficulty);
+  const finalGold = BALANCE.enemy.goldScaling(level, difficulty);
   
   return {
     id: enemyId,
     name: template.name,
-    enemyType: template.type, // Set enemyType for sprite lookup (prevents Goblin Chief from appearing in idle)
-    level: Math.max(1, Math.floor(scaling.avgLevel)),
+    enemyType: template.type,
+    level: level,
     hp: finalHp,
     maxHp: finalHp,
-    attack: Math.floor(template.baseAttack * scaling.multiplier * attackMultiplier * packScaling),
-    defense: Math.floor((template.baseDefense || 0) * scaling.multiplier * defenseMultiplier * packScaling),
+    attack: finalAttack,
+    defense: finalDefense,
     isDead: false,
     isBoss: template.isBoss || false,
-    // XP calculation: Apply scaling multiplier with 0.2 coefficient and cap at 8x
-    // This makes leveling slower and more balanced (60% reduction from 0.5, plus cap)
-    xp: (() => {
-      const xpMultiplier = Math.min(scaling.multiplier * 0.2, 8);
-      return Math.floor(template.xp * Math.max(1, xpMultiplier));
-    })(),
+    xp: finalXp,
+    gold: finalGold,
     activeDebuffs: {},
     abilities: {}
   };

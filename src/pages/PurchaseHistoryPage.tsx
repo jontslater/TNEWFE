@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import Navigation from '../components/Navigation';
-import { foundersPackAPI } from '../api/client';
+import { foundersPackAPI, apiClient } from '../api/client';
 
 interface Purchase {
   id: string;
@@ -97,13 +97,11 @@ export default function PurchaseHistoryPage() {
       const purchase = purchases.find(p => p.id === purchaseId);
       if (purchase && (!purchase.hero || (purchase.packTier && !purchase.heroes))) {
         try {
-          const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/purchases/${purchaseId}/details`);
-          if (response.ok) {
-            const data = await response.json();
-            setPurchases(prev => prev.map(p => 
-              p.id === purchaseId ? { ...p, ...data.purchase } : p
-            ));
-          }
+          const response = await apiClient.get(`/api/purchases/${purchaseId}/details`);
+          const data = response.data;
+          setPurchases(prev => prev.map(p => 
+            p.id === purchaseId ? { ...p, ...data.purchase } : p
+          ));
         } catch (err) {
           console.error('Error loading purchase details:', err);
         }

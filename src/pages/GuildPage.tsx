@@ -150,7 +150,7 @@ export default function GuildPage() {
             filterJoinMode={filterJoinMode}
             setFilterJoinMode={setFilterJoinMode}
             onClose={() => setShowBrowseModal(false)}
-            onApply={async (guildId, message) => {
+            onApply={async (guildId: string, message: string) => {
               try {
                 await enhancedGuildAPI.applyToGuild(guildId, userId!, user?.twitchUsername || user?.displayName || 'Unknown', message);
                 alert('Application submitted!');
@@ -159,7 +159,7 @@ export default function GuildPage() {
                 alert(err.response?.data?.error || 'Failed to apply');
               }
             }}
-            onJoin={async (guildId) => {
+            onJoin={async (guildId: string) => {
               try {
                 await guildAPI.joinGuild(guildId, userId!);
                 alert('Joined guild successfully!');

@@ -198,10 +198,9 @@ export default function StorePage() {
         premium: 24.99
       };
 
-      const price = packPrices[packType] || 0;
-
       // Create Stripe checkout session and redirect
-      await createCheckoutSession(result.purchaseId, price);
+      // Note: Price is looked up on backend from purchaseId for security
+      await createCheckoutSession(result.purchaseId);
       // Note: createCheckoutSession will redirect to Stripe automatically
       
       setSelectedTokenPack(null);

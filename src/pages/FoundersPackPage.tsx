@@ -128,7 +128,8 @@ export default function FoundersPackPage() {
       }
 
       // Create Stripe checkout session and redirect
-      await createCheckoutSession(response.purchaseId, pack.price);
+      // Note: Price is looked up on backend from purchaseId for security
+      await createCheckoutSession(response.purchaseId);
       // Note: createCheckoutSession will redirect to Stripe automatically
       
     } catch (error: any) {
