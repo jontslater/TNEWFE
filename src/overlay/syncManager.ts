@@ -4,7 +4,7 @@
  */
 
 import { Hero } from '../types/Hero';
-import { questAPI } from '../api/client';
+import { questAPI, overlayClient } from '../api/client';
 
 export interface SyncManagerConfig {
   apiUrl: string;
@@ -153,19 +153,13 @@ export class SyncManager {
     if (questUpdates.length === 0) return;
 
     try {
-      const response = await fetch(`${this.config.apiUrl}/api/quests/update-batch-all`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ updates: questUpdates })
+      // NOTE: Backend route /api/quests/update-batch-all requires requireAuth (user JWT)
+      // Overlay only has streamer key, so this will 401 until backend accepts streamer key
+      const response = await overlayClient.post('/api/quests/update-batch-all', {
+        updates: questUpdates
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('[Quest Sync] ❌ Failed to sync quest progress:', response.status, errorText);
-        return;
-      }
-
-      const result = await response.json();
+      const result = response.data;
       console.log('[Quest Sync] ✅ Quest progress synced:', result);
 
       // Check for completed quests and show SCT
