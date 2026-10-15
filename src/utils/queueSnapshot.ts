@@ -26,6 +26,35 @@ function normalizeStatus(raw: unknown): QueueStatus {
   return 'open';
 }
 
+function capitalizeWord(word: string): string {
+  if (!word) return word;
+  return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+}
+
+/** Fallback when backend `name` is absent — e.g. `elder_dragon_normal` → `Elder Dragon (Normal)`. */
+export function prettifyQueueKey(queueKey: string): string {
+  const parts = queueKey.split('_').filter(Boolean);
+  if (parts.length === 0) return queueKey;
+
+  const difficultyTokens = new Set(['normal', 'heroic', 'mythic', 'easy', 'hard']);
+  const last = parts[parts.length - 1].toLowerCase();
+  if (parts.length > 1 && difficultyTokens.has(last)) {
+    const base = parts.slice(0, -1).map(capitalizeWord).join(' ');
+    return `${base} (${capitalizeWord(last)})`;
+  }
+  return parts.map(capitalizeWord).join(' ');
+}
+
+export function queueDisplayName(
+  queue: Pick<BattlefieldQueueSnapshot, 'name' | 'queueKey'> | null | undefined
+): string | null {
+  if (!queue) return null;
+  const trimmed = typeof queue.name === 'string' ? queue.name.trim() : '';
+  if (trimmed) return trimmed;
+  if (queue.queueKey) return prettifyQueueKey(queue.queueKey);
+  return null;
+}
+
 /**
  * Doc id for POST /api/queues/:queueId/join|leave — always `twitch:{streamerTwitchId}`.
  */
@@ -66,6 +95,7 @@ export function normalizeQueueSnapshot(
     streamerId: streamerId || id.replace(/^twitch:/, ''),
     code,
     type: raw.type === 'dungeon' ? 'dungeon' : 'raid',
+    name: typeof raw.name === 'string' ? raw.name : undefined,
     queueKey: typeof raw.queueKey === 'string' ? raw.queueKey : undefined,
     contentId: typeof raw.contentId === 'string' ? raw.contentId : undefined,
     status: normalizeStatus(raw.status),

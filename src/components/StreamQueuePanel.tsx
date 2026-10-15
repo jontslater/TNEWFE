@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { queueAPI, type BattlefieldQueueSnapshot } from '../api/queueApi';
-import { parseLaunchAtMs, queueDocumentId } from '../utils/queueSnapshot';
+import { parseLaunchAtMs, queueDocumentId, queueDisplayName } from '../utils/queueSnapshot';
 import type { Hero } from '../types/Hero';
 
 interface StreamQueuePanelProps {
@@ -20,6 +20,7 @@ export default function StreamQueuePanel({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [now, setNow] = useState(Date.now());
 
   const refresh = useCallback(async () => {
     if (!streamerTwitchId) return;
@@ -80,10 +81,17 @@ export default function StreamQueuePanel({
   const inQueue = Boolean(queue?.participants?.some((p) => p.heroId === hero?.id));
 
   const launchAtMs = queue ? parseLaunchAtMs(queue.launchAt) : null;
+
+  useEffect(() => {
+    if (!launchAtMs || launchAtMs <= Date.now()) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [launchAtMs]);
+
   const countdownSec =
-    launchAtMs && launchAtMs > Date.now()
-      ? Math.ceil((launchAtMs - Date.now()) / 1000)
-      : null;
+    launchAtMs && launchAtMs > now ? Math.ceil((launchAtMs - now) / 1000) : null;
+
+  const modeLabel = queueDisplayName(queue);
 
   if (loading && !queue) {
     return (
@@ -114,9 +122,9 @@ export default function StreamQueuePanel({
           {queue.type} · {queue.status}
         </span>
       </div>
-      {queue.queueKey && (
+      {modeLabel && (
         <p className="text-sm text-gray-400">
-          Mode: <span className="text-gray-200">{queue.queueKey}</span>
+          Mode: <span className="text-gray-200">{modeLabel}</span>
         </p>
       )}
       <p className="text-sm text-gray-400">

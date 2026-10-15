@@ -14,6 +14,8 @@ export interface BattlefieldQueueSnapshot {
   streamerId: string;
   code: string;
   type: 'raid' | 'dungeon';
+  /** Human-readable mode label from backend (e.g. "Elder Dragon (Normal)") */
+  name?: string;
   queueKey?: string;
   contentId?: string;
   status: QueueStatus;

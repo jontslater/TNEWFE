@@ -1,5 +1,7 @@
 # Backend/Frontend Mismatches
 
+> **Firestore composite indexes:** Deploy only from **`jontslater/idleDnD-Backend`** (`firebase.json` + `firestore.indexes.json`). This frontend repo does not ship index definitions — avoid deploying a duplicate `firestore.indexes.json` from TNEWFE so index sets do not conflict.
+
 **Updated**: 2026-10-15  
 **Backend branch**: `jontslater/idleDnD-Backend@cursor/fix-critical-issues-3f3e`  
 **Frontend branch**: `jontslater/TNEWFE@cursor/refactor-overlay-security-code-health-c08c`
@@ -31,7 +33,7 @@ Aligned with backend `docs/QUEUE_API.md`:
 
 **Portal surfaces API `error` / `message` text** (role full, in a run on another stream, queue closed).
 
-**Firestore:** overlay instance listener uses `battlefieldId` + `status in [...]` — composite indexes in `firestore.indexes.json` (deploy with backend Firebase project).
+**Firestore:** overlay instance listener uses `battlefieldId` + `status in [...]` — indexes live in backend `firestore.indexes.json` (see note at top).
 
 ---
 

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import type { BattlefieldQueueSnapshot } from '../api/queueApi';
-import { parseLaunchAtMs } from '../utils/queueSnapshot';
+import { parseLaunchAtMs, queueDisplayName } from '../utils/queueSnapshot';
 
 function roleLine(label: string, current: number, required: number): string {
   return `${label} ${current}/${required}`;
@@ -40,6 +40,8 @@ export const OverlayQueueStrip: React.FC<OverlayQueueStripProps> = ({ queue }) =
   const countdownSec =
     launchAtMs && launchAtMs > now ? Math.ceil((launchAtMs - now) / 1000) : null;
 
+  const modeLabel = queueDisplayName(queue);
+
   return (
     <div
       style={{
@@ -71,7 +73,7 @@ export const OverlayQueueStrip: React.FC<OverlayQueueStripProps> = ({ queue }) =
       {countdownSec != null && (
         <span style={{ color: '#34d399', fontWeight: 'bold' }}> • starts in {countdownSec}s</span>
       )}
-      {queue.queueKey && <span style={{ color: '#9ca3af' }}> • {queue.queueKey}</span>}
+      {modeLabel && <span style={{ color: '#9ca3af' }}> • {modeLabel}</span>}
     </div>
   );
 };
