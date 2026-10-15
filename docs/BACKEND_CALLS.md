@@ -98,9 +98,9 @@ This document lists all backend endpoints called by the frontend, organized by c
 
 ---
 
-## Battlefield Queue API (JWT — portal; backend PR #9 in progress)
+## Battlefield Queue API (JWT — portal)
 
-Assumed contract in `src/api/queueApi.ts` until `docs/QUEUE_API.md` lands on backend.
+Contract: backend `docs/QUEUE_API.md` — implemented in `src/api/queueApi.ts`.
 
 ### GET `/api/queues/:twitchId`
 - **Credential**: JWT

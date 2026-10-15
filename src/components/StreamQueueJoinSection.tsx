@@ -4,14 +4,12 @@ import StreamQueuePanel from './StreamQueuePanel';
 
 interface StreamQueueJoinSectionProps {
   hero: Hero | null;
-  viewerTwitchUserId?: string;
   /** Pre-fill streamer id (e.g. own channel). */
   defaultStreamerTwitchId?: string;
 }
 
 export default function StreamQueueJoinSection({
   hero,
-  viewerTwitchUserId,
   defaultStreamerTwitchId = '',
 }: StreamQueueJoinSectionProps) {
   const [streamerTwitchId, setStreamerTwitchId] = useState(defaultStreamerTwitchId);
@@ -36,7 +34,6 @@ export default function StreamQueueJoinSection({
         <StreamQueuePanel
           streamerTwitchId={streamerTwitchId}
           hero={hero}
-          viewerTwitchUserId={viewerTwitchUserId}
           title="Chat queue"
         />
       ) : (

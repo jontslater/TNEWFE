@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../utils/firebase';
 import type { BattlefieldQueueSnapshot } from '../api/queueApi';
+import { normalizeQueueSnapshot } from '../utils/queueSnapshot';
 
 /**
  * Real-time open queue for a streamer battlefield (OBS overlay strip).
@@ -26,24 +27,7 @@ export function useBattlefieldQueueFirestore(battlefieldId: string | null) {
         if (!snapshot.exists()) {
           setQueue(null);
         } else {
-          const data = snapshot.data();
-          setQueue({
-            queueId: data.queueId || snapshot.id,
-            twitchId: data.twitchId || battlefieldId.replace(/^twitch:/, ''),
-            battlefieldId,
-            type: data.type || 'raid',
-            joinCode: data.code || data.joinCode || '',
-            code: data.code,
-            name: data.name,
-            contentId: data.contentId,
-            status: data.status || 'open',
-            requirements: data.requirements,
-            rolesRequired: data.rolesRequired,
-            rolesFilled: data.rolesFilled,
-            countdownEndsAt: data.countdownEndsAt,
-            autoStartAt: data.autoStartAt,
-            participants: data.participants,
-          });
+          setQueue(normalizeQueueSnapshot(snapshot.data() as Record<string, unknown>, snapshot.id));
         }
         setLoading(false);
       },

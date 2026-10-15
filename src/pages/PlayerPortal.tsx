@@ -723,7 +723,6 @@ export default function PlayerPortal() {
               />
               <StreamQueueJoinSection
                 hero={hero}
-                viewerTwitchUserId={user?.twitchId}
                 defaultStreamerTwitchId={user?.twitchId || ''}
               />
               </>

@@ -1,24 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import type { BattlefieldQueueSnapshot } from '../api/queueApi';
+import { parseLaunchAtMs } from '../utils/queueSnapshot';
 
-function parseCountdownMs(value: unknown): number | null {
-  if (value == null) return null;
-  if (typeof value === 'number') return value;
-  if (typeof value === 'string') {
-    const parsed = Date.parse(value);
-    return Number.isNaN(parsed) ? null : parsed;
-  }
-  if (typeof value === 'object' && value !== null && '_seconds' in value) {
-    return (value as { _seconds: number })._seconds * 1000;
-  }
-  return null;
-}
-
-function roleLine(
-  label: string,
-  current: number,
-  required: number
-): string {
+function roleLine(label: string, current: number, required: number): string {
   return `${label} ${current}/${required}`;
 }
 
@@ -29,33 +13,32 @@ export interface OverlayQueueStripProps {
 export const OverlayQueueStrip: React.FC<OverlayQueueStripProps> = ({ queue }) => {
   const [now, setNow] = useState(Date.now());
 
+  const launchAtMs = queue ? parseLaunchAtMs(queue.launchAt) : null;
+
   useEffect(() => {
-    if (!queue) return;
-    const endsAt = parseCountdownMs(queue.countdownEndsAt ?? queue.autoStartAt);
-    if (!endsAt) return;
+    if (!launchAtMs) return;
     const timer = setInterval(() => setNow(Date.now()), 250);
     return () => clearInterval(timer);
-  }, [queue]);
+  }, [launchAtMs]);
 
   if (!queue) return null;
 
-  const code = queue.joinCode || queue.code || '----';
+  const code = queue.code || '----';
   const typeLabel = queue.type === 'dungeon' ? 'Dungeon' : 'Raid';
 
-  const tankReq = queue.requirements?.roles?.tank;
-  const healerReq = queue.requirements?.roles?.healer;
-  const dpsReq = queue.requirements?.roles?.dps;
+  const tank = queue.requirements?.roles?.tank;
+  const healer = queue.requirements?.roles?.healer;
+  const dps = queue.requirements?.roles?.dps;
 
-  const tankCur = tankReq?.current ?? queue.rolesFilled?.tank ?? 0;
-  const tankNeed = tankReq?.required ?? queue.rolesRequired?.tank ?? 1;
-  const healerCur = healerReq?.current ?? queue.rolesFilled?.healer ?? 0;
-  const healerNeed = healerReq?.required ?? queue.rolesRequired?.healer ?? 1;
-  const dpsCur = dpsReq?.current ?? queue.rolesFilled?.dps ?? 0;
-  const dpsNeed = dpsReq?.required ?? queue.rolesRequired?.dps ?? 3;
+  const tankCur = tank?.current ?? 0;
+  const tankNeed = tank?.required ?? 1;
+  const healerCur = healer?.current ?? 0;
+  const healerNeed = healer?.required ?? 1;
+  const dpsCur = dps?.current ?? 0;
+  const dpsNeed = dps?.required ?? 3;
 
-  const endsAt = parseCountdownMs(queue.countdownEndsAt ?? queue.autoStartAt);
   const countdownSec =
-    endsAt && endsAt > now ? Math.ceil((endsAt - now) / 1000) : null;
+    launchAtMs && launchAtMs > now ? Math.ceil((launchAtMs - now) / 1000) : null;
 
   return (
     <div
@@ -88,7 +71,7 @@ export const OverlayQueueStrip: React.FC<OverlayQueueStripProps> = ({ queue }) =
       {countdownSec != null && (
         <span style={{ color: '#34d399', fontWeight: 'bold' }}> • starts in {countdownSec}s</span>
       )}
-      {queue.name && <span style={{ color: '#9ca3af' }}> • {queue.name}</span>}
+      {queue.queueKey && <span style={{ color: '#9ca3af' }}> • {queue.queueKey}</span>}
     </div>
   );
 };

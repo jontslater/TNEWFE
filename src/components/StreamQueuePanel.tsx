@@ -1,26 +1,25 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { queueAPI, type BattlefieldQueueSnapshot } from '../api/queueApi';
-import { normalizeRole } from '../overlay/roleUtils';
+import { parseLaunchAtMs, queueDocumentId } from '../utils/queueSnapshot';
 import type { Hero } from '../types/Hero';
 
 interface StreamQueuePanelProps {
   /** Streamer Twitch user id (numeric string) whose queue to view/join */
   streamerTwitchId: string;
   hero: Hero | null;
-  viewerTwitchUserId?: string;
   title?: string;
 }
 
 export default function StreamQueuePanel({
   streamerTwitchId,
   hero,
-  viewerTwitchUserId,
-  title = "Stream queue",
+  title = 'Chat queue',
 }: StreamQueuePanelProps) {
   const [queue, setQueue] = useState<BattlefieldQueueSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!streamerTwitchId) return;
@@ -44,17 +43,16 @@ export default function StreamQueuePanel({
     return () => clearInterval(interval);
   }, [refresh]);
 
+  const docId = queueDocumentId(queue, streamerTwitchId);
+
   const handleJoin = async () => {
-    if (!hero?.id || !queue?.queueId) return;
+    if (!hero?.id || !docId) return;
     setBusy(true);
     setError(null);
+    setSuccessMessage(null);
     try {
-      const role = normalizeRole(hero.role);
-      await queueAPI.joinQueue(queue.queueId, {
-        heroId: hero.id,
-        twitchUserId: viewerTwitchUserId,
-        role,
-      });
+      const result = await queueAPI.joinQueue(docId, { heroId: hero.id });
+      setSuccessMessage(result.message ?? 'Joined queue');
       await refresh();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to join queue');
@@ -64,11 +62,13 @@ export default function StreamQueuePanel({
   };
 
   const handleLeave = async () => {
-    if (!hero?.id || !queue?.queueId) return;
+    if (!docId) return;
     setBusy(true);
     setError(null);
+    setSuccessMessage(null);
     try {
-      await queueAPI.leaveQueue(queue.queueId, { heroId: hero.id });
+      const result = await queueAPI.leaveQueue(docId);
+      setSuccessMessage(result.message ?? 'Left queue');
       await refresh();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to leave queue');
@@ -77,9 +77,13 @@ export default function StreamQueuePanel({
     }
   };
 
-  const inQueue = Boolean(
-    queue?.participants?.some((p) => p.heroId === hero?.id)
-  );
+  const inQueue = Boolean(queue?.participants?.some((p) => p.heroId === hero?.id));
+
+  const launchAtMs = queue ? parseLaunchAtMs(queue.launchAt) : null;
+  const countdownSec =
+    launchAtMs && launchAtMs > Date.now()
+      ? Math.ceil((launchAtMs - Date.now()) / 1000)
+      : null;
 
   if (loading && !queue) {
     return (
@@ -98,7 +102,6 @@ export default function StreamQueuePanel({
     );
   }
 
-  const code = queue.joinCode || queue.code || '----';
   const tank = queue.requirements?.roles?.tank;
   const healer = queue.requirements?.roles?.healer;
   const dps = queue.requirements?.roles?.dps;
@@ -107,12 +110,21 @@ export default function StreamQueuePanel({
     <div className="rounded-lg border border-amber-700/40 bg-gray-900/80 p-4 space-y-3">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold text-white">{title}</h3>
-        <span className="text-xs uppercase tracking-wide text-amber-400">{queue.type}</span>
+        <span className="text-xs uppercase tracking-wide text-amber-400">
+          {queue.type} · {queue.status}
+        </span>
       </div>
-      {queue.name && <p className="text-sm text-gray-300">{queue.name}</p>}
+      {queue.queueKey && (
+        <p className="text-sm text-gray-400">
+          Mode: <span className="text-gray-200">{queue.queueKey}</span>
+        </p>
+      )}
       <p className="text-sm text-gray-400">
-        Join code: <span className="font-mono text-purple-300">{code}</span>
+        Join code: <span className="font-mono text-purple-300">{queue.code}</span>
       </p>
+      {countdownSec != null && (
+        <p className="text-sm text-green-400">Launching in {countdownSec}s</p>
+      )}
       <div className="grid grid-cols-3 gap-2 text-center text-sm">
         <div className="rounded bg-gray-800 p-2">
           Tank {tank?.current ?? 0}/{tank?.required ?? 1}
@@ -125,6 +137,9 @@ export default function StreamQueuePanel({
         </div>
       </div>
       {error && <p className="text-sm text-red-400">{error}</p>}
+      {successMessage && !error && (
+        <p className="text-sm text-green-400">{successMessage}</p>
+      )}
       <div className="flex gap-2">
         {!inQueue ? (
           <button
@@ -156,6 +171,7 @@ export default function StreamQueuePanel({
       </div>
       <p className="text-xs text-gray-500">
         Joining this stream&apos;s queue leaves any other stream&apos;s queue (server enforced).
+        Role-full and cross-stream errors are returned by the API and shown above.
       </p>
     </div>
   );

@@ -11,25 +11,27 @@
 | Area | Status |
 |------|--------|
 | Raw `fetch(/api/...)` in `src/` | ✅ Replaced with `apiClient` / `overlayClient` (`scripts/check-fetch.js`) |
-| Chat queue REST (`/api/queues/*`) | ⏳ **Assumed shapes** — see below (no `QUEUE_API.md` on backend branch yet) |
+| Chat queue REST (`/api/queues/*`) | ✅ Matches backend `docs/QUEUE_API.md` (`src/api/queueApi.ts`, `src/utils/queueSnapshot.ts`) |
 | Scheduled guild raids (overlay polling) | ✅ **Disabled** (`FEATURES.scheduledRaids = false`) — code kept in `src/overlay/scheduledGuildRaids.ts` |
 | Instance detection (overlay) | ✅ Listens on `battlefieldId` + unified statuses (`src/constants/instanceStatus.ts`) |
 | Firestore rules (overlay reads) | ✅ `raidInstances`, `dungeonInstances`, `battlefieldQueues` read-only in `firestore.rules` — **owner must confirm deployed rules** |
 
 ---
 
-## Assumed queue REST API (portal `src/api/queueApi.ts`)
+## Queue REST API (portal `src/api/queueApi.ts`)
 
-Until `docs/QUEUE_API.md` exists on the backend branch, the portal uses:
+Aligned with backend `docs/QUEUE_API.md`:
 
-| Method | Path | Request | Response (assumed) |
-|--------|------|---------|-------------------|
-| GET | `/api/queues/:twitchId` | — | `{ queue: BattlefieldQueueSnapshot \| null }` |
-| POST | `/api/queues` | `{ twitchId, type, contentId, name? }` | `{ success, queue }` |
-| POST | `/api/queues/:queueId/join` | `{ heroId, twitchUserId?, role? }` | `{ success, message?, queue? }` |
-| POST | `/api/queues/:queueId/leave` | `{ heroId }` | `{ success, message? }` |
+| Method | Path | Request | Notes |
+|--------|------|---------|--------|
+| GET | `/api/queues/:twitchId` | — | `launchAt` epoch ms in JSON; doc id `twitch:{id}` |
+| POST | `/api/queues` | `{ twitchId, type, queueKey }` | Not `contentId` |
+| POST | `/api/queues/:queueId/join` | `{ heroId }` | `:queueId` = doc id `twitch:{streamerTwitchId}` (not internal `queueKey`) |
+| POST | `/api/queues/:queueId/leave` | — | JWT only |
 
-**Errors expected from backend (portal surfaces message text):** role full, already in another stream’s queue, queue closed.
+**Portal surfaces API `error` / `message` text** (role full, in a run on another stream, queue closed).
+
+**Firestore:** overlay instance listener uses `battlefieldId` + `status in [...]` — composite indexes in `firestore.indexes.json` (deploy with backend Firebase project).
 
 ---
 
