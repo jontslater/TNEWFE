@@ -110,18 +110,36 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
     
-    // Instances collection (dungeon/raid instances)
+    // Legacy instances collection (dungeon/raid instances)
     match /instances/{instanceId} {
-      // Read: Participants can read instance data
       allow read: if isAuthenticated();
-      
-      // Write: Only server should write instance data
-      // ⚠️ BACKEND CHANGE NEEDED: Move instance creation/updates to server
       allow update: if isAdmin();
-      
       allow create: if isAdmin();
-      
       allow delete: if isAdmin();
+    }
+
+    // Raid/dungeon instance documents (overlay listeners — read-only from clients)
+    // ⚠️ Confirm this file is what Firebase deploy uses (may differ from backend repo).
+    match /raidInstances/{instanceId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /dungeonInstances/{instanceId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Chat battlefield queue snapshot (overlay strip + streamer dashboard)
+    match /battlefieldQueues/{battlefieldId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Legacy global dungeon queue collection (read-only for portal/overlay)
+    match /dungeonQueue/{entryId} {
+      allow read: if true;
+      allow write: if false;
     }
     
     // Mail collection

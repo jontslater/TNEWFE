@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { Hero } from '../types/Hero';
+import { FEATURES } from '../config/features';
 import { Guild } from '../types/Guild';
 import { Raid, WorldBoss } from '../types/Raid';
 import { mockHero, mockGuild, mockRaids, mockWorldBoss } from './mock-data';
@@ -1077,6 +1078,9 @@ export const raidAPI = {
   },
   
   async simulateRaid(raidId: string, participants: string[]): Promise<{success: boolean, outcome: 'success' | 'failure', rewards: any, message: string}> {
+    if (!FEATURES.raidSimulate) {
+      throw new Error('Raid simulation is disabled until POST /api/raids/:raidId/simulate exists on the backend.');
+    }
     const response = await apiClient.post(`/api/raids/${raidId}/simulate`, { participants });
     return response.data;
   },
@@ -1214,9 +1218,31 @@ export const raidAPI = {
         setTimeout(() => resolve({ success: true }), 300);
       });
     }
-    
-    const response = await apiClient.post('/api/worldboss/signup', { userId });
+    // Backend has POST /api/worldboss/:bossId/join — not /worldboss/signup
+    const boss = await this.getWorldBoss();
+    if (!boss?.id) {
+      throw new Error('No active world boss to join.');
+    }
+    const response = await apiClient.post(`/api/worldboss/${boss.id}/join`, {
+      userId,
+      username: userId,
+      heroLevel: 1,
+      heroRole: 'berserker',
+    });
     return response.data;
+  },
+
+  /** @deprecated Use signupForRaid with guildId. */
+  async joinRaid(raidId: string, heroId: string, guildId?: string): Promise<{ success: boolean }> {
+    if (!guildId) {
+      throw new Error('Guild id required — use signupForRaid or the stream queue API.');
+    }
+    return this.signupForRaid(raidId, guildId, [heroId]);
+  },
+
+  /** @deprecated No dedicated leave endpoint — use guild signup flow or queue leave. */
+  async leaveRaid(_raidId: string, _heroId: string): Promise<{ success: boolean }> {
+    throw new Error('leaveRaid is not implemented on the backend. Use queueAPI.leaveQueue for chat queues.');
   },
   
   // Queue methods

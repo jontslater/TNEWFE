@@ -30,6 +30,7 @@ import SocialSidebar from '../components/SocialSidebar';
 import PrestigeStore from '../components/PrestigeStore';
 import StreamStatusBanner from '../components/StreamStatusBanner';
 import GroupBoostIndicator from '../components/GroupBoostIndicator';
+import StreamQueueJoinSection from '../components/StreamQueueJoinSection';
 
 export default function PlayerPortal() {
   const navigate = useNavigate();
@@ -696,6 +697,7 @@ export default function PlayerPortal() {
               : 'lg:col-span-9'
           }`}>
             {activeTab === 'hero' && (
+              <>
               <HeroDashboard 
                 hero={hero} 
                 onHeroUpdate={async (updatedHero: Hero) => {
@@ -719,6 +721,12 @@ export default function PlayerPortal() {
                   }
                 }}
               />
+              <StreamQueueJoinSection
+                hero={hero}
+                viewerTwitchUserId={user?.twitchId}
+                defaultStreamerTwitchId={user?.twitchId || ''}
+              />
+              </>
             )}
         {activeTab === 'inventory' && (
           <InventoryManager 

@@ -111,7 +111,7 @@ export default function GuildRaidsPanel({ hero, guildId }: GuildRaidsPanelProps)
 
   const handleSignup = async (raidId: string) => {
     try {
-      await raidAPI.joinRaid(raidId, hero.id);
+      await raidAPI.signupForRaid(raidId, guildId, [hero.id]);
       alert('Successfully joined raid!');
       loadRaids();
       setSignupModal(false);
@@ -122,7 +122,7 @@ export default function GuildRaidsPanel({ hero, guildId }: GuildRaidsPanelProps)
 
   const handleLeave = async (raidId: string) => {
     try {
-      await raidAPI.leaveRaid(raidId, hero.id);
+      await raidAPI.leaveScheduledRaid(raidId, hero.id);
       alert('Left raid');
       loadRaids();
     } catch (error: any) {

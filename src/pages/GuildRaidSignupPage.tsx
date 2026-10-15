@@ -5,6 +5,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useHero } from '../hooks/useHero';
 import { useGuild } from '../hooks/useGuild';
 import { getItemScore } from '../utils/format';
+import { FEATURES } from '../config/features';
 
 export default function GuildRaidSignupPage() {
   const { raidId } = useParams<{ raidId: string }>();
@@ -156,7 +157,9 @@ export default function GuildRaidSignupPage() {
       
       if (startNow) {
         if (simulateMode) {
-          // Simulate raid instantly
+          if (!FEATURES.raidSimulate) {
+            throw new Error('Raid simulation is not available until the backend implements POST /api/raids/:raidId/simulate.');
+          }
           const heroIds = assignedPlayers.map(p => p.heroId);
           await raidAPI.simulateRaid(raidId!, heroIds);
           alert('Raid simulated! Check your rewards (70% loot quality)');

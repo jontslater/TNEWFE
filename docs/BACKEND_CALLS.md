@@ -98,6 +98,32 @@ This document lists all backend endpoints called by the frontend, organized by c
 
 ---
 
+## Battlefield Queue API (JWT — portal; backend PR #9 in progress)
+
+Assumed contract in `src/api/queueApi.ts` until `docs/QUEUE_API.md` lands on backend.
+
+### GET `/api/queues/:twitchId`
+- **Credential**: JWT
+- **Purpose**: Open chat queue for a streamer (raid/dungeon)
+- **File**: `src/api/queueApi.ts` - `queueAPI.getQueue()`
+
+### POST `/api/queues`
+- **Credential**: JWT (streamer)
+- **Purpose**: Create open queue
+- **File**: `src/api/queueApi.ts` - `queueAPI.createQueue()`
+
+### POST `/api/queues/:queueId/join`
+- **Credential**: JWT
+- **Purpose**: Join queue (leaves other streams server-side)
+- **File**: `src/api/queueApi.ts` - `queueAPI.joinQueue()`
+
+### POST `/api/queues/:queueId/leave`
+- **Credential**: JWT
+- **Purpose**: Leave queue
+- **File**: `src/api/queueApi.ts` - `queueAPI.leaveQueue()`
+
+---
+
 ## Overlay API (Streamer Key Required)
 
 ### POST `/api/overlay/sync`

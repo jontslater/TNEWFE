@@ -17,7 +17,7 @@ import { generateEnemiesForCombat } from '../utils/enemyGeneration';
 import { generateDungeonEnemies } from '../utils/dungeonEnemyGeneration';
 import HeroSpriteJS from '../components/HeroSpriteJS';
 import EnemySpriteJS from '../components/EnemySpriteJS';
-import { battlefieldAPI, heroAPI, questAPI } from '../api/client';
+import { battlefieldAPI, heroAPI, questAPI, overlayClient } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import { useActiveInstanceListener } from '../hooks/useActiveInstanceListener';
 import { useWebSocket } from '../hooks/useWebSocket';
@@ -59,6 +59,9 @@ import { getEnemyPosition, getDungeonHeroPosition } from '../overlay/positioning
 import { RareLootAnnouncement } from '../overlay/RareLootAnnouncement';
 import { WaveAnnouncement } from '../overlay/WaveAnnouncement';
 import { SyncManager } from '../overlay/syncManager';
+import { useScheduledGuildRaidsMonitoring } from '../overlay/scheduledGuildRaids';
+import { OverlayQueueStrip } from '../overlay/OverlayQueueStrip';
+import { useBattlefieldQueueFirestore } from '../hooks/useBattlefieldQueueFirestore';
 
 // Type aliases for backward compatibility
 type Hero = OverlayHero;
@@ -318,14 +321,6 @@ export default function CleanBattlefieldSource() {
   const [viewerCount, setViewerCount] = useState(0);
   const [activeChatterCount, setActiveChatterCount] = useState(0); // Active chatters in last hour
   
-  // Queue status tracking
-  const [queueStatus, setQueueStatus] = useState<{
-    inQueue: boolean;
-    totalInQueue: number;
-    roleCounts: { tank: number; healer: number; dps: number };
-    userRole?: string;
-  } | null>(null);
-  
   // Rested XP tracking
   const heroBattlefieldJoinTime = useRef<Map<string, number>>(new Map());
   const lastChatTime = useRef<Map<string, number>>(new Map());
@@ -534,209 +529,23 @@ export default function CleanBattlefieldSource() {
   // Determine twitchId for instance listener: prefer authenticated user, fallback to battlefieldId
   // This allows browser sources to work without authentication by using the battlefieldId parameter
   const twitchIdForListener = user?.twitchId || twitchId;
-  
-  // Listen for active instances (dungeons/raids)
-  // Works for both authenticated users and browser sources (using battlefieldId)
-  const { activeInstance, loading: instanceLoading } = useActiveInstanceListener(twitchIdForListener);
-  
-  // Listen for queue status if user's hero is in queue
-  useEffect(() => {
-    if (!twitchIdForListener || gameMode !== 'idle') {
-      setQueueStatus(null);
-      return;
-    }
-    
-    let heroIdRef: string | null = null;
-    
-    // First, find the user's hero ID
-    const findHeroAndListen = async () => {
-      try {
-        // Find hero document for current user (use twitchId from battlefieldId or authenticated user)
-        const heroesQuery = query(
-          collection(db, 'heroes'),
-          where('twitchUserId', '==', twitchIdForListener),
-          limit(1)
-        );
-        const heroesSnapshot = await getDocs(heroesQuery);
-        
-        if (heroesSnapshot.empty) {
-          setQueueStatus(null);
-          return;
-        }
-        
-        heroIdRef = heroesSnapshot.docs[0].id;
-        
-        // Now listen to queue for this hero and all queue entries
-        const queueQuery = collection(db, 'dungeonQueue');
-        
-        const unsubscribe = onSnapshot(
-          queueQuery,
-          (snapshot) => {
-            // Find if this hero is in queue
-            const userQueueEntry = snapshot.docs.find(
-              doc => doc.data().heroId === heroIdRef
-            );
-            
-            if (!userQueueEntry) {
-              setQueueStatus(null);
-              return;
-            }
-            
-            // Calculate role counts from all queue entries (normalize roles)
-            const allQueue = snapshot.docs.map(doc => doc.data());
-            
-            // Normalize role helper
-            const normalizeRole = (role: string) => {
-              if (!role) return 'dps';
-              const roleLower = role.toLowerCase();
-              const tankRoles = ['guardian', 'paladin', 'warden', 'bloodknight', 'vanguard', 'brewmaster'];
-              const healerRoles = ['cleric', 'atoner', 'druid', 'lightbringer', 'shaman', 'mistweaver', 'chronomancer', 'bard'];
-              if (tankRoles.includes(roleLower) || roleLower === 'tank') return 'tank';
-              if (healerRoles.includes(roleLower) || roleLower === 'healer') return 'healer';
-              return 'dps';
-            };
-            
-            const roleCounts = {
-              tank: allQueue.filter(q => normalizeRole(q.role) === 'tank').length,
-              healer: allQueue.filter(q => normalizeRole(q.role) === 'healer').length,
-              dps: allQueue.filter(q => normalizeRole(q.role) === 'dps').length
-            };
-            
-            const totalInQueue = allQueue.length;
-            const queueEntryData = userQueueEntry.data();
-            
-            setQueueStatus({
-              inQueue: true,
-              totalInQueue,
-              roleCounts,
-              userRole: normalizeRole(queueEntryData.role) // Normalize user's role for display
-            });
-          },
-          (error) => {
-            console.error('[Queue Status] Queue listener error:', error);
-            setQueueStatus(null);
-          }
-        );
-        
-        return unsubscribe;
-      } catch (error) {
-        console.error('[Queue Status] Error setting up listener:', error);
-        setQueueStatus(null);
-        return () => {}; // Return empty unsubscribe function
-      }
-    };
-    
-    let unsubscribeFn: (() => void) | null = null;
-    
-    findHeroAndListen().then((unsub) => {
-      if (unsub) unsubscribeFn = unsub;
-    });
-    
-        return () => {
-          if (unsubscribeFn) unsubscribeFn();
-        };
-      }, [twitchIdForListener, gameMode]);
-  
-  // Track scheduled raid auto-start timeouts
-  const scheduledRaidTimeouts = useRef<Map<string, NodeJS.Timeout>>(new Map());
-  
-  // Monitor scheduled guild raids and auto-start at scheduled time
-  useEffect(() => {
-    if (!battlefieldId || gameMode !== 'idle') return;
-    
-    // Extract twitch ID from battlefieldId (format: "twitch:1087777297")
-    const battlefieldTwitchId = battlefieldId.split(':')[1];
-    if (!battlefieldTwitchId) return;
-    
-    console.log('[Scheduled Raids] 🔍 Monitoring for auto-start...');
-    
-    // Query for scheduled guild raids
-    const checkScheduledRaids = async () => {
-      try {
-        // NOTE: Backend route /api/raids/scheduled/battlefield/:id does NOT exist
-        // This feature is not implemented on backend yet
-        const response = await overlayClient.get(`/api/raids/scheduled/battlefield/${battlefieldId}`);
-        const scheduledRaids = response.data;
-        
-        scheduledRaids.forEach((raid: any) => {
-          // Clear existing timeout if any
-          const existingTimeout = scheduledRaidTimeouts.current.get(raid.id);
-          if (existingTimeout) {
-            clearTimeout(existingTimeout);
-          }
-          
-          if (raid.scheduledTime && raid.status === 'recruiting') {
-            const scheduledDate = new Date(raid.scheduledTime._seconds * 1000);
-            const now = new Date();
-            const timeUntilStart = scheduledDate.getTime() - now.getTime();
-            
-            if (timeUntilStart > 0 && timeUntilStart < 86400000) {
-              // Future raid within 24 hours - schedule auto-start
-              const minPlayers = raid.minPlayers || 5;
-              const hasEnoughPlayers = raid.participants.length >= minPlayers;
-              
-              if (hasEnoughPlayers) {
-                console.log(`[Auto-Start] ⏰ "${raid.raidName}" will start in ${Math.floor(timeUntilStart / 60000)} minutes`);
-                
-                const timeout = setTimeout(async () => {
-                  console.log(`[Auto-Start] 🚀 Starting "${raid.raidName}" NOW! Mode: ${raid.simulateMode ? 'SIMULATE' : 'LIVE'}`);
-                  try {
-                    if (raid.simulateMode) {
-                      // NOTE: Backend route /api/raids/:raidId/simulate does NOT exist
-                      const heroIds = raid.participants.map((p: any) => p.heroId);
-                      const response = await overlayClient.post(`/api/raids/${raid.raidId}/simulate`, {
-                        participants: heroIds
-                      });
-                      console.log(`[Auto-Start] ⚡ Raid simulated! Outcome: ${response.data.outcome}, ${response.data.message}`);
-                    } else {
-                      // NOTE: Backend route /api/raids/scheduled/:id/start does NOT exist
-                      await overlayClient.post(`/api/raids/scheduled/${raid.id}/start`);
-                      console.log('[Auto-Start] ✅ Live raid started! Transition will happen automatically via useActiveInstanceListener');
-                    }
-                  } catch (err) {
-                    console.error('[Auto-Start] ❌ Failed to start raid:', err);
-                  }
-                }, timeUntilStart);
-                
-                scheduledRaidTimeouts.current.set(raid.id, timeout);
-              }
-            } else if (timeUntilStart > -300000 && timeUntilStart <= 0) {
-              // Raid should have started in last 5 minutes - start now!
-              const minPlayers = raid.minPlayers || 5;
-              if (raid.participants.length >= minPlayers) {
-                console.log(`[Auto-Start] ⚡ Starting late raid "${raid.raidName}"... Mode: ${raid.simulateMode ? 'SIMULATE' : 'LIVE'}`);
-                
-                if (raid.simulateMode) {
-                  // NOTE: Backend route /api/raids/:raidId/simulate does NOT exist
-                  const heroIds = raid.participants.map((p: any) => p.heroId);
-                  overlayClient.post(`/api/raids/${raid.raidId}/simulate`, { participants: heroIds })
-                    .then(() => console.log('[Auto-Start] ⚡ Late raid simulated!'))
-                    .catch(err => console.error('[Auto-Start] Failed:', err));
-                } else {
-                  // NOTE: Backend route /api/raids/scheduled/:id/start does NOT exist
-                  overlayClient.post(`/api/raids/scheduled/${raid.id}/start`)
-                    .then(() => console.log('[Auto-Start] ✅ Late raid started!'))
-                    .catch(err => console.error('[Auto-Start] Failed:', err));
-                }
-              }
-            }
-          }
-        });
-      } catch (err) {
-        console.log('[Scheduled Raids] No scheduled raids or endpoint not ready');
-      }
-    };
-    
-    // Check on mount and every 60 seconds
-    checkScheduledRaids();
-    const interval = setInterval(checkScheduledRaids, 60000);
-    
-    return () => {
-      clearInterval(interval);
-      scheduledRaidTimeouts.current.forEach(timeout => clearTimeout(timeout));
-      scheduledRaidTimeouts.current.clear();
-    };
-  }, [battlefieldId, gameMode]);
+
+  const resolvedBattlefieldId = useMemo(() => {
+    if (battlefieldId) return battlefieldId;
+    if (twitchIdForListener) return `twitch:${twitchIdForListener}`;
+    return null;
+  }, [battlefieldId, twitchIdForListener]);
+
+  const { activeInstance, loading: instanceLoading } = useActiveInstanceListener(
+    twitchIdForListener,
+    { battlefieldId: resolvedBattlefieldId }
+  );
+
+  const { queue: battlefieldQueue } = useBattlefieldQueueFirestore(
+    gameMode === 'idle' ? resolvedBattlefieldId : null
+  );
+
+  useScheduledGuildRaidsMonitoring(resolvedBattlefieldId, gameMode);
   
   // Resurrection detector: Check for dead heroes who have HP > 0 (healed/resurrected)
   useEffect(() => {
@@ -6317,9 +6126,6 @@ export default function CleanBattlefieldSource() {
                     dungeonRaidDefCache.current = { id: cacheKey, allowedSlots };
                     console.log(`[Loot] Using raid guaranteedLoot slots:`, allowedSlots);
                   }
-                  } else {
-                    console.warn(`[Loot] Failed to fetch raid definition: ${response.status} ${response.statusText}`);
-                  }
                 }
               } catch (err) {
                 console.warn(`[Loot] Failed to fetch dungeon/raid definition for guaranteedLoot:`, err);
@@ -9352,6 +9158,7 @@ export default function CleanBattlefieldSource() {
       opacity: fadeOpacity,
       transition: 'opacity 0.5s ease-in-out'
     }}>
+      <OverlayQueueStrip queue={battlefieldQueue} />
 
       {/* Heroes (including test healer) */}
       {allHeroes && allHeroes.map((hero, index) => {
