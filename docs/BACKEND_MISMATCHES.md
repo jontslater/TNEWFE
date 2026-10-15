@@ -1,164 +1,199 @@
-# Backend/Frontend Auth Mismatches
+# Backend/Frontend Auth Mismatches - CORRECTED
 
-**Analysis Date**: 2026-09-30
+**Analysis Date**: 2026-10-15
 **Backend Branch**: `jontslater/idleDnD-Backend@cursor/fix-critical-issues-3f3e`
 **Frontend Branch**: `jontslater/TNEWFE@cursor/refactor-overlay-security-code-health-c08c`
 
+---
+
 ## Summary
 
-Analysis of all frontend API calls against backend route protection reveals **NO CRITICAL MISMATCHES**. All frontend calls use the correct credential type. However, there are some **documentation inconsistencies** to note.
+**Previous claim of "0 mismatches" was INCORRECT.** Systematic review reveals:
+
+1. **Overlay-called routes requiring user JWT** (will 401 in OBS until backend accepts streamer key)
+2. **Missing backend routes** (frontend calls non-existent endpoints)
+3. **All raw fetch() calls replaced with overlayClient** ✅
 
 ---
 
-## ✅ Verified Compatible Routes
+## ❌ CRITICAL: Overlay Routes Requiring User JWT
 
-### Browser Source / Overlay Routes
+These routes are called by the overlay (browser source in OBS) which only has a streamer key, but backend requires `requireAuth` (user JWT). **These will 401 until backend is updated to accept streamer key for these operations.**
 
-| Frontend Call | Backend Route | Expected Credential | Frontend Implementation | Status |
-|---|---|---|---|---|
-| `overlayAPI.syncBatch()` | POST `/api/overlay/sync` | `requireStreamerAccess` | ✅ `overlayClient` sends `X-Streamer-Key` | Compatible |
-| `battlefieldAPI.registerHero()` | POST `/api/battlefields/register` | `requireAuth` | ✅ `apiClient` sends JWT | Compatible |
-| `battlefieldAPI.getBattlefieldHeroes()` | GET `/api/battlefields/:battlefieldId/heroes` | Public | ✅ No auth required | Compatible |
-| `battlefieldAPI.getBattlefieldState()` | GET `/api/battlefields/:battlefieldId/state` | Public | ✅ No auth required | Compatible |
-| `overlayAPI.getChatActivity()` | GET `/api/chat/activity/:streamerId` | `requireStreamerAccess, optionalAuth` | ✅ `overlayClient` sends `X-Streamer-Key` | Compatible |
+### Quest Sync Route
 
-### Portal / Dashboard Routes
+| Method | Path | Backend Middleware | Frontend File:Line | Status |
+|--------|------|-------------------|-------------------|--------|
+| POST | `/api/quests/update-batch-all` | `requireAuth` | `src/pages/CleanBattlefieldSource.tsx:6768` | ❌ **WILL 401** |
+| POST | `/api/quests/update-batch-all` | `requireAuth` | `src/overlay/syncManager.ts:156` | ❌ **WILL 401** |
 
-All portal routes use `apiClient` which sends JWT via `Authorization: Bearer` header. All verified as compatible with `requireAuth` + `requireOwnership` middleware patterns.
+**Impact**: Quest progress tracking in overlay will fail. Heroes' wave/kill/gather quest progress won't sync to backend.
 
-### Stream Settings Routes (Overlay Key Endpoints)
+**Backend Fix Required**: Add `requireStreamerAccess` middleware or modify `requireAuth` to accept streamer key for this route.
 
-| Frontend Call | Backend Route | Middleware | Frontend Implementation | Status |
-|---|---|---|---|---|
-| `streamSettingsAPI.getOverlayKey()` | GET `/api/stream/settings/:twitchId/overlay-key` | `requireAuth` | ✅ `apiClient` sends JWT | Compatible |
-| `streamSettingsAPI.regenerateOverlayKey()` | POST `/api/stream/settings/:twitchId/overlay-key/regenerate` | `requireAuth` | ✅ `apiClient` sends JWT | Compatible |
-| `streamSettingsAPI.getSettings()` | GET `/api/stream/settings/:twitchId` | `requireAuth` | ✅ `apiClient` sends JWT | Compatible |
-| `streamSettingsAPI.updateSettings()` | PUT `/api/stream/settings/:twitchId` | `requireAuth` | ✅ `apiClient` sends JWT | Compatible |
-| `streamSettingsAPI.testChatUpdate()` | POST `/api/stream/settings/:twitchId/test` | `requireAuth` | ✅ `apiClient` sends JWT | Compatible |
-
-**Note**: Backend overlay key endpoints exist and match frontend expectations. Routes verify ownership via `req.user.twitchUserId !== twitchId` check inline (not using `requireOwnership` middleware, but equivalent).
+**Verification**: Backend audit shows route exists at `src/routes/quests.js:391` with `requireAuth` only.
 
 ---
 
-## 📋 Documentation-Only Issues
+## ❌ CRITICAL: Missing Backend Routes
 
-### Issue 1: BACKEND_CALLS.md Stale "Known Gaps" Section
+These routes are called by frontend but **do not exist** on backend. Calls will 404.
 
-**Problem**: `docs/BACKEND_CALLS.md` lists overlay key endpoints as "Gap 1: Missing" but backend now implements them.
+### Scheduled Raids Routes (NOT IMPLEMENTED)
 
-**Location**: `docs/BACKEND_CALLS.md` lines ~395-410
+| Method | Path | Frontend File:Line | Backend Status |
+|--------|------|-------------------|----------------|
+| GET | `/api/raids/scheduled/battlefield/:battlefieldId` | `src/pages/CleanBattlefieldSource.tsx:658` | ❌ **DOES NOT EXIST** |
+| POST | `/api/raids/scheduled/:id/start` | `src/pages/CleanBattlefieldSource.tsx:693` | ❌ **DOES NOT EXIST** |
+| POST | `/api/raids/scheduled/:id/start` | `src/pages/CleanBattlefieldSource.tsx:725` | ❌ **DOES NOT EXIST** |
 
-**Fix Required**: Remove "Known Backend Gaps" section or update to reflect current backend state.
+**Impact**: Scheduled raid auto-start feature completely non-functional.
 
-**Impact**: Documentation confusion only; no runtime impact.
+**Backend Fix Required**: Implement scheduled raids system or remove frontend code.
 
----
+**Verification**: Backend `src/routes/raids.js` has no routes matching `/scheduled/*` pattern.
 
-### Issue 2: Auth Coverage Gap Documentation Stale
+### Raid Simulation Route (NOT IMPLEMENTED)
 
-**Problem**: `docs/BACKEND_CALLS.md` lists "Gap 2: Auth Middleware Coverage (Incomplete)" claiming only ~9/218 routes protected, but backend audit shows 176/220 routes protected with 44 whitelisted public routes and 0 unprotected.
+| Method | Path | Frontend File:Line | Backend Status |
+|--------|------|-------------------|----------------|
+| POST | `/api/raids/:raidId/simulate` | `src/pages/CleanBattlefieldSource.tsx:687` | ❌ **DOES NOT EXIST** |
+| POST | `/api/raids/:raidId/simulate` | `src/pages/CleanBattlefieldSource.tsx:722` | ❌ **DOES NOT EXIST** |
 
-**Location**: `docs/BACKEND_CALLS.md` lines ~410-420
+**Impact**: Instant raid simulation (reduced rewards) non-functional.
 
-**Fix Required**: Remove or update Gap 2 to reflect backend auth coverage is now complete.
+**Backend Fix Required**: Implement raid simulation endpoint or remove frontend code.
 
-**Impact**: Documentation confusion only; no runtime impact.
-
----
-
-## 🔍 Edge Cases Verified
-
-### Public Routes Without Auth
-The following routes are called by frontend without credentials and are correctly marked as public on backend:
-
-- GET `/api/battlefields/:battlefieldId/heroes` ✅
-- GET `/api/battlefields/:battlefieldId/state` ✅
-- GET `/api/heroes/create/cost-info` ✅
-- GET `/api/guilds/` ✅
-- GET `/api/auction/listings` ✅
-- GET `/api/raids/` ✅
-- POST `/api/auth/twitch` ✅
-- POST `/api/auth/tiktok` ✅
-
-All verified as public routes on backend (no middleware or whitelisted).
-
-### Routes Requiring Internal Key
-The following routes require `X-Internal-Key` and are **not called by frontend**:
-
-- POST `/api/battlefields/:battlefieldId/combat/xp/accumulate` (backend service only)
-- POST `/api/battlefields/:battlefieldId/combat/xp/flush` (backend service only)
-- POST `/api/chat/join` (backend function call only, not HTTP)
-- POST `/api/achievements/check` (backend service only)
-- POST `/api/lootTokens/award` (backend service only)
-- POST `/api/leaderboards/update` (backend service only)
-
-✅ Frontend does not call any of these endpoints.
-
-### Routes Requiring Admin Key
-The following routes require `X-Admin-Key` and are **not called by frontend production code**:
-
-- POST `/api/heroes/test/create` (test/debug only)
-- POST `/api/heroes/:userId/admin/give-item` (admin tool only)
-- POST `/api/purchases/set-founder` (admin tool only)
-- POST `/api/purchases/remove-founder` (admin tool only)
-- POST `/api/skills/:userId/reset` (admin tool only)
-- POST `/api/achievements/:userId/unlock-all` (admin tool only)
-
-✅ Frontend does not call any of these in normal operation. If admin tools are added later, they would need to prompt for admin key.
+**Verification**: Backend `src/routes/raids.js` has `/api/raids/:raidId/start` (line 390) but no `/simulate` variant.
 
 ---
 
-## 🎯 Recommendations
+## ✅ Working Overlay Routes (Public Access)
 
-### Frontend Changes Required: None ✅
+These routes are called by overlay and work correctly (no auth required).
 
-All frontend API calls use the correct credential type for their backend route's middleware requirements.
+| Method | Path | Backend Middleware | Frontend File:Line | Status |
+|--------|------|-------------------|-------------------|--------|
+| GET | `/api/dungeon/:dungeonId` | Public | `src/pages/CleanBattlefieldSource.tsx:6301` | ✅ Works |
+| GET | `/api/dungeon/:dungeonId` | Public | `src/utils/dungeonEnemyGeneration.ts:173` | ✅ Works |
+| GET | `/api/raids/:raidId` | Public | `src/pages/CleanBattlefieldSource.tsx:6314` | ✅ Works |
 
-### Documentation Changes Required:
-
-1. **Update `docs/BACKEND_CALLS.md`**:
-   - Remove "Gap 1: Overlay Key Generation (Missing)" section
-   - Remove or update "Gap 2: Auth Middleware Coverage" section
-   - Add note that backend route protection audit shows 176/220 protected, 44 public, 0 unprotected
-
-2. **Add Backend Integration Status**:
-   - Document that backend PR #9 (cursor/fix-critical-issues-3f3e) is now integrated
-   - All frontend calls verified compatible with backend auth middleware
+**Note**: Backend route audit confirms these are public (no middleware or whitelisted).
 
 ---
 
-## 🔐 Security Notes
+## 🔧 Frontend Fixes Applied
 
-### Credential Storage Verified
+### All Raw fetch() Calls Replaced ✅
 
-1. **User JWT**: Stored in `localStorage.auth_token` ✅
-   - Sent by `apiClient` via `Authorization: Bearer` header
-   - Cleared on 401/403 errors with redirect
+**Before**: 10 raw `fetch()` calls with no authentication headers
+**After**: All replaced with `overlayClient` (sends X-Streamer-Key)
 
-2. **Streamer Key**: Stored in `sessionStorage.streamer_key` ✅
-   - Sent by `overlayClient` via `X-Streamer-Key` header
-   - No redirect on 401/403 (overlay context)
+| File | fetch() Count Before | overlayClient Count After |
+|------|---------------------|---------------------------|
+| `src/pages/CleanBattlefieldSource.tsx` | 8 | 8 |
+| `src/overlay/syncManager.ts` | 1 | 1 |
+| `src/utils/dungeonEnemyGeneration.ts` | 1 | 1 |
+| **Total** | **10** | **10** |
 
-3. **Admin Key**: Not stored ❌
-   - Would need to be injected for admin operations
-   - Not currently used by frontend
+### Path Corrections
 
-### Token Refresh Strategy
+- Fixed `/api/dungeons/:id` → `/api/dungeon/:id` (singular, matches backend)
 
-**Current**: No token refresh implemented
-- JWT expires after configured duration (backend JWT_SECRET)
-- On expiry, user is redirected to home to re-login
-- No automatic refresh or silent re-auth
+### Lint Enforcement
 
-**Recommendation**: Consider implementing refresh tokens for better UX (separate ticket).
+- Added `scripts/check-fetch.js` to scan for raw fetch() patterns
+- Wired into `npm run lint` - fails if any raw fetch() found
+- Prevents future regressions
 
 ---
 
-## ✅ Conclusion
+## 📋 Action Items for Backend Agent
 
-**No backend/frontend auth mismatches found.** All frontend API calls use the correct credential for their backend route's middleware requirements. Documentation updates are the only changes needed.
+### Priority 1: Enable Overlay Quest Sync
 
-**Backend Integration Status**: ✅ Ready to merge
-**Frontend Integration Status**: ✅ Ready to merge
+**Route**: `POST /api/quests/update-batch-all`
+**Current**: `requireAuth` only
+**Required**: Accept either `requireAuth` OR `requireStreamerAccess`
 
-The two PRs are fully compatible and can be deployed together without auth-related runtime errors.
+```javascript
+// Change from:
+router.post('/update-batch-all', requireAuth, async (req, res) => { ... });
+
+// To:
+router.post('/update-batch-all', [optionalAuth, requireStreamerAccess], async (req, res) => {
+  // Use req.user if JWT present, or verify streamer key
+  // Validate that updates are for heroes in the streamer's battlefield
+  ...
+});
+```
+
+**Validation Required**: Ensure overlay can only update quest progress for heroes in the streamer's active battlefield (prevent cross-streamer exploits).
+
+### Priority 2: Implement or Remove Scheduled Raids
+
+**Option A**: Implement scheduled raids system
+- Add routes:
+  - `GET /api/raids/scheduled/battlefield/:battlefieldId`
+  - `POST /api/raids/scheduled/:id/start`
+  - `POST /api/raids/:raidId/simulate`
+- Add scheduling logic, participant tracking, auto-start timers
+
+**Option B**: Remove frontend code
+- Delete scheduled raids check logic in CleanBattlefieldSource.tsx (~100 lines)
+- Feature was never functional anyway
+
+### Priority 3: Document Route Auth Requirements
+
+Update backend route audit to explicitly flag routes that **should** accept streamer key but currently don't.
+
+---
+
+## 🔐 Security Considerations
+
+### Streamer Key Validation for Quest Sync
+
+When adding streamer key support to quest sync:
+
+1. **Verify hero ownership**: Confirm updated heroes belong to streamer's battlefield
+2. **Rate limiting**: Overlay syncs every 5 minutes - add rate limit per streamer key
+3. **Scope restriction**: Only allow quest updates, not direct rewards or level-ups
+
+### Current Overlay Attack Surface
+
+With current changes:
+- ✅ No raw fetch() calls (all go through overlayClient with X-Streamer-Key)
+- ✅ Public routes work correctly (dungeon/raid definitions)
+- ❌ Quest sync will 401 (fails safely - no exploit possible)
+- ❌ Scheduled raids will 404 (fails safely - feature just doesn't work)
+
+**Conclusion**: Current state is secure but partially non-functional. Quest sync and scheduled raids need backend updates to work.
+
+---
+
+## ✅ Verification Steps Completed
+
+1. ✅ Scanned all src files for `fetch(/api/` patterns - all replaced
+2. ✅ Verified every route path against backend `src/routes/*.js`  
+3. ✅ Cross-checked middleware requirements from `ROUTE_PROTECTION_AUDIT.md`
+4. ✅ Added lint enforcement to prevent future regressions
+5. ✅ Tested build passes with all changes
+
+---
+
+## 📊 Final Status
+
+| Category | Count | Status |
+|----------|-------|--------|
+| Raw fetch() calls | 0 | ✅ All replaced |
+| Routes needing streamer key support | 1 | ❌ Quest sync |
+| Missing backend routes | 3 | ❌ Scheduled raids + simulate |
+| Working overlay routes | 3 | ✅ Dungeon + raid fetch |
+| Lint enforcement | 1 | ✅ check-fetch.js |
+
+**Integration Status**: 
+- ✅ Frontend ready (all calls use proper auth clients)
+- ❌ Backend needs updates (quest sync + scheduled raids)
+- ✅ No auth exploits possible (failures are safe 401/404)
+
+**Recommendation**: Deploy frontend now. Quest sync and scheduled raids will fail gracefully until backend implements support.
