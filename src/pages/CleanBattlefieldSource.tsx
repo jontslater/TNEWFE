@@ -25,7 +25,7 @@ import { useWebSocket } from '../hooks/useWebSocket';
 import { DEBUFFS, SHOP_ITEMS } from '../utils/fullCombatEngine';
 import { isItemBetter, calculateItemPower } from '../utils/lootGeneration';
 import { calculateSetBonuses } from '../utils/setBonuses';
-import { rollCombatLoot } from '../gear/serverLoot';
+import { assignHeroIdsToKills, requestServerLootDrops } from '../overlay/syncLoot';
 import { getCharacterStats } from '../utils/combatUtils';
 import { LootDropToastStack, pushLootToast, type LootToast } from '../overlay/LootDropToast';
 import { getNameFrameStyles } from '../utils/nameFrames';
@@ -86,6 +86,12 @@ import {
   type OverlayRoleActiveHooks,
 } from '../game/skills/overlayRoleActive';
 import { SkillChargeBar } from '../overlay/SkillChargeBar';
+import {
+  getHeroChargeBarVariant,
+  getHeroKillFxLabel,
+  getHeroLevelFxLabel,
+  getHeroSpritePaletteFilter,
+} from '../cosmetics/heroCosmetics';
 import { AbilityAnnouncement } from '../overlay/AbilityAnnouncement';
 import { critDamageMultiplier, computeSkillModifiers } from '../game/skills/computeSkillModifiers';
 
@@ -1964,6 +1970,10 @@ export default function CleanBattlefieldSource() {
                 auraEffect: firebaseHero.auraEffect !== undefined ? firebaseHero.auraEffect : existingHero.auraEffect,
                 auraColor: firebaseHero.auraColor !== undefined ? firebaseHero.auraColor : existingHero.auraColor,
                 founderBadge: firebaseHero.founderBadge !== undefined ? firebaseHero.founderBadge : existingHero.founderBadge,
+                equippedCosmetics:
+                  firebaseHero.equippedCosmetics !== undefined
+                    ? firebaseHero.equippedCosmetics
+                    : existingHero.equippedCosmetics,
                 prestigeLevel: firebaseHero.prestigeLevel !== undefined ? firebaseHero.prestigeLevel : (existingHero.prestigeLevel || 0),
                 prestigeBoosts: firebaseHero.prestigeBoosts !== undefined ? firebaseHero.prestigeBoosts : existingHero.prestigeBoosts,
                 skills: firebaseHero.skills ?? existingHero.skills,
@@ -2320,20 +2330,32 @@ export default function CleanBattlefieldSource() {
         window.setTimeout(() => setAbilityAnnouncement(null), 2500);
       }
       if (outcome.changed) {
-        const merged = heroesRef.current.map((h) => {
-          const from = outcome.heroes.find((o) => o.id === h.id);
-          if (!from) return h;
-          return {
-            ...h,
-            hp: h.hp,
-            stats: h.stats,
-            cooldowns: from.cooldowns ?? h.cooldowns,
-            activeBuffs: { ...h.activeBuffs, ...from.activeBuffs },
-            tauntExpiry: (from as { tauntExpiry?: number }).tauntExpiry ?? (h as { tauntExpiry?: number }).tauntExpiry,
-          };
+        setHeroes((prev) => {
+          const merged = prev.map((h) => {
+            const from = outcome.heroes.find((o) => o.id === h.id);
+            if (!from) return h;
+            const fromStats = (from as { stats?: Hero['stats'] }).stats;
+            return {
+              ...h,
+              hp: from.hp ?? h.hp,
+              isDead: from.isDead ?? h.isDead,
+              stats: fromStats
+                ? {
+                    totalDamage: (h.stats?.totalDamage || 0) + (fromStats.totalDamage || 0),
+                    totalHealing: (h.stats?.totalHealing || 0) + (fromStats.totalHealing || 0),
+                    damageBlocked: (h.stats?.damageBlocked || 0) + (fromStats.damageBlocked || 0),
+                  }
+                : h.stats,
+              cooldowns: from.cooldowns ?? h.cooldowns,
+              activeBuffs: { ...h.activeBuffs, ...from.activeBuffs },
+              tauntExpiry:
+                (from as { tauntExpiry?: number }).tauntExpiry ??
+                (h as { tauntExpiry?: number }).tauntExpiry,
+            };
+          });
+          heroesRef.current = merged as Hero[];
+          return merged as Hero[];
         });
-        heroesRef.current = merged as Hero[];
-        setHeroes(merged as Hero[]);
       }
     }, 500);
     return () => clearInterval(id);
@@ -4830,24 +4852,16 @@ export default function CleanBattlefieldSource() {
         // Apply shadow damage to all heroes
         allAliveHeroes.forEach((hero, index) => {
           setTimeout(() => {
-            // Apply defense (same logic as regular attacks)
             let defense = hero.defense || 0;
-            
-            // Apply ACTIVE CHATTER BONUS (+0.5% defense per active chatter)
-            if (activeChatterCount > 0) {
-              const bonuses = calculateViewerBonuses();
-              defense = Math.floor(defense * bonuses.defense);
-            }
-            
-            // Apply Defense Buff (+10% DEF)
             if (hero.shopBuffs?.defenseBuff && hero.shopBuffs.defenseBuff.remainingDuration > 0) {
               defense = Math.floor(defense * 1.10);
             }
-            
-            let actualDamage = computeDamageTaken(baseDamage, defense, enemy.level || 1);
-            actualDamage = applySkillDamageReductionPercent(
-              actualDamage,
-              hero.defenseMultiplier || 0
+            const skillDr = computeSkillModifiers(hero).defenseMultiplier;
+            let actualDamage = computeDamageTaken(
+              baseDamage,
+              defense,
+              enemy.level || 1,
+              skillDr
             );
             
             // Check for VULNERABLE debuff (+40% damage taken)
@@ -6167,7 +6181,8 @@ export default function CleanBattlefieldSource() {
                 const rect = levelUpElement.getBoundingClientRect();
                 console.log(`[Level Up SCT] Showing at`, rect.left, rect.top);
                 setTimeout(() => {
-                  addSCT('LEVEL UP!', rect.left + rect.width / 2, rect.top + 30, 'levelup');
+                  const fx = hero ? getHeroLevelFxLabel(hero) : null;
+                  addSCT(`${fx ? `${fx} ` : ''}LEVEL UP!`, rect.left + rect.width / 2, rect.top + 30, 'levelup');
                 }, 500); // Delay after XP
               } else {
                 console.warn(`[Level Up SCT] ⚠️ Element not found for ${result.heroId}`);
@@ -6420,23 +6435,32 @@ export default function CleanBattlefieldSource() {
             }
           };
           
-          const kills = currentEnemies.map((enemy) => ({
-            enemyLevel: enemy.level || 1,
-            kind: enemy.isBoss ? 'boss' as const : 'normal' as const,
-            contentId: instanceData?.dungeonId || instanceData?.raidId,
-            difficulty: instanceData?.difficulty,
-            enemyName: enemy.name,
-          }));
-
-          const bfId = battlefieldId || (twitchId ? `twitch:${twitchId}` : null);
-          if (bfId) {
-            const drops = await rollCombatLoot(bfId, {
-              kills,
-              heroIds: aliveHeroes.map((h) => h.id),
-              allowedSlots,
-              waveCount,
-              viewerLootBonus: viewerBonuses.loot || 0,
+          const streamerId = twitchId || null;
+          if (streamerId) {
+            const kills = assignHeroIdsToKills(
+              currentEnemies,
+              aliveHeroes.map((h) => h.id),
+              gameMode,
+              instanceData
+            );
+            const nowTs = Date.now();
+            const deltas: Array<{
+              heroId: string;
+              xpGained: number;
+              goldGained: number;
+              timestamp: number;
+            }> = [];
+            heroStatChangesRef.current.forEach((changes, heroId) => {
+              const xpGained = Math.max(0, Math.floor(changes.xp || 0));
+              const goldGained = Math.max(0, Math.floor(changes.gold || 0));
+              if (xpGained === 0 && goldGained === 0) return;
+              deltas.push({ heroId, xpGained, goldGained, timestamp: nowTs });
             });
+            const batchId = `cbs-loot-${streamerId}-${nowTs}`;
+            const drops = await requestServerLootDrops(streamerId, batchId, deltas, kills);
+            if (deltas.length > 0) {
+              heroStatChangesRef.current.clear();
+            }
 
             for (const drop of drops) {
               const targetHero =
@@ -6466,7 +6490,7 @@ export default function CleanBattlefieldSource() {
               }
             }
           } else {
-            console.warn('[Loot] No battlefieldId; skipping server loot roll');
+            console.warn('[Loot] No streamerId; skipping server loot via overlay/sync');
           }
         }
         
@@ -8072,6 +8096,7 @@ export default function CleanBattlefieldSource() {
                 heroRole={hero.role}
                 cooldowns={hero.cooldowns}
                 skills={hero.skills}
+                chargeBarVariant={getHeroChargeBarVariant(hero)}
               />
               {/* HP Bar - Smaller for OBS */}
               <div style={{
@@ -8150,6 +8175,11 @@ export default function CleanBattlefieldSource() {
                     const isEnraged = hero.enrageExpiry && hero.enrageExpiry > Date.now();
                     const filters = [];
                     
+                    const paletteFilter = getHeroSpritePaletteFilter(hero);
+                    if (paletteFilter) {
+                      filters.push(paletteFilter);
+                    }
+
                     // Aura effect (founder pack) - base layer
                     if (hero.auraEffect) {
                       const auraFilters = getAuraFilter(hero.auraEffect as any, hero.auraColor);
@@ -8522,6 +8552,7 @@ export default function CleanBattlefieldSource() {
                 heroRole={hero.role}
                 cooldowns={hero.cooldowns}
                 skills={hero.skills}
+                chargeBarVariant={getHeroChargeBarVariant(hero)}
               />
               {/* HP Bar - Smaller for OBS */}
               <div style={{
@@ -8598,6 +8629,11 @@ export default function CleanBattlefieldSource() {
                     const isEnraged = hero.enrageExpiry && hero.enrageExpiry > Date.now();
                     const filters = [];
                     
+                    const paletteFilter = getHeroSpritePaletteFilter(hero);
+                    if (paletteFilter) {
+                      filters.push(paletteFilter);
+                    }
+
                     // Aura effect (founder pack) - base layer
                     if (hero.auraEffect) {
                       const auraFilters = getAuraFilter(hero.auraEffect as any, hero.auraColor);
@@ -9052,6 +9088,7 @@ export default function CleanBattlefieldSource() {
               heroRole={hero.role}
               cooldowns={hero.cooldowns}
               skills={hero.skills}
+              chargeBarVariant={getHeroChargeBarVariant(hero)}
             />
             {/* HP Bar - Smaller for OBS */}
             <div style={{
@@ -9130,7 +9167,11 @@ export default function CleanBattlefieldSource() {
                 filter: (() => {
                   const isEnraged = hero.enrageExpiry && hero.enrageExpiry > Date.now();
                   const filters = [];
-                  
+                  const paletteFilter = getHeroSpritePaletteFilter(hero);
+                  if (paletteFilter) {
+                    filters.push(paletteFilter);
+                  }
+
                   // Aura effect (founder pack) - base layer
                   if (hero.auraEffect) {
                     const auraFilters = getAuraFilter(hero.auraEffect as any, hero.auraColor);
@@ -9138,7 +9179,7 @@ export default function CleanBattlefieldSource() {
                       filters.push(auraFilters);
                     }
                   }
-                  
+
                   // Shield effect (blue glow) - middle layer
                   if (hasShield) {
                     filters.push('drop-shadow(0 0 12px rgba(59, 130, 246, 1))');

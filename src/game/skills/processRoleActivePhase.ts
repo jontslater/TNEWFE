@@ -25,6 +25,13 @@ export function processRoleActivePhase(
         enemy.hp = Math.max(0, enemy.hp - damage);
         callbacks.triggerAnimation?.(targetId, 'hurt', false);
         callbacks.triggerCombatText?.(targetId, damage, isCrit ? 'crit' : 'damage', false);
+        if (enemy.hp <= 0 && !enemy.isDead) {
+          enemy.isDead = true;
+          callbacks.triggerAnimation?.(targetId, 'death', false);
+          callbacks.trackDeath?.();
+          callbacks.log('kill', `${caster.name || caster.username} defeated ${enemy.name || 'Enemy'}`);
+          callbacks.log('combat', `☠️ ${enemy.name || 'Enemy'} defeated by ${caster.name || caster.username}`);
+        }
       }
       const casterHero = heroes.find((h) => h.id === caster.id);
       if (casterHero?.stats) {

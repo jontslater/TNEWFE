@@ -450,87 +450,92 @@ export default function UnifiedBrowserSource() {
     return Object.values(battlefieldState.heroes) as Hero[];
   }, [battlefieldState?.heroes]);
 
-  // Track pending sync operations to prevent duplicate calls
-  const pendingSyncs = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  /** Backend overlay/sync: max 40 batches per streamer per 60s — batch all heroes into one POST. */
+  const OVERLAY_SYNC_DEBOUNCE_MS = 5000;
+  const pendingHeroProgress = useRef<Map<string, Hero>>(new Map());
+  const overlaySyncFlushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastProgressSnapshot = useRef<
     Map<string, { xp: number; gold: number; level: number; maxXp: number }>
   >(new Map());
 
-  // Sync hero progress to backend/Firebase with debouncing
-  const syncHeroToBackend = useCallback(async (hero: Hero) => {
-    try {
-      // Only sync heroes that have a valid ID (real heroes from Firebase, not test heroes)
-      // Skip heroes with test IDs or auto-generated IDs
-      if (!hero.id || hero.id.startsWith('test-') || hero.id.startsWith('hero-')) {
-        return; // Skip test heroes
-      }
+  const flushOverlayProgressBatch = useCallback(async () => {
+    overlaySyncFlushTimer.current = null;
+    const heroesPending = Array.from(pendingHeroProgress.current.values());
+    pendingHeroProgress.current.clear();
+    if (heroesPending.length === 0) return;
 
+    const streamerId =
+      streamerTwitchId || battlefieldId?.replace(/^twitch:/, '') || null;
+    if (!streamerId) return;
+
+    const deltas: Array<{
+      heroId: string;
+      xpGained: number;
+      goldGained: number;
+      timestamp: number;
+    }> = [];
+    const now = Date.now();
+
+    for (const hero of heroesPending) {
+      if (!hero.id || hero.id.startsWith('test-') || hero.id.startsWith('hero-')) continue;
       const heroId = hero.id;
-      
-      // CRITICAL: Debounce sync calls - cancel any pending sync for this hero
-      // This prevents spamming the backend with multiple updates for the same hero
-      if (pendingSyncs.current.has(heroId)) {
-        clearTimeout(pendingSyncs.current.get(heroId)!);
+      const snap = lastProgressSnapshot.current.get(heroId) || {
+        xp: hero.xp || 0,
+        gold: hero.gold || 0,
+        level: hero.level || 1,
+        maxXp: hero.maxXp || 100,
+      };
+      const curXp = hero.xp || 0;
+      const curGold = hero.gold || 0;
+      const curLevel = hero.level || 1;
+      let xpGained = 0;
+      if (curLevel > snap.level) {
+        xpGained = Math.max(0, snap.maxXp - snap.xp + curXp);
+      } else {
+        xpGained = Math.max(0, curXp - snap.xp);
       }
-      
-      // Schedule sync with 5 second debounce - batches multiple rapid changes and prevents spam
-      const timeoutId = setTimeout(async () => {
-        try {
-          const streamerId =
-            streamerTwitchId || battlefieldId?.replace(/^twitch:/, '') || null;
-          if (!streamerId) return;
+      const goldGained = Math.max(0, curGold - snap.gold);
+      if (xpGained === 0 && goldGained === 0) continue;
+      deltas.push({ heroId, xpGained, goldGained, timestamp: now });
+      lastProgressSnapshot.current.set(heroId, {
+        xp: curXp,
+        gold: curGold,
+        level: curLevel,
+        maxXp: hero.maxXp || snap.maxXp,
+      });
+    }
 
-          const snap = lastProgressSnapshot.current.get(heroId) || {
-            xp: hero.xp || 0,
-            gold: hero.gold || 0,
-            level: hero.level || 1,
-            maxXp: hero.maxXp || 100,
-          };
+    if (deltas.length === 0) return;
 
-          let xpGained = 0;
-          const curXp = hero.xp || 0;
-          const curGold = hero.gold || 0;
-          const curLevel = hero.level || 1;
-          if (curLevel > snap.level) {
-            xpGained = Math.max(0, snap.maxXp - snap.xp + curXp);
-          } else {
-            xpGained = Math.max(0, curXp - snap.xp);
-          }
-          const goldGained = Math.max(0, curGold - snap.gold);
-
-          if (xpGained === 0 && goldGained === 0) return;
-
-          const { overlayAPI } = await import('../api/client');
-          const batchId = `ubs-${heroId}-${Date.now()}`;
-          await overlayAPI.syncDeltas(streamerId, batchId, [
-            {
-              heroId,
-              xpGained,
-              goldGained,
-              timestamp: Date.now(),
-            },
-          ]);
-
-          lastProgressSnapshot.current.set(heroId, {
-            xp: curXp,
-            gold: curGold,
-            level: curLevel,
-            maxXp: hero.maxXp || snap.maxXp,
-          });
-        } catch (error: any) {
-          console.error(`❌ [Sync] Failed to sync hero ${heroId}:`, error?.message || error);
-        } finally {
-          // Clean up pending sync tracking
-          pendingSyncs.current.delete(heroId);
-        }
-      }, 5000); // 5 second debounce - prevents backend spam
-      
-      // Track this pending sync
-      pendingSyncs.current.set(heroId, timeoutId);
-    } catch (error) {
-      // Silently fail
+    try {
+      const { overlayAPI } = await import('../api/client');
+      const batchId = `ubs-batch-${streamerId}-${now}`;
+      await overlayAPI.syncDeltas(streamerId, batchId, deltas);
+    } catch (error: any) {
+      console.error(`❌ [Sync] Failed batch overlay sync:`, error?.message || error);
     }
   }, [battlefieldId, streamerTwitchId]);
+
+  const queueHeroProgressSync = useCallback(
+    (hero: Hero) => {
+      if (!hero.id || hero.id.startsWith('test-') || hero.id.startsWith('hero-')) return;
+      pendingHeroProgress.current.set(hero.id, hero);
+      if (overlaySyncFlushTimer.current) {
+        clearTimeout(overlaySyncFlushTimer.current);
+      }
+      overlaySyncFlushTimer.current = setTimeout(() => {
+        flushOverlayProgressBatch();
+      }, OVERLAY_SYNC_DEBOUNCE_MS);
+    },
+    [flushOverlayProgressBatch]
+  );
+
+  const syncHeroesToBackend = useCallback(
+    (heroesToQueue: Hero[]) => {
+      heroesToQueue.forEach((h) => queueHeroProgressSync(h));
+    },
+    [queueHeroProgressSync]
+  );
 
   // Clean up temporary states when Firebase updates
   // Firebase is the source of truth - client states only override stale Firebase data
@@ -831,7 +836,7 @@ export default function UnifiedBrowserSource() {
             .filter(h => h && h.id);
           
           if (heroesToSync.length > 0) {
-            heroesToSync.forEach(hero => syncHeroToBackend(hero));
+            syncHeroesToBackend(heroesToSync);
           }
         }, 2000); // 2 second delay to allow batching
       }
@@ -902,16 +907,16 @@ export default function UnifiedBrowserSource() {
         .filter(h => h && h.id);
 
       if (heroesToSync.length > 0) {
-        heroesToSync.forEach(hero => syncHeroToBackend(hero));
+        syncHeroesToBackend(heroesToSync);
       }
     }, 60000); // 60 seconds
 
     return () => clearInterval(syncInterval);
-  }, [syncHeroToBackend, displayHeroes]);
+  }, [syncHeroesToBackend, displayHeroes]);
 
   // NOTE: Removed automatic sync after combat rewards/level-ups
   // Sync is now handled by:
-  // 1. Debounced syncHeroToBackend function (2 second debounce per hero)
+  // 1. Debounced batch overlay/sync (one POST per tick, all heroes in deltas[])
   // 2. Periodic sync every 60 seconds (safety net)
   // 3. Log callback for level-ups/rewards (debounced internally)
   // This prevents duplicate sync calls and backend spam

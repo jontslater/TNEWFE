@@ -1,4 +1,4 @@
-import bundled from './data/gearSets.json';
+import bundledSets from './data/gear-set-bonuses.json';
 import { apiClient } from '../api/client';
 
 export type GearSetDefinition = {
@@ -17,7 +17,10 @@ export type GearCatalog = {
 let cached: GearCatalog | null = null;
 
 export function getBundledGearCatalog(): GearCatalog {
-  return bundled as GearCatalog;
+  const sets = Array.isArray(bundledSets)
+    ? (bundledSets as GearSetDefinition[])
+    : (bundledSets as GearCatalog).sets;
+  return { version: 2, sets };
 }
 
 export async function loadGearCatalog(): Promise<GearCatalog> {

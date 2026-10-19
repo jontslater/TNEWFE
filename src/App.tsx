@@ -42,6 +42,9 @@ const PurchaseSuccessPage = lazy(() => import('./pages/PurchaseSuccessPage'));
 const PurchaseCancelPage = lazy(() => import('./pages/PurchaseCancelPage'));
 const PurchaseHistoryPage = lazy(() => import('./pages/PurchaseHistoryPage'));
 const FAQPage = lazy(() => import('./pages/FAQPage'));
+const TermsPage = lazy(() => import('./pages/legal/TermsPage'));
+const PrivacyPage = lazy(() => import('./pages/legal/PrivacyPage'));
+const RefundPage = lazy(() => import('./pages/legal/RefundPage'));
 
 // Loading component for Suspense
 function PageLoader() {
@@ -71,24 +74,31 @@ function App() {
         <Route path="/professions" element={<ProfessionsPage />} />
         <Route path="/raids" element={<RaidsInfoPage />} />
         <Route path="/faq" element={<FAQPage />} />
+        <Route path="/terms" element={<TermsPage />} />
+        <Route path="/privacy" element={<PrivacyPage />} />
+        <Route path="/refund" element={<RefundPage />} />
         <Route path="/store" element={<StorePage />} />
         <Route path="/quests" element={<QuestsPage />} />
         <Route path="/create-hero" element={<CreateHeroPage />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/auth/tiktok/callback" element={<AuthCallback />} />
-        <Route path="/combat-demo" element={<CombatDemo />} />
+        {import.meta.env.DEV && (
+          <>
+            <Route path="/combat-demo" element={<CombatDemo />} />
+            <Route path="/browser-source/debug-view" element={<BrowserSourcePage />} />
+            <Route path="/browser-source/debug" element={<EnemyDebugPage />} />
+            <Route path="/enemy-animation-test" element={<EnemyAnimationTestPage />} />
+            <Route path="/animation-test" element={<AnimationTestPage />} />
+            <Route path="/dragon-test" element={<DragonAnimationTest />} />
+          </>
+        )}
         <Route path="/skills" element={<SkillsPage />} />
         <Route path="/auction" element={<AuctionHousePage />} />
         <Route path="/browser-source" element={<BrowserSourcePage />} />
         <Route path="/browser-source-unified" element={<UnifiedBrowserSource />} />
         <Route path="/clean-battlefield" element={<CleanBattlefieldSource />} />
         <Route path="/unified" element={<UnifiedBrowserSource />} />
-        <Route path="/browser-source/debug-view" element={<BrowserSourcePage />} />
         <Route path="/browser-source/config" element={<BrowserSourceConfigPage />} />
-        <Route path="/browser-source/debug" element={<EnemyDebugPage />} />
-        <Route path="/enemy-animation-test" element={<EnemyAnimationTestPage />} />
-        <Route path="/animation-test" element={<AnimationTestPage />} />
-        <Route path="/dragon-test" element={<DragonAnimationTest />} />
         <Route path="/achievements" element={<AchievementsPage />} />
         <Route path="/leaderboards" element={<LeaderboardsPage />} />
         <Route path="/guild" element={<GuildManagementPage />} />

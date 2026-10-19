@@ -1,5 +1,5 @@
 import { Hero, CraftedItem } from '../types/Hero';
-import { HERBALISM_RECIPES, MINING_RECIPES, ENCHANTING_RECIPES } from '../api/mock-data';
+import { HERBALISM_RECIPES, MINING_RECIPES, ENCHANTING_RECIPES } from '../data/craftRecipes';
 import { canTransferItem } from '../gear/itemBinding';
 
 interface ProfessionInventoryModalProps {

@@ -2957,7 +2957,13 @@ export class FullCombatEngine {
           bloodlustDamage *= 1.4;
         }
         
-        let bloodlustActualDamage = computeDamageTaken(bloodlustDamage, effectiveDefense, attackerLevel);
+        const bloodlustSkillDr = this.calculateSkillBonuses(target.hero).defenseMultiplier;
+        let bloodlustActualDamage = computeDamageTaken(
+          bloodlustDamage,
+          effectiveDefense,
+          attackerLevel,
+          bloodlustSkillDr
+        );
         bloodlustActualDamage = Math.floor(bloodlustActualDamage * damageMultiplier);
         
         if (lastStandActive) {

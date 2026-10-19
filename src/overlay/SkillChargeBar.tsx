@@ -11,16 +11,23 @@ export interface SkillChargeBarProps {
   heroRole: string;
   cooldowns?: Record<string, number | undefined>;
   skills?: Record<string, { points?: number }>;
+  /** Cosmetic charge bar variant id (e.g. `flame` from charge_flame). */
+  chargeBarVariant?: string;
 }
 
 export const SkillChargeBar: React.FC<SkillChargeBarProps> = ({
   heroRole,
   cooldowns,
   skills,
+  chargeBarVariant,
 }) => {
   const ability = resolveActiveAbility(heroRole);
   const category = ability.role;
   const fillColor = roleCategoryColor(category);
+  const flameStyle =
+    chargeBarVariant === 'flame'
+      ? { background: 'linear-gradient(90deg, #f97316 0%, #ef4444 100%)', boxShadow: ready ? '0 0 8px #f97316' : undefined }
+      : { backgroundColor: fillColor, boxShadow: ready ? `0 0 8px ${fillColor}` : undefined };
 
   const [, setTick] = useState(0);
   useEffect(() => subscribeSkillChargeTicker(() => setTick((t) => t + 1)), []);
@@ -42,7 +49,7 @@ export const SkillChargeBar: React.FC<SkillChargeBarProps> = ({
         borderRadius: '2px',
         overflow: 'hidden',
         transform: 'translateY(-40px)',
-        boxShadow: ready ? `0 0 6px ${fillColor}` : undefined,
+        boxShadow: ready ? (chargeBarVariant === 'flame' ? '0 0 6px #f97316' : `0 0 6px ${fillColor}`) : undefined,
       }}
       title={ability.name}
     >
@@ -50,9 +57,8 @@ export const SkillChargeBar: React.FC<SkillChargeBarProps> = ({
         style={{
           width: `${widthPct}%`,
           height: '100%',
-          backgroundColor: fillColor,
           transition: 'width 0.2s linear',
-          boxShadow: ready ? `0 0 8px ${fillColor}` : undefined,
+          ...flameStyle,
         }}
       />
     </div>

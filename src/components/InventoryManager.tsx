@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Hero, Item, CraftedItem } from '../types/Hero';
 import ItemTooltip from './ItemTooltip';
 import { getRarityColor, getRarityBg, getMaxSockets } from '../utils/format';
-import { HERBALISM_RECIPES, MINING_RECIPES, ENCHANTING_RECIPES } from '../api/mock-data';
+import { HERBALISM_RECIPES, MINING_RECIPES, ENCHANTING_RECIPES } from '../data/craftRecipes';
 import UpgradeModal from './UpgradeModal';
 import ReforgeModal from './ReforgeModal';
 import SocketModal from './SocketModal';

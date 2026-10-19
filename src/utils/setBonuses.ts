@@ -4,6 +4,7 @@
  */
 
 import { Item, Equipment } from '../types/Hero';
+import { calculateBackendSetBonuses, getSetDisplayForBackendItem } from '../gear/setBonusEngine';
 
 // Equipment Set Definitions - Named sets for each category
 export const EQUIPMENT_SETS = {
@@ -136,6 +137,30 @@ export function calculateSetBonuses(
   equipment: Equipment | undefined,
   role: string
 ): SetBonuses {
+  const backend = calculateBackendSetBonuses(equipment, role);
+  const legacy = calculateLegacySetBonuses(equipment, role);
+  return {
+    attack: backend.attack + legacy.attack,
+    defense: backend.defense + legacy.defense,
+    hp: backend.hp + legacy.hp,
+    intellect: backend.intellect + legacy.intellect,
+    strength: backend.strength + legacy.strength,
+    dexterity: backend.dexterity + legacy.dexterity,
+    wisdom: backend.wisdom + legacy.wisdom,
+    stamina: backend.stamina + legacy.stamina,
+    healingPower: backend.healingPower + legacy.healingPower,
+    spellDamage: backend.spellDamage + legacy.spellDamage,
+    meleeDamage: backend.meleeDamage + legacy.meleeDamage,
+    hpRegen: backend.hpRegen + legacy.hpRegen,
+    damageReduction: backend.damageReduction + legacy.damageReduction,
+    critChance: backend.critChance + legacy.critChance,
+  };
+}
+
+function calculateLegacySetBonuses(
+  equipment: Equipment | undefined,
+  role: string
+): SetBonuses {
   const bonuses: SetBonuses = {
     attack: 0,
     defense: 0,
@@ -254,6 +279,9 @@ export function getSetDisplayForItem(
   maxPieces: number;
   tiers: SetBonusTierLine[];
 } | null {
+  const backendDisplay = getSetDisplayForBackendItem(equipment, item);
+  if (backendDisplay) return backendDisplay;
+
   const setName = item.setName || (item as Item & { setId?: string }).setId;
   if (!setName) return null;
 

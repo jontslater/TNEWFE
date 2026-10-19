@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Hero } from '../types/Hero';
 import { heroAPI } from '../api/client';
-import { HERBALISM_RECIPES } from '../api/mock-data';
+import { HERBALISM_RECIPES } from '../data/craftRecipes';
 
 interface ProfessionPanelProps {
   hero: Hero;

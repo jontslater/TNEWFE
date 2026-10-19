@@ -28,6 +28,7 @@ import AuctionHousePage from './AuctionHousePage';
 import QuestsPage from './QuestsPage';
 import SocialSidebar from '../components/SocialSidebar';
 import PrestigeStore from '../components/PrestigeStore';
+import CosmeticsPanel from '../components/CosmeticsPanel';
 import StreamStatusBanner from '../components/StreamStatusBanner';
 import GroupBoostIndicator from '../components/GroupBoostIndicator';
 import StreamQueueJoinSection from '../components/StreamQueueJoinSection';
@@ -50,7 +51,7 @@ export default function PlayerPortal() {
   const { data: chatActivity } = useChatActivity(streamerId, !!streamerId);
   const [raids, setRaids] = useState<Raid[]>([]);
   const [worldBoss, setWorldBoss] = useState<WorldBoss | null>(null);
-  const [activeTab, setActiveTab] = useState<'hero' | 'inventory' | 'profession' | 'guild' | 'raids' | 'skills' | 'dungeon' | 'browserSource' | 'achievements' | 'allHeroes' | 'auction' | 'quests' | 'prestige'>('hero');
+  const [activeTab, setActiveTab] = useState<'hero' | 'inventory' | 'profession' | 'guild' | 'raids' | 'skills' | 'dungeon' | 'browserSource' | 'achievements' | 'allHeroes' | 'auction' | 'quests' | 'prestige' | 'cosmetics'>('hero');
   const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
   const [adminSelectedHero, setAdminSelectedHero] = useState<Hero | null>(null);
   const [testHeroId, setTestHeroId] = useState<string>('9CcbfbvtTt3ckqyn7sBH'); // Dingo Dynasty hero ID
@@ -513,6 +514,16 @@ export default function PlayerPortal() {
             >
               ⭐ Prestige Store
             </button>
+            <button
+              onClick={() => setActiveTab('cosmetics')}
+              className={`px-6 py-4 font-semibold transition-colors border-b-2 ${
+                activeTab === 'cosmetics'
+                  ? 'text-pink-400 border-pink-400'
+                  : 'text-gray-400 border-transparent hover:text-gray-300'
+              }`}
+            >
+              ✨ Cosmetics
+            </button>
             {isAdmin && (
               <button
                 onClick={() => setActiveTab('allHeroes')}
@@ -876,6 +887,9 @@ export default function PlayerPortal() {
             )}
             {activeTab === 'prestige' && hero && (
               <PrestigeStore hero={hero} onUpdate={refetchHero} />
+            )}
+            {activeTab === 'cosmetics' && hero && (
+              <CosmeticsPanel hero={hero} onHeroRefresh={refetchHero} />
             )}
             {activeTab === 'auction' && (
               <div className="space-y-4">

@@ -213,6 +213,7 @@ export interface Hero {
   auraEffect?: string; // Aura effect style: 'bronze' | 'silver' | 'gold' | 'platinum' | null
   auraColor?: string; // Custom hex color for aura effect (e.g., "#FF5733") - overrides tier default color
   spellEffect?: string; // Spell effect style: 'bronze' | 'silver' | 'gold' | 'platinum' | null - Enhanced visual effects for projectiles/abilities
+  equippedCosmetics?: Record<string, string | undefined>;
   inventory?: Item[]; // Hero's inventory items (gear, consumables, etc.)
   shopBuffs?: Record<string, { remainingDuration: number; lastUpdateTime: number }>; // Active shop buffs
   // Prestige system

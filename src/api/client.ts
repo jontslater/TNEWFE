@@ -3127,10 +3127,12 @@ export const overlayAPI = {
     }>,
     options?: {
       kills?: Array<{
+        heroId: string;
         enemyLevel: number;
-        kind: 'normal' | 'elite' | 'boss';
+        kind: 'normal' | 'elite' | 'boss' | 'dungeonBoss' | 'raidBoss';
         contentId?: string;
         difficulty?: string;
+        contentType?: string;
       }>;
     }
   ): Promise<{
@@ -3146,6 +3148,46 @@ export const overlayAPI = {
       batchId,
       deltas,
       kills: options?.kills,
+    });
+    return response.data;
+  },
+
+  /**
+   * Canonical idle loot rolls (streamer key).
+   * POST /api/battlefields/twitch:{streamerId}/loot/roll
+   */
+  async rollBattlefieldLoot(
+    streamerId: string,
+    kills: Array<{
+      heroId: string;
+      enemyLevel: number;
+      kind: string;
+      contentType?: string;
+    }>
+  ): Promise<{
+    success: boolean;
+    drops?: Array<{ heroId: string; item: Record<string, unknown> }>;
+    errors?: unknown[];
+  }> {
+    const twitchId = streamerId.replace(/^twitch:/, '');
+    const battlefieldId = `twitch:${twitchId}`;
+    const response = await overlayClient.post(
+      `/api/battlefields/${encodeURIComponent(battlefieldId)}/loot/roll`,
+      { kills }
+    );
+    return response.data;
+  },
+
+  /**
+   * @deprecated Use rollBattlefieldLoot — alias kept for older overlays.
+   */
+  async rollOverlayLoot(
+    streamerId: string,
+    kills: Array<{ heroId: string; enemyLevel: number; kind: string; contentType?: string }>
+  ) {
+    const response = await overlayClient.post('/api/overlay/loot-roll', {
+      streamerId,
+      kills,
     });
     return response.data;
   },
@@ -3168,6 +3210,39 @@ export const overlayAPI = {
     const response = await overlayClient.get(`/api/chat/activity/${streamerId}`);
     return response.data;
   }
+};
+
+export const cosmeticsAPI = {
+  async getCatalog(): Promise<{
+    catalog: Array<{
+      id: string;
+      category: string;
+      name: string;
+      priceTokens: number;
+      rarity: string;
+      purchasable: boolean;
+      source: string;
+      roleFilter?: string;
+    }>;
+  }> {
+    const response = await apiClient.get('/api/cosmetics');
+    return response.data;
+  },
+
+  async getOwned(): Promise<{ ownedCosmetics: string[] }> {
+    const response = await apiClient.get('/api/cosmetics/owned');
+    return response.data;
+  },
+
+  async purchase(cosmeticId: string, heroId: string) {
+    const response = await apiClient.post('/api/cosmetics/purchase', { cosmeticId, heroId });
+    return response.data;
+  },
+
+  async equip(userId: string, slot: string, cosmeticId: string | null) {
+    const response = await apiClient.post(`/api/cosmetics/${userId}/equip`, { slot, cosmeticId });
+    return response.data;
+  },
 };
 
 export { apiClient, overlayClient };

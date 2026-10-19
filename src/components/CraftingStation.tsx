@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Hero } from '../types/Hero';
-import { HERBALISM_RECIPES, MINING_RECIPES, ENCHANTING_RECIPES } from '../api/mock-data';
+import { HERBALISM_RECIPES, MINING_RECIPES, ENCHANTING_RECIPES } from '../data/craftRecipes';
 
 interface CraftingStationProps {
   hero: Hero;
