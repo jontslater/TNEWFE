@@ -474,23 +474,15 @@ export default function UnifiedBrowserSource() {
       const timeoutId = setTimeout(async () => {
         try {
           // Sync hero progress: XP, level, gold, HP, stats, equipment, etc.
-          await heroAPI.updateHero(heroId, {
+          const { overlayAPI } = await import('../api/client');
+          await overlayAPI.syncHeroProgress(heroId, {
             xp: hero.xp,
             level: hero.level,
             maxXp: hero.maxXp,
             gold: hero.gold,
-            tokens: hero.tokens,
             hp: hero.hp,
             maxHp: hero.maxHp,
-            attack: hero.attack,
-            defense: hero.defense,
-            skillPoints: hero.skillPoints,
-            equipment: hero.equipment,
-            // Include stats if they exist
-            stats: hero.stats,
-            // Include active buffs/debuffs if needed for persistence
-            activeBuffs: hero.activeBuffs,
-            activeDebuffs: hero.activeDebuffs,
+            stats: hero.stats as Record<string, number> | undefined,
           });
         } catch (error: any) {
           // Log 404 errors (hero doesn't exist in database) - helps identify stale battlefield data

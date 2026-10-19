@@ -37,6 +37,7 @@ import {
   computeHeroBalanceStats,
   capCritChance,
   damageReduction,
+  applySkillDamageReductionPercent,
   getSwingIntervalMs,
   getTrashDropChance,
   xpToNextLevel,
@@ -77,7 +78,10 @@ import { useScheduledGuildRaidsMonitoring } from '../overlay/scheduledGuildRaids
 import { OverlayQueueStrip } from '../overlay/OverlayQueueStrip';
 import { useBattlefieldQueueFirestore } from '../hooks/useBattlefieldQueueFirestore';
 import { calculateSkillBonuses } from '../utils/combatUtils';
-import { processOverlayRoleActiveCharges } from '../game/skills/overlayRoleActive';
+import {
+  processOverlayRoleActiveCharges,
+  type OverlayRoleActiveHooks,
+} from '../game/skills/overlayRoleActive';
 import { SkillChargeBar } from '../overlay/SkillChargeBar';
 import { AbilityAnnouncement } from '../overlay/AbilityAnnouncement';
 import { critDamageMultiplier, computeSkillModifiers } from '../game/skills/computeSkillModifiers';
@@ -1604,29 +1608,6 @@ export default function CleanBattlefieldSource() {
   const heroesRef = useRef<Hero[]>([]);
   const enemiesRef = useRef<Enemy[]>([]);
 
-  useEffect(() => {
-    const id = setInterval(() => {
-      const now = Date.now();
-      setHeroes((current) => {
-        if (!current.length) return current;
-        const { heroes: nextHeroes, enemies: nextEnemies, announcements } =
-          processOverlayRoleActiveCharges(current, enemiesRef.current, now);
-        if (announcements.length > 0) {
-          const last = announcements[announcements.length - 1];
-          setAbilityAnnouncement(last);
-          window.setTimeout(() => setAbilityAnnouncement(null), 2500);
-        }
-        if (nextEnemies !== enemiesRef.current) {
-          enemiesRef.current = nextEnemies;
-          setEnemies(nextEnemies);
-        }
-        heroesRef.current = nextHeroes;
-        return nextHeroes;
-      });
-    }, 500);
-    return () => clearInterval(id);
-  }, []);
-  
   // Get or create sprite ref
   const getHeroSpriteRef = (heroId: string) => {
     if (!heroSpriteRefs.current.has(heroId)) {
@@ -1972,7 +1953,16 @@ export default function CleanBattlefieldSource() {
                 auraColor: firebaseHero.auraColor !== undefined ? firebaseHero.auraColor : existingHero.auraColor,
                 founderBadge: firebaseHero.founderBadge !== undefined ? firebaseHero.founderBadge : existingHero.founderBadge,
                 prestigeLevel: firebaseHero.prestigeLevel !== undefined ? firebaseHero.prestigeLevel : (existingHero.prestigeLevel || 0),
-                prestigeBoosts: firebaseHero.prestigeBoosts !== undefined ? firebaseHero.prestigeBoosts : existingHero.prestigeBoosts
+                prestigeBoosts: firebaseHero.prestigeBoosts !== undefined ? firebaseHero.prestigeBoosts : existingHero.prestigeBoosts,
+                skills: firebaseHero.skills ?? existingHero.skills,
+                equipment: firebaseHero.equipment ?? existingHero.equipment,
+                attack: firebaseHero.attack ?? existingHero.attack,
+                defense: firebaseHero.defense ?? existingHero.defense,
+                critChance: firebaseHero.critChance ?? existingHero.critChance,
+                damageMultiplier: firebaseHero.damageMultiplier ?? existingHero.damageMultiplier,
+                healingMultiplier: firebaseHero.healingMultiplier ?? existingHero.healingMultiplier,
+                defenseMultiplier: firebaseHero.defenseMultiplier ?? existingHero.defenseMultiplier,
+                spellPower: firebaseHero.spellPower ?? existingHero.spellPower,
               });
             } else {
               heroMap.set(firebaseHero.id, firebaseHero);
@@ -2211,6 +2201,123 @@ export default function CleanBattlefieldSource() {
       console.log(`[Quest] ${heroId} - ${trackingKey}: +${increment} (total: ${current + increment})`);
     }
   };
+
+  const applyRoleActiveEnemyDamage = (
+    casterId: string,
+    enemyId: string,
+    damage: number,
+    isCrit: boolean
+  ) => {
+    trackQuest(casterId, 'dealDamage', damage);
+    setEnemies((currentEnemies) => {
+      const targetIndex = currentEnemies.findIndex((e) => e.id === enemyId);
+      if (targetIndex === -1 || currentEnemies[targetIndex].hp <= 0) {
+        return currentEnemies;
+      }
+      const target = currentEnemies[targetIndex];
+      const newHp = Math.max(0, Math.round(target.hp - damage));
+      const died = newHp === 0 && !target.isDead;
+      const updated = [...currentEnemies];
+      updated[targetIndex] = { ...target, hp: newHp, isDead: died || target.isDead };
+      enemiesRef.current = updated;
+      const enemyRef = getEnemySpriteRef(enemyId);
+      if (died && enemyRef.current) {
+        enemyRef.current.playAnimation('death');
+      } else if (enemyRef.current) {
+        enemyRef.current.playAnimation('hurt');
+      }
+      const enemyElement = document.querySelector(`[data-enemy-id="${enemyId}"]`);
+      if (enemyElement) {
+        const rect = enemyElement.getBoundingClientRect();
+        addSCT(String(damage), rect.left + rect.width / 2, rect.top + 20, isCrit ? 'crit' : 'damage');
+      }
+      return updated;
+    });
+    setHeroes((currentHeroes) => {
+      const updated = currentHeroes.map((h) => {
+        if (h.id !== casterId) return h;
+        const stats = h.stats || { totalDamage: 0, totalHealing: 0, damageBlocked: 0 };
+        return {
+          ...h,
+          stats: { ...stats, totalDamage: (stats.totalDamage || 0) + damage },
+        };
+      });
+      heroesRef.current = updated;
+      return updated;
+    });
+  };
+
+  const applyRoleActiveGroupHeal = (casterId: string, healsByHeroId: Record<string, number>) => {
+    setHeroes((currentHeroes) => {
+      const updated = currentHeroes.map((h) => {
+        const amt = healsByHeroId[h.id];
+        if (!amt) return h;
+        trackQuest(casterId, 'heal', amt);
+        const maxHp = h.maxHp || 1;
+        const newHp = Math.min(maxHp, h.hp + amt);
+        const heroElement = document.querySelector(`[data-hero-id="${h.id}"]`);
+        if (heroElement) {
+          const rect = heroElement.getBoundingClientRect();
+          addSCT(`+${amt}`, rect.left + rect.width / 2, rect.top + 20, 'heal');
+        }
+        const stats = h.stats || { totalDamage: 0, totalHealing: 0, damageBlocked: 0 };
+        return {
+          ...h,
+          hp: newHp,
+          stats: { ...stats, totalHealing: (stats.totalHealing || 0) + amt },
+        };
+      });
+      heroesRef.current = updated;
+      return updated;
+    });
+  };
+
+  const roleActiveHooksRef = useRef<OverlayRoleActiveHooks>({});
+  roleActiveHooksRef.current = {
+    onBurstDamage: (caster, targetId, damage, isCrit) =>
+      applyRoleActiveEnemyDamage(caster.id, targetId, damage, isCrit),
+    onChainLightning: (caster, ids, damages) => {
+      ids.forEach((id, i) => applyRoleActiveEnemyDamage(caster.id, id, damages[i], false));
+    },
+    onWhirlwind: (caster, damages) => {
+      Object.entries(damages).forEach(([id, dmg]) =>
+        applyRoleActiveEnemyDamage(caster.id, id, dmg, false)
+      );
+    },
+    onGroupHeal: (caster, heals) => applyRoleActiveGroupHeal(caster.id, heals),
+  };
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (!combatInProgress.current) return;
+      const liveEnemies = enemiesRef.current.filter((e) => e.hp > 0 && !e.isDead);
+      if (liveEnemies.length === 0) return;
+      const current = heroesRef.current;
+      if (!current.length) return;
+      const now = Date.now();
+      const outcome = processOverlayRoleActiveCharges(
+        current,
+        enemiesRef.current,
+        now,
+        roleActiveHooksRef.current
+      );
+      if (!outcome.changed && outcome.announcements.length === 0) return;
+      if (outcome.announcements.length > 0) {
+        const last = outcome.announcements[outcome.announcements.length - 1];
+        setAbilityAnnouncement(last);
+        window.setTimeout(() => setAbilityAnnouncement(null), 2500);
+      }
+      if (outcome.changed) {
+        heroesRef.current = outcome.heroes as Hero[];
+        setHeroes(outcome.heroes as Hero[]);
+        if (outcome.enemies !== enemiesRef.current) {
+          enemiesRef.current = outcome.enemies as Enemy[];
+          setEnemies(outcome.enemies as Enemy[]);
+        }
+      }
+    }, 500);
+    return () => clearInterval(id);
+  }, []);
 
   // Track hero stat changes (accumulates locally, syncs to backend in batches)
   const trackHeroStatChange = (heroId: string, changes: HeroStatChanges) => {
@@ -4065,7 +4172,7 @@ export default function CleanBattlefieldSource() {
       }
       
       const skillMods = computeSkillModifiers(hero);
-      const critChance = capCritChance((hero.critChance || 0) + skillMods.critChance / 100);
+      const critChance = capCritChance(hero.critChance || 0);
       const isCrit = Math.random() < critChance;
       if (isCrit) {
         damage = Math.round(damage * critDamageMultiplier(skillMods.critDamage));
@@ -4718,6 +4825,10 @@ export default function CleanBattlefieldSource() {
             }
             
             let actualDamage = computeDamageTaken(baseDamage, defense, enemy.level || 1);
+            actualDamage = applySkillDamageReductionPercent(
+              actualDamage,
+              hero.defenseMultiplier || 0
+            );
             
             // Check for VULNERABLE debuff (+40% damage taken)
             if (hero.activeDebuffs?.vulnerable) {
@@ -5185,6 +5296,10 @@ export default function CleanBattlefieldSource() {
       
       const attackerLevel = enemy.level || 1;
       let actualDamage = computeDamageTaken(baseDamage, defense, attackerLevel);
+      actualDamage = applySkillDamageReductionPercent(
+        actualDamage,
+        targetHeroRef.defenseMultiplier || 0
+      );
       
       // Check for VULNERABLE debuff (+40% damage taken)
       if (targetHeroRef.activeDebuffs?.vulnerable) {
@@ -7404,6 +7519,11 @@ export default function CleanBattlefieldSource() {
     let baseThreat = 1; // DPS default (1x)
     if (isTankRole(hero.role)) baseThreat = 20; // Tanks high base threat (20x)
     if (isHealerRole(hero.role)) baseThreat = 0.5; // Healers low threat (0.5x - healing generates threat but lower than DPS)
+
+    const tauntUntil = (hero as { tauntExpiry?: number }).tauntExpiry ?? 0;
+    if (tauntUntil > Date.now()) {
+      baseThreat *= 50;
+    }
     
     // Tanks generate additional threat from damage dealt (better gear = more threat)
     // This ensures tanks with better gear hold aggro better
@@ -7894,10 +8014,9 @@ export default function CleanBattlefieldSource() {
     stats.attack = Math.floor(stats.attack * (1 + skillMods.statAttackPercent / 100));
     stats.defense = Math.floor(stats.defense * (1 + skillMods.statDefensePercent / 100));
     stats.maxHp = Math.floor(stats.maxHp * (1 + skillMods.statHpPercent / 100));
-    stats.damageMultiplier = skillBonuses.damageMultiplier;
-    stats.healingMultiplier = skillBonuses.healingMultiplier;
-    stats.defenseMultiplier = skillBonuses.defenseMultiplier;
-    stats.critChance = Math.min(0.75, (stats.critChance || 0) + skillBonuses.critChance / 100);
+    stats.damageMultiplier = skillModsOverlay.damageMultiplier;
+    stats.healingMultiplier = skillModsOverlay.healingMultiplier;
+    stats.defenseMultiplier = skillModsOverlay.defenseMultiplier;
     
     // Calculate and apply SET BONUSES (Guardian's Bulwark, Berserker's Wrath, etc.)
     const setBonuses = calculateSetBonuses(hero.equipment, hero.role);
@@ -7944,7 +8063,7 @@ export default function CleanBattlefieldSource() {
     stats.maxHp = Math.floor(bal.maxHp * (1 + skillModsOverlay.statHpPercent / 100));
     stats.spellPower = bal.spellPower;
     stats.hpRegen = 0;
-    stats.critChance = capCritChance(bal.critChance + skillBonuses.critChance / 100);
+    stats.critChance = capCritChance(bal.critChance + skillModsOverlay.critChance / 100);
 
     // Debug: Log ALL equipment slots and their stats
     const equipmentSlots = ['weapon', 'armor', 'accessory', 'shield', 'helm', 'cloak', 'gloves', 'ring1', 'ring2', 'boots'];

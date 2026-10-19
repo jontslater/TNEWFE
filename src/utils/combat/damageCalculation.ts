@@ -89,12 +89,7 @@ export function calculateHeroDamage(
     baseDamage *= 1.05; // 5% guild combat bonus (placeholder)
   }
 
-  // Check for crit chance (base 5% + gear-based + skill-based)
-  const baseCritChance = 0.05; // 5% base crit chance
-  const gearCritChance = hero.critChance || 0; // Gear-based crit chance (from gems, set bonuses, etc.)
-  const totalCritChance = capCritChance(
-    baseCritChance + gearCritChance + heroSkillBonuses.critChance / 100
-  );
+  const totalCritChance = capCritChance(hero.critChance ?? 0.05);
 
   if (totalCritChance > 0 && Math.random() < totalCritChance) {
     baseDamage *= critDamageMultiplier(heroSkillBonuses.critDamage);

@@ -336,7 +336,10 @@ export function getCharacterStats(hero: Hero) {
   stats.maxHp = Math.floor(bal.maxHp * (1 + skillMods.statHpPercent / 100));
   stats.spellPower = bal.spellPower;
   stats.hpRegen = 0;
-  stats.critChance = capCritChance(bal.critChance + skillBonuses.critChance / 100);
+  stats.critChance = capCritChance(bal.critChance + skillMods.critChance / 100);
+  stats.damageMultiplier = skillMods.damageMultiplier;
+  stats.healingMultiplier = skillMods.healingMultiplier;
+  stats.defenseMultiplier = skillMods.defenseMultiplier;
 
   return stats;
 }

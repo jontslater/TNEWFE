@@ -12,7 +12,13 @@ import { AdventureEngine } from './adventureEngine';
 import { getHeroSpriteType, getEnemySpriteType, getAnimationDuration } from './animationDurations';
 import { generateEnemiesForCombat } from './enemyGeneration';
 import { getCharacterStats, calculateSkillBonuses, getViewerBonuses as sharedViewerBonuses } from './combatUtils';
-import { computeDamageTaken, damageReduction, getBalancePayload, xpToNextLevel } from '../combat/balance';
+import {
+  applySkillDamageReductionPercent,
+  computeDamageTaken,
+  damageReduction,
+  getBalancePayload,
+  xpToNextLevel,
+} from '../combat/balance';
 import { processDebuffs, processHpRegeneration } from './combat/buffsDebuffs';
 import { ENEMY_SPRITES } from './enemySpriteConfig';
 import { createProjectile } from './projectiles';
@@ -2553,9 +2559,6 @@ export class FullCombatEngine {
     
     // Apply skill defense multipliers
     const skillBonuses = this.calculateSkillBonuses(target.hero);
-    if (skillBonuses.defenseMultiplier > 0) {
-      effectiveDefense = Math.floor(effectiveDefense * (1 + skillBonuses.defenseMultiplier / 100));
-    }
     
     // Check for debuffs/buffs
     let damageMultiplier = 1.0;
@@ -2713,7 +2716,15 @@ export class FullCombatEngine {
     
     const attackerLevel = (enemy as { level?: number }).level || 1;
     let actualDamage = computeDamageTaken(enemyDamage, effectiveDefense, attackerLevel);
+    actualDamage = applySkillDamageReductionPercent(actualDamage, skillBonuses.defenseMultiplier);
     actualDamage = Math.floor(actualDamage * damageMultiplier);
+    
+    const roleShield = (target.hero.activeBuffs as Record<string, { active?: boolean; expiresAt?: number; drFraction?: number }>)
+      ?.roleActiveShield;
+    if (roleShield?.active && (roleShield.expiresAt ?? 0) > now) {
+      const dr = roleShield.drFraction ?? 0.5;
+      actualDamage = Math.floor(actualDamage * (1 - dr));
+    }
     
     // Apply armor enchantment thorns effects BEFORE damage reductions
     // Collect all enchantment effects first to stack them properly

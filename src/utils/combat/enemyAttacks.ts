@@ -20,7 +20,7 @@ import { applyDebuff } from './buffsDebuffs';
 import { absorbShieldDamage } from './healing';
 import { hasEmergencyAbility } from './emergencyAbilities';
 import { testLog } from '../testLogging';
-import { computeDamageTaken, getBalancePayload } from '../../combat/balance';
+import { applySkillDamageReductionPercent, computeDamageTaken, getBalancePayload } from '../../combat/balance';
 
 /**
  * DEBUG MODE: Disable hero damage during enemy animation testing
@@ -237,16 +237,20 @@ export function processEnemyAttack(
 
   // Determine target based on threat
   const weightedTargets: Array<{username: string; hero: Hero; threat: number}> = [];
+  const tauntMultiplier = (h: Hero) => {
+    const expiry = (h as { tauntExpiry?: number }).tauntExpiry ?? 0;
+    return expiry > now ? 50 : 1;
+  };
   aliveTanks.forEach(tank => {
-    const threat = (tank.hero.activeThreatMod || 1.0) * 20;
+    const threat = (tank.hero.activeThreatMod || 1.0) * 20 * tauntMultiplier(tank.hero);
     weightedTargets.push({ ...tank, threat });
   });
   aliveDPS.forEach(dps => {
-    const threat = (dps.hero.activeThreatMod || 1.0) * 1;
+    const threat = (dps.hero.activeThreatMod || 1.0) * 1 * tauntMultiplier(dps.hero);
     weightedTargets.push({ ...dps, threat });
   });
   aliveHealers.forEach(healer => {
-    const threat = (healer.hero.activeThreatMod || 1.0) * 0.3;
+    const threat = (healer.hero.activeThreatMod || 1.0) * 0.3 * tauntMultiplier(healer.hero);
     weightedTargets.push({ ...healer, threat });
   });
 
@@ -328,11 +332,7 @@ export function processEnemyAttack(
     effectiveDefense = Math.floor(effectiveDefense * target.hero.activeBuffs.defenseMultiplier.value);
   }
 
-  // Apply skill defense multipliers
   const skillBonuses = calculateSkillBonuses(target.hero);
-  if (skillBonuses.defenseMultiplier > 0) {
-    effectiveDefense = Math.floor(effectiveDefense * (1 + skillBonuses.defenseMultiplier / 100));
-  }
 
   // Check for debuffs/buffs
   let damageMultiplier = 1.0;
@@ -346,13 +346,16 @@ export function processEnemyAttack(
   const divineShieldActive = hasEmergencyAbility(target.hero, 'divineShield', now);
   const evasionActive = hasEmergencyAbility(target.hero, 'evasion', now) && Math.random() < 0.5;
 
-  // Check for Shield Wall (Guardian party-wide buff)
   let shieldWallActive = false;
   heroesArray.forEach(hero => {
     if (hero && hero.role === 'guardian' && hasEmergencyAbility(hero, 'shieldWall', now)) {
       shieldWallActive = true;
     }
   });
+  const roleShield = (target.hero.activeBuffs as Record<string, { active?: boolean; expiresAt?: number; drFraction?: number }>)
+    ?.roleActiveShield;
+  const roleActiveShieldActive =
+    roleShield?.active && (roleShield.expiresAt ?? 0) > now;
 
   // Divine Shield = full immunity
   if (divineShieldActive) {
@@ -761,6 +764,7 @@ function applyEnemyDamageToHero(
 
   const attackerLevel = (enemy as { level?: number }).level || 1;
   let actualDamage = computeDamageTaken(enemyDamage, effectiveDefense, attackerLevel);
+  actualDamage = applySkillDamageReductionPercent(actualDamage, skillBonuses.defenseMultiplier);
   actualDamage = Math.floor(actualDamage * damageMultiplier);
 
   // Apply skill defense multipliers (additional damage reduction)
@@ -860,6 +864,12 @@ function applyEnemyDamageToHero(
     const sw = getBalancePayload().roleAbilities.shieldWall;
     const isTank = category === 'tank';
     const dr = isTank ? sw.tankDamageReduction : sw.partyDamageReduction;
+    const damageBefore = actualDamage;
+    actualDamage = Math.floor(actualDamage * (1 - dr));
+    blockedByAbilities += damageBefore - actualDamage;
+  }
+  if (roleActiveShieldActive) {
+    const dr = roleShield?.drFraction ?? 0.5;
     const damageBefore = actualDamage;
     actualDamage = Math.floor(actualDamage * (1 - dr));
     blockedByAbilities += damageBefore - actualDamage;

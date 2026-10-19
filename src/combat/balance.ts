@@ -111,6 +111,16 @@ export function computeDamageTaken(rawDamage: number, heroArmor: number, attacke
   return Math.max(0, Math.floor(rawDamage * (1 - dr) * rollVariance()));
 }
 
+/** Extra damage reduction from tank DR skills (percent), capped at balance DR cap (75%). */
+export function applySkillDamageReductionPercent(
+  damageAfterArmor: number,
+  skillDefenseMultiplierPercent = 0
+): number {
+  const cap = cfg().combat.damageReductionCap;
+  const extra = Math.min(cap, Math.max(0, skillDefenseMultiplierPercent) / 100);
+  return Math.max(0, Math.floor(damageAfterArmor * (1 - extra)));
+}
+
 function classRatioMultipliers(className: string): { hp: number; atk: number; armor: number } {
   const key = className.toLowerCase();
   const self = ROLE_CONFIG[key];

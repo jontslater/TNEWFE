@@ -221,6 +221,14 @@ export const heroAPI = {
     return response.data;
   },
 
+  async sellInventoryByKey(
+    heroId: string,
+    payload: { itemKey: string; quantity: number }
+  ): Promise<{ success: boolean; gold?: number; inventory?: unknown[] }> {
+    const response = await apiClient.post(`/api/heroes/${heroId}/inventory/sell`, payload);
+    return response.data;
+  },
+
   async updateHeroById(heroId: string, updates: Partial<Hero>): Promise<Hero> {
     if (USE_MOCK) {
       return new Promise((resolve) => {
@@ -3073,6 +3081,25 @@ export const overlayAPI = {
    * Sync hero stats/equipment/inventory in batch (idempotent with batchId)
    * Requires X-Streamer-Key header or ownership via JWT
    */
+  /**
+   * Persist overlay combat progress (xp/level/gold/hp) — server-validated, not hero PUT.
+   */
+  async syncHeroProgress(
+    heroId: string,
+    payload: {
+      xp?: number;
+      level?: number;
+      maxXp?: number;
+      gold?: number;
+      hp?: number;
+      maxHp?: number;
+      stats?: Record<string, number>;
+    }
+  ): Promise<{ success: boolean; rejected?: string[] }> {
+    const response = await overlayClient.post(`/api/overlay/heroes/${heroId}/progress`, payload);
+    return response.data;
+  },
+
   async syncBatch(batchId: string, updates: Array<{
     heroId: string;
     stats?: Record<string, any>;

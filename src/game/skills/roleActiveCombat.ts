@@ -1,4 +1,5 @@
 import { critDamageMultiplier, computeSkillModifiers } from './computeSkillModifiers';
+import { capCritChance } from '../../combat/balance';
 import { resolveActiveAbility, abilityKindFromId } from './activeAbilities';
 import { beginRoleActiveCooldown, resolveDurationForHero } from './roleActiveCharge';
 import type { ActiveAbilityKind } from './activeAbilities';
@@ -53,20 +54,23 @@ export function tryFireRoleActiveAbility(
   const readyAt = hero.cooldowns?.roleActiveReadyAt ?? 0;
   if (readyAt > 0 && now < readyAt) return null;
 
-  const nextCooldowns = beginRoleActiveCooldown(hero.cooldowns, durationMs, now);
-  const base: RoleActiveFireResult = {
-    abilityName: ability.name,
-    kind,
-    casterCooldowns: {
-      roleActiveReadyAt: nextCooldowns.roleActiveReadyAt!,
-      roleActiveDurationMs: nextCooldowns.roleActiveDurationMs!,
-    },
-  };
-
+  const aliveEnemies = enemies.filter((e) => e.hp > 0);
   const effect = ability.effect;
 
   switch (kind) {
     case 'shield_wall': {
+      if (aliveEnemies.length === 0) return null;
+      const hpRatio = hero.maxHp > 0 ? hero.hp / hero.maxHp : 1;
+      if (hpRatio > 0.6) return null;
+      const nextCooldowns = beginRoleActiveCooldown(hero.cooldowns, durationMs, now);
+      const base: RoleActiveFireResult = {
+        abilityName: ability.name,
+        kind,
+        casterCooldowns: {
+          roleActiveReadyAt: nextCooldowns.roleActiveReadyAt!,
+          roleActiveDurationMs: nextCooldowns.roleActiveDurationMs!,
+        },
+      };
       const drPct = Number(effect.damageReductionPercent ?? 50);
       const dur = Number(effect.durationMs ?? 6000);
       return {
@@ -77,6 +81,20 @@ export function tryFireRoleActiveAbility(
       };
     }
     case 'group_heal': {
+      if (aliveEnemies.length === 0) return null;
+      const injured = allies.filter(
+        (h) => !h.isDead && h.hp > 0 && h.maxHp > 0 && h.hp / h.maxHp < 0.75
+      );
+      if (injured.length < 2) return null;
+      const nextCooldowns = beginRoleActiveCooldown(hero.cooldowns, durationMs, now);
+      const base: RoleActiveFireResult = {
+        abilityName: ability.name,
+        kind,
+        casterCooldowns: {
+          roleActiveReadyAt: nextCooldowns.roleActiveReadyAt!,
+          roleActiveDurationMs: nextCooldowns.roleActiveDurationMs!,
+        },
+      };
       const frac = Number(effect.healPercentOfCasterMaxHp ?? 25) / 100;
       const mult =
         effect.scalesWithHealingMultiplier !== false
@@ -91,13 +109,20 @@ export function tryFireRoleActiveAbility(
       return { ...base, healsByHeroId: heals };
     }
     case 'burst_strike': {
-      const target = enemies.find((e) => e.hp > 0);
-      if (!target) return base;
+      const target = aliveEnemies[0];
+      if (!target) return null;
+      const nextCooldowns = beginRoleActiveCooldown(hero.cooldowns, durationMs, now);
+      const base: RoleActiveFireResult = {
+        abilityName: ability.name,
+        kind,
+        casterCooldowns: {
+          roleActiveReadyAt: nextCooldowns.roleActiveReadyAt!,
+          roleActiveDurationMs: nextCooldowns.roleActiveDurationMs!,
+        },
+      };
       const atkMult = Number(effect.attackDamagePercent ?? 300) / 100;
       let damage = Math.floor((hero.attack || 0) * atkMult * (1 + mods.damageMultiplier / 100));
-      const baseCrit = 0.05 + (hero.critChance || 0);
-      const skillCrit = mods.critChance / 100;
-      const critChance = Math.min(0.75, baseCrit + skillCrit);
+      const critChance = capCritChance(hero.critChance ?? 0.05);
       const isCrit = effect.canCrit !== false && Math.random() < critChance;
       if (isCrit) {
         damage = Math.floor(damage * critDamageMultiplier(mods.critDamage));
@@ -107,11 +132,48 @@ export function tryFireRoleActiveAbility(
         burstDamage: { targetId: target.id, damage, isCrit },
       };
     }
-    case 'chain_lightning':
-      return { ...base, chainLightning: true };
-    case 'whirlwind':
-      return { ...base, whirlwind: true };
+    case 'chain_lightning': {
+      if (aliveEnemies.length === 0) return null;
+      const nextCooldowns = beginRoleActiveCooldown(hero.cooldowns, durationMs, now);
+      return {
+        abilityName: ability.name,
+        kind,
+        casterCooldowns: {
+          roleActiveReadyAt: nextCooldowns.roleActiveReadyAt!,
+          roleActiveDurationMs: nextCooldowns.roleActiveDurationMs!,
+        },
+        chainLightning: true,
+      };
+    }
+    case 'whirlwind': {
+      if (aliveEnemies.length === 0) return null;
+      const nextCooldowns = beginRoleActiveCooldown(hero.cooldowns, durationMs, now);
+      return {
+        abilityName: ability.name,
+        kind,
+        casterCooldowns: {
+          roleActiveReadyAt: nextCooldowns.roleActiveReadyAt!,
+          roleActiveDurationMs: nextCooldowns.roleActiveDurationMs!,
+        },
+        whirlwind: true,
+      };
+    }
     default:
-      return base;
+      return null;
   }
+}
+
+/** First time a hero is seen, start charge on cooldown (avoid fire-on-load). */
+export function initializeRoleActiveCooldownIfNeeded(
+  hero: MinimalCombatHero,
+  now: number
+): Record<string, number> | null {
+  if ((hero.cooldowns?.roleActiveReadyAt ?? 0) > 0) return null;
+  const mods = computeSkillModifiers(hero);
+  const durationMs = resolveDurationForHero(hero.role, mods.cooldownReduction);
+  const next = beginRoleActiveCooldown(hero.cooldowns, durationMs, now);
+  return {
+    roleActiveReadyAt: next.roleActiveReadyAt!,
+    roleActiveDurationMs: next.roleActiveDurationMs!,
+  };
 }

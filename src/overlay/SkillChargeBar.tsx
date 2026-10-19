@@ -19,7 +19,7 @@ export const SkillChargeBar: React.FC<SkillChargeBarProps> = ({
   skills,
 }) => {
   const ability = resolveActiveAbility(heroRole);
-  const category = ability.category;
+  const category = ability.role;
   const fillColor = roleCategoryColor(category);
 
   const [, setTick] = useState(0);

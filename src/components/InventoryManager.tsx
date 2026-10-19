@@ -857,16 +857,25 @@ export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, 
                                     const goldGain = sellValue * totalQuantity;
                                     
                                     if (hero.id) {
-                                      await heroAPI.updateHero(hero.id, {
-                                        inventory: updatedInventory,
-                                        gold: (hero.gold || 0) + goldGain
+                                      const result = await heroAPI.sellInventoryByKey(hero.id, {
+                                        itemKey: key,
+                                        quantity: totalQuantity,
                                       });
-                                      setMessageAlert({ message: `✅ Sold ${totalQuantity}x ${itemName} for ${goldGain}g!` });
+                                      if (!result?.success) {
+                                        throw new Error('Sell failed on server');
+                                      }
+                                      setMessageAlert({
+                                        message: `✅ Sold ${totalQuantity}x ${itemName} for ${goldGain}g!`,
+                                      });
                                       if (onUpdate) onUpdate();
                                     }
                                   } catch (error: any) {
                                     console.error('Failed to sell item:', error);
-                                    setMessageAlert({ message: error.response?.data?.error || 'Failed to sell item' });
+                                    const msg =
+                                      error.response?.data?.error ||
+                                      error.message ||
+                                      'Failed to sell item (server rejected or route unavailable)';
+                                    setMessageAlert({ message: msg });
                                   }
                                 },
                                 onCancel: () => setConfirmDialog(null)

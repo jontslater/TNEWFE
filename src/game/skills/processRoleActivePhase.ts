@@ -1,7 +1,7 @@
 import type { Hero, Enemy, CombatCallbacks } from '../../utils/combat/types';
 import { resolveActiveAbility } from './activeAbilities';
 import { computeSkillModifiers } from './computeSkillModifiers';
-import { tryFireRoleActiveAbility } from './roleActiveCombat';
+import { initializeRoleActiveCooldownIfNeeded, tryFireRoleActiveAbility } from './roleActiveCombat';
 
 /**
  * Browser-source unified combat: fire role-active abilities when charge is ready.
@@ -14,6 +14,23 @@ export function processRoleActivePhase(
 ): void {
   heroes.forEach((hero) => {
     if (!hero || hero.isDead || hero.hp <= 0) return;
+
+    const initCd = initializeRoleActiveCooldownIfNeeded(
+      {
+        id: hero.id,
+        role: hero.role,
+        hp: hero.hp,
+        maxHp: hero.maxHp,
+        attack: hero.attack,
+        skills: hero.skills,
+        cooldowns: hero.cooldowns as unknown as Record<string, number | undefined>,
+      },
+      now
+    );
+    if (initCd) {
+      hero.cooldowns = { ...hero.cooldowns, ...initCd };
+      return;
+    }
 
     const result = tryFireRoleActiveAbility(
       {
