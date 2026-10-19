@@ -22,25 +22,7 @@ export function getViewerBonuses(viewerCount: number = 0) {
  * Calculate skill bonuses for a hero (canonical defs in `src/game/skills/`).
  */
 export function calculateSkillBonuses(hero: Hero) {
-  const mods = computeSkillModifiers(hero);
-  const legacy = toLegacySkillBonuses(mods);
-  const config = ROLE_CONFIG[hero.role];
-  const baseAttack = config
-    ? config.baseAttack + ((hero.level - 1) * config.attackPerLevel)
-    : hero.attack || 0;
-  const baseDefense = config
-    ? config.baseDefense + ((hero.level - 1) * config.defensePerLevel)
-    : hero.defense || 0;
-  const baseHp = config
-    ? config.baseHp + ((hero.level - 1) * config.hpPerLevel)
-    : hero.maxHp || 0;
-
-  return {
-    ...legacy,
-    attack: Math.floor(baseAttack * (legacy.statAttackPercent / 100)),
-    defense: Math.floor(baseDefense * (legacy.statDefensePercent / 100)),
-    hp: Math.floor(baseHp * (legacy.statHpPercent / 100)),
-  };
+  return toLegacySkillBonuses(computeSkillModifiers(hero));
 }
 
 /**
@@ -340,16 +322,17 @@ export function getCharacterStats(hero: Hero) {
     }
   }
 
-  // Cap total crit chance at 35%
-  stats.critChance = Math.min(stats.critChance || 0, 0.35);
+  const skillMods = computeSkillModifiers(hero);
+  stats.attack = Math.floor(stats.attack * (1 + skillMods.statAttackPercent / 100));
+  stats.defense = Math.floor(stats.defense * (1 + skillMods.statDefensePercent / 100));
+  stats.maxHp = Math.floor(stats.maxHp * (1 + skillMods.statHpPercent / 100));
+  stats.critChance = Math.min(
+    0.75,
+    (stats.critChance || 0) + skillBonuses.critChance / 100
+  );
 
   // Apply stamina to HP (1 stamina = 10 HP)
   stats.maxHp += (stats.stamina || 0) * 10;
-
-  // Apply skill stat bonuses (flat values)
-  stats.attack += skillBonuses.attack;
-  stats.defense += skillBonuses.defense;
-  stats.maxHp += skillBonuses.hp;
 
   // Apply prestige stat boosts (flat values, additive)
   if (hero.prestigeBoosts && hero.prestigeBoosts.statBoost) {

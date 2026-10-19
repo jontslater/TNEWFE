@@ -358,6 +358,14 @@ export function applyHeroAbilities(
   // Apply viewer bonuses
   modifiedDamage *= bonuses.damageMultiplier;
 
+  if (heroSkillBonuses.lifesteal > 0 && modifiedDamage > 0) {
+    const lsHeal = Math.floor(modifiedDamage * (heroSkillBonuses.lifesteal / 100));
+    if (lsHeal > 0) {
+      hero.hp = Math.min(hero.maxHp, hero.hp + lsHeal);
+      callbacks.log('heal', `🩸 ${hero.username} lifesteals ${lsHeal} HP`);
+    }
+  }
+
   // SANITY CAP: Prevent absurdly high damage
   if (enemies && enemies.length > 0) {
     const primaryEnemy = enemies[0];

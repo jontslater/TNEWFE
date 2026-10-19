@@ -2,21 +2,19 @@ import {
   COOLDOWN_REDUCTION_CAP,
   CRIT_CHANCE_CAP,
   DAMAGE_REDUCTION_CAP,
-  DIVINE_GRACE_PROC_PER_RANK,
   MAX_SKILL_RANK,
 } from './caps';
-import { getSkillTemplateForId, parseSkillId } from './definitions';
-import { getClassCategory } from './classRegistry';
+import { getCanonicalSkillById, parseSkillId } from './definitions';
 import type {
   ComputedSkillModifiers,
   HeroSkillAllocation,
   LegacySkillBonuses,
 } from './types';
 
-export function clampSkillRank(points: unknown): number {
+export function clampSkillRank(points: unknown, maxPoints = MAX_SKILL_RANK): number {
   const n = typeof points === 'number' ? points : parseInt(String(points ?? 0), 10);
   if (!Number.isFinite(n) || n <= 0) return 0;
-  return Math.min(MAX_SKILL_RANK, n);
+  return Math.min(maxPoints, n);
 }
 
 export function applyCooldownReduction(baseMs: number, cooldownReductionPercent: number): number {
@@ -28,13 +26,16 @@ export function critDamageMultiplier(critDamagePercent: number): number {
   return 2 + Math.max(0, critDamagePercent) / 100;
 }
 
-export function computeSkillModifiers(
-  hero: {
-    role?: string;
-    skills?: Record<string, HeroSkillAllocation> | null;
-  },
-  _defs?: unknown
-): ComputedSkillModifiers {
+/** Matches overlay swift proc: 10% base chance, scales with speed_boost skill, capped at 50%. */
+export function rollSwiftExtraAttack(speedBoostPercent: number): boolean {
+  const swiftChance = Math.min(0.5, 0.1 * (1 + Math.max(0, speedBoostPercent) / 100));
+  return Math.random() < swiftChance;
+}
+
+export function computeSkillModifiers(hero: {
+  role?: string;
+  skills?: Record<string, HeroSkillAllocation> | null;
+}): ComputedSkillModifiers {
   const skills = hero.skills ?? {};
   const role = hero.role?.toLowerCase() ?? '';
 
@@ -54,24 +55,25 @@ export function computeSkillModifiers(
   };
 
   Object.entries(skills).forEach(([skillId, data]) => {
-    const rank = clampSkillRank(data?.points);
-    if (rank <= 0) return;
-
-    const template = getSkillTemplateForId(skillId);
-    if (!template) return;
+    const def = getCanonicalSkillById(skillId);
+    if (!def) return;
 
     const parsed = parseSkillId(skillId);
-    if (parsed && role && parsed.className !== role) {
-      return;
-    }
+    if (parsed && role && parsed.className !== role) return;
 
-    const value = template.baseValue * rank;
+    const rank = clampSkillRank(data?.points, def.maxPoints);
+    if (rank <= 0) return;
 
-    switch (template.effect) {
+    const value = def.baseValuePerRank * rank;
+
+    switch (def.effect) {
       case 'stat_boost':
-        if (template.stat === 'attack') raw.statAttackPercent += value;
-        else if (template.stat === 'defense') raw.statDefensePercent += value;
-        else if (template.stat === 'hp') raw.statHpPercent += value;
+        if (def.stat === 'attack') raw.statAttackPercent += value;
+        else if (def.stat === 'defense') raw.statDefensePercent += value;
+        else if (def.stat === 'hp') raw.statHpPercent += value;
+        break;
+      case 'hp_percent_max':
+        raw.statHpPercent += value;
         break;
       case 'damage_mult':
         raw.damageMultiplier += value;
@@ -97,12 +99,11 @@ export function computeSkillModifiers(
       case 'speed_boost':
         raw.speedBoost += value;
         break;
+      case 'double_heal_proc':
+        raw.divineGraceProcPercent += value;
+        break;
       default:
         break;
-    }
-
-    if (template.slot === 3 && template.name === 'Divine Grace') {
-      raw.divineGraceProcPercent += rank * DIVINE_GRACE_PROC_PER_RANK;
     }
   });
 
@@ -114,7 +115,6 @@ export function computeSkillModifiers(
   return raw;
 }
 
-/** Map to the legacy combat bonus object (percents in the same units as before). */
 export function toLegacySkillBonuses(mods: ComputedSkillModifiers): LegacySkillBonuses {
   return {
     attack: 0,

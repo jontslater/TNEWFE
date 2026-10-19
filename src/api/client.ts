@@ -1431,6 +1431,16 @@ export const skillsAPI = {
     return response.data;
   },
 
+  async respecSkills(userId: string, body?: { cost?: number }) {
+    const response = await apiClient.post(`/api/skills/${userId}/respec`, body ?? {});
+    return response.data;
+  },
+
+  async getSkillDefinitions() {
+    const response = await apiClient.get('/api/skills/definitions');
+    return response.data;
+  },
+
   async addRetroactivePoints(userId: string) {
     const response = await apiClient.post(`/api/skills/retroactive-points/${userId}`);
     return response.data;

@@ -810,13 +810,6 @@ export function processAutoHeal(
     // Auto-heal: Scales with healer attack (30-55 base + 75% of attack)
     let baseAutoHeal = Math.floor(Math.random() * 25) + 30 + Math.floor(healer.attack * 0.75);
 
-    // Check for DIVINE GRACE proc
-    if (healer.activeProcBuffs?.divineGrace && now < healer.activeProcBuffs.divineGrace) {
-      baseAutoHeal *= 2;
-      delete healer.activeProcBuffs.divineGrace; // Consume buff
-      callbacks.log('heal', `🌟 ${healer.username} DIVINE GRACE!`);
-    }
-
     let healAmount = calculateHealing(baseAutoHeal, healer, bonuses, calculateSkillBonuses);
 
     // Check for healing reduction debuff on target

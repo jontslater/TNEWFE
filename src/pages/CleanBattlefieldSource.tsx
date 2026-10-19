@@ -52,7 +52,6 @@ import {
   calculateAverageGearScore, 
   getFounderGoldMultiplier, 
   calculateMaxXp, 
-  calculateItemPower, 
   calculateItemImprovement 
 } from '../overlay/statsCalculator';
 import { getEnemyPosition, getDungeonHeroPosition } from '../overlay/positioning';
@@ -3175,8 +3174,9 @@ export default function CleanBattlefieldSource() {
         const dexterity = Math.floor(hero.level / 5);
         const initiative = Math.floor(Math.random() * 20) + 1 + dexterity;
         
-        // Check for Swift proc (10% chance for extra attack)
-        const swiftProc = Math.random() < 0.10;
+        const speedMods = computeSkillModifiers(hero);
+        const swiftChance = Math.min(0.5, 0.1 * (1 + speedMods.speedBoost / 100));
+        const swiftProc = Math.random() < swiftChance;
         const numAttacks = swiftProc ? 2 : 1;
         
         if (swiftProc) {
@@ -4074,7 +4074,7 @@ export default function CleanBattlefieldSource() {
       const baseCritChance = 0.05; // 5% base crit chance
       const critChance = criticalStrikeActive ? 1.0 : (baseCritChance + (hero.critChance || 0));
       const skillMods = computeSkillModifiers(hero);
-      const isCrit = Math.random() < Math.min(0.35, critChance + skillMods.critChance / 100);
+      const isCrit = Math.random() < Math.min(0.75, critChance + skillMods.critChance / 100);
       if (isCrit) {
         damage = Math.round(damage * critDamageMultiplier(skillMods.critDamage));
         console.log(`[Combat] ⚡ CRITICAL HIT! ${hero.name} crits for ${damage}!`);
@@ -4521,9 +4521,12 @@ export default function CleanBattlefieldSource() {
           return updated;
         });
 
-      // BLOODTHIRST (Blood Knight) + VAMPIRIC PROC - Lifesteal
       let totalLifesteal = 0;
-      
+      const lsMods = computeSkillModifiers(hero);
+      if (lsMods.lifesteal > 0) {
+        totalLifesteal += Math.floor(damage * (lsMods.lifesteal / 100));
+      }
+
       // Blood Knight class ability (20% lifesteal)
       if (hero.role === 'bloodknight') {
         totalLifesteal += Math.floor(damage * 0.2);
@@ -7937,21 +7940,15 @@ export default function CleanBattlefieldSource() {
       });
     });
 
-    // Calculate and apply skill bonuses
     const skillBonuses = calculateSkillBonuses(hero);
-    stats.attack += skillBonuses.attack;
-    stats.defense += skillBonuses.defense;
-    stats.maxHp += skillBonuses.hp;
+    const skillMods = computeSkillModifiers(hero);
+    stats.attack = Math.floor(stats.attack * (1 + skillMods.statAttackPercent / 100));
+    stats.defense = Math.floor(stats.defense * (1 + skillMods.statDefensePercent / 100));
+    stats.maxHp = Math.floor(stats.maxHp * (1 + skillMods.statHpPercent / 100));
     stats.damageMultiplier = skillBonuses.damageMultiplier;
-    
-    // Apply defense multiplier from skills (tanks get 15-30% bonus!)
-    if (skillBonuses.defenseMultiplier > 0) {
-      const defenseBonus = 1 + (skillBonuses.defenseMultiplier / 100);
-      stats.defense = Math.floor(stats.defense * defenseBonus);
-    }
     stats.healingMultiplier = skillBonuses.healingMultiplier;
     stats.defenseMultiplier = skillBonuses.defenseMultiplier;
-    stats.critChance += skillBonuses.critChance / 100; // Convert from % to decimal
+    stats.critChance = Math.min(0.75, (stats.critChance || 0) + skillBonuses.critChance / 100);
     
     // Calculate and apply SET BONUSES (Guardian's Bulwark, Berserker's Wrath, etc.)
     const setBonuses = calculateSetBonuses(hero.equipment, hero.role);
@@ -7991,8 +7988,7 @@ export default function CleanBattlefieldSource() {
     // Apply stamina → HP conversion (1 stamina = 10 HP)
     stats.maxHp += stats.stamina * 10;
 
-    // Cap crit chance at 35%
-    stats.critChance = Math.min(stats.critChance, 0.35);
+    stats.critChance = Math.min(stats.critChance, 0.75);
 
     // Debug: Log ALL equipment slots and their stats
     const equipmentSlots = ['weapon', 'armor', 'accessory', 'shield', 'helm', 'cloak', 'gloves', 'ring1', 'ring2', 'boots'];

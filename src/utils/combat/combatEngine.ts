@@ -19,6 +19,7 @@ import { getEnemySpriteType } from '../animationDurations';
 import { getAnimationDuration, getHeroSpriteType } from '../animationDurations';
 import { testLog } from '../testLogging';
 import { processRoleActivePhase } from '../../game/skills/processRoleActivePhase';
+import { computeSkillModifiers, rollSwiftExtraAttack } from '../../game/skills/computeSkillModifiers';
 
 /**
  * Main combat resolution function
@@ -299,7 +300,7 @@ export function resolveCombat(
 
     const finalDamage = abilityResult.modifiedDamage || baseDamage;
     
-    damageActions.push({
+    const damageAction = {
       username,
       damage: finalDamage,
       role: hero.role,
@@ -310,7 +311,14 @@ export function resolveCombat(
       stormChain: aoeResult.stormChain || abilityResult.stormChain,
       targetEnemy: targetEnemy,
       initiative: combatant.initiative
-    });
+    };
+    damageActions.push(damageAction);
+
+    const speedMods = computeSkillModifiers(hero);
+    if (!isAoE && rollSwiftExtraAttack(speedMods.speedBoost)) {
+      callbacks.log('combat', `⚡ ${username} Swift — extra attack!`);
+      damageActions.push({ ...damageAction, initiative: combatant.initiative - 0.01 });
+    }
   });
 
   // ============================================

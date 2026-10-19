@@ -33,7 +33,7 @@ export function processOverlayRoleActiveCharges<H extends MinimalCombatHero, E e
     announcements.push({
       abilityName: result.abilityName,
       heroName,
-      category: ability.category,
+      category: ability.role,
     });
 
     let updated: H = {

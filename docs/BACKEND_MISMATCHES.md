@@ -2,7 +2,15 @@
 
 > **Firestore composite indexes:** Deploy only from **`jontslater/idleDnD-Backend`** (`firebase.json` + `firestore.indexes.json`). This frontend repo does not ship index definitions — avoid deploying a duplicate `firestore.indexes.json` from TNEWFE so index sets do not conflict.
 
-**Skills / role-active abilities:** Frontend uses `src/game/skills/` (category templates mirror backend `skills.js` until `GET /api/skills/definitions` ships). Role defaults: Shield Wall / Group Heal / Burst Strike; class overrides: guardian, cleric, shaman, berserker. Assumption: backend defs will match `activeAbilities.ts` cooldowns and effect fields.
+**Skills:** Frontend `src/game/skills/data/skillDefinitions.json` is copied from backend `data/skillDefinitions.json` (branch `cursor/fix-critical-issues-3f3e`). Portal/overlay load via `fetchSkillDefinitions` → `GET /api/skills/definitions` with bundled fallback. Respec: `POST /api/skills/:userId/respec`.
+
+**Skills — remaining client/backend differences (intentional or follow-up):**
+
+| Topic | Frontend | Backend / docs |
+|--------|----------|----------------|
+| Role-active cooldown storage | `cooldowns.roleActiveReadyAt` + `roleActiveDurationMs` on hero | `docs/SKILLS.md` may describe `cooldowns[abilityId]` — same semantics, different field names until API stores one shape |
+| Unified browser source (`/browser-source-unified`) | Sprite-only; no HP/charge UI | Charge bar lives on `CleanBattlefieldSource` (dungeon/raid/idle HP blocks) |
+| Legacy `categoryTemplates.ts` | Removed; combat/portal use bundled JSON + API only | — |
 
 **Updated**: 2026-10-19  
 **Backend branch**: `jontslater/idleDnD-Backend@cursor/fix-critical-issues-3f3e`  

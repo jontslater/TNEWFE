@@ -1,5 +1,6 @@
 import type { Hero, Enemy, CombatCallbacks } from '../../utils/combat/types';
 import { resolveActiveAbility } from './activeAbilities';
+import { computeSkillModifiers } from './computeSkillModifiers';
 import { tryFireRoleActiveAbility } from './roleActiveCombat';
 
 /**
@@ -58,9 +59,17 @@ export function processRoleActivePhase(
     }
 
     if (result.healsByHeroId) {
+      const casterMods = computeSkillModifiers(hero);
       heroes.forEach((h) => {
-        const amt = result.healsByHeroId![h.id];
+        let amt = result.healsByHeroId![h.id];
         if (!amt || h.isDead || h.hp <= 0) return;
+        if (
+          casterMods.divineGraceProcPercent > 0 &&
+          Math.random() < casterMods.divineGraceProcPercent / 100
+        ) {
+          amt *= 2;
+          callbacks.log('heal', `✨ ${hero.username} Divine Grace!`);
+        }
         h.hp = Math.min(h.maxHp, h.hp + amt);
         callbacks.triggerHealAnimation?.(h.username);
       });

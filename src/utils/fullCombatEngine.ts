@@ -1786,7 +1786,7 @@ export class FullCombatEngine {
     }
 
     // Cap total crit chance at 35%
-    stats.critChance = Math.min(stats.critChance || 0, 0.35);
+    stats.critChance = Math.min(stats.critChance || 0, 0.75);
 
     // Apply stamina to HP (1 stamina = 10 HP)
     stats.maxHp += (stats.stamina || 0) * 10;

@@ -8,6 +8,8 @@ import { DEBUFFS } from './fullCombatEngine';
 
 export interface Hero {
   id?: string;
+  name?: string;
+  characterName?: string;
   username: string;
   hp?: number;
   isDead?: boolean;
@@ -22,6 +24,7 @@ export interface Hero {
 export interface Enemy {
   id: string | number;
   name: string;
+  type?: string;
   hp?: number;
   isDead?: boolean;
   activeDebuffs?: Record<string, any>;

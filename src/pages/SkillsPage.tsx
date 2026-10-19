@@ -1,6 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { skillsAPI } from '../api/client';
+import {
+  formatSkillEffectTotal,
+  formatSkillNextPoint,
+  getCanonicalSkillById,
+} from '../game/skills/definitions';
+import { fetchSkillDefinitions } from '../game/skills/skillDefinitionsLoader';
+import { calculateSkillPoints } from '../utils/skillSystem';
 
 interface Skill {
   id: string;
@@ -8,7 +15,8 @@ interface Skill {
   description: string;
   unlockLevel: number;
   effect: string;
-  baseValue: number;
+  baseValue?: number;
+  baseValuePerRank?: number;
   maxPoints: number;
   points?: number;
   unlockedAt?: number | null;
@@ -19,6 +27,11 @@ interface SkillsPageProps {
   userId?: string;
 }
 
+function parseApiError(err: unknown): string {
+  const e = err as { response?: { data?: { error?: string; message?: string } }; message?: string };
+  return e.response?.data?.error || e.response?.data?.message || e.message || 'Request failed';
+}
+
 export default function SkillsPage({ hero, userId }: SkillsPageProps) {
   const { user } = useAuth();
   const [skills, setSkills] = useState<Skill[]>([]);
@@ -27,7 +40,10 @@ export default function SkillsPage({ hero, userId }: SkillsPageProps) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Use hero.id (document ID) if available, otherwise fall back to userId/user.id
+    fetchSkillDefinitions(() => skillsAPI.getSkillDefinitions());
+  }, []);
+
+  useEffect(() => {
     const targetHeroId = hero?.id || userId || user?.id;
     if (targetHeroId) {
       loadSkills();
@@ -35,65 +51,54 @@ export default function SkillsPage({ hero, userId }: SkillsPageProps) {
   }, [user, userId, hero]);
 
   const loadSkills = async () => {
-    // Use hero.id (document ID) if available, otherwise fall back to userId/user.id
     const targetHeroId = hero?.id || userId || user?.id;
     if (!targetHeroId) return;
-    
+
     try {
       setLoading(true);
+      setError(null);
       const data = await skillsAPI.getHeroSkills(targetHeroId);
       setSkills(data.skills || []);
       setSkillPoints(data.skillPoints || 0);
-    } catch (err: any) {
-      setError(err.message || 'Failed to load skills');
+    } catch (err: unknown) {
+      setError(parseApiError(err));
     } finally {
       setLoading(false);
     }
   };
 
-  // Calculate expected skill points based on level
-  const calculateExpectedPoints = (level: number) => {
-    if (level < 6) return 0;
-    // Points at: 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30
-    const pointLevels = [6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30];
-    return pointLevels.filter(l => level >= l).length;
-  };
-
-  // Calculate points spent in skills
   const pointsSpent = skills.reduce((sum, skill) => sum + (skill.points || 0), 0);
-  
-  // Calculate what they should have (total earned minus spent)
   const heroLevel = hero?.level || 0;
-  const expectedTotal = calculateExpectedPoints(heroLevel);
+  const expectedTotal = calculateSkillPoints(heroLevel);
   const shouldHavePoints = expectedTotal - pointsSpent;
-  
-  // Show button if they have fewer points than they should have
   const needsRetroactivePoints = heroLevel >= 6 && skillPoints < shouldHavePoints;
 
   const allocatePoint = async (skillId: string) => {
     const targetHeroId = hero?.id || userId || user?.id;
     if (!targetHeroId) return;
-    
+
     try {
+      setError(null);
       const result = await skillsAPI.allocateSkillPoint(targetHeroId, skillId);
       setSkillPoints(result.remainingPoints);
       await loadSkills();
-    } catch (err: any) {
-      setError(err.message || 'Failed to allocate skill point');
+    } catch (err: unknown) {
+      setError(parseApiError(err));
     }
   };
 
-  const resetSkills = async () => {
-    if (!confirm('Reset all skills? This costs 500 tokens.')) return;
-    
+  const respecSkills = async () => {
+    if (!confirm('Reset all skill points? (Respec)')) return;
+
     const targetHeroId = hero?.id || userId || user?.id;
     if (!targetHeroId) return;
-    
+
     try {
-      await skillsAPI.resetSkills(targetHeroId, 500);
+      setError(null);
+      await skillsAPI.respecSkills(targetHeroId);
       await loadSkills();
-    } catch (err: any) {
-      setError(err.message || 'Failed to reset skills');
+    } catch (err: unknown) {
+      setError(parseApiError(err));
     }
   };
 
@@ -107,7 +112,7 @@ export default function SkillsPage({ hero, userId }: SkillsPageProps) {
       alert('No hero ID available');
       return;
     }
-    
+
     try {
       const data = await skillsAPI.addRetroactivePoints(targetHeroId);
       if (data.success) {
@@ -120,18 +125,25 @@ export default function SkillsPage({ hero, userId }: SkillsPageProps) {
       } else {
         alert(data.error || 'Failed to add retroactive skill points');
       }
-    } catch (err: any) {
-      console.error('Error adding retroactive points:', err);
-      alert(err.response?.data?.error || 'Failed to add retroactive skill points');
+    } catch (err: unknown) {
+      alert(parseApiError(err));
     }
   };
 
-  const unlockedSkills = skills.filter(s => (hero?.level || 0) >= s.unlockLevel);
-  const lockedSkills = skills.filter(s => (hero?.level || 0) < s.unlockLevel);
+  const unlockedSkills = skills.filter((s) => (hero?.level || 0) >= s.unlockLevel);
+  const lockedSkills = skills.filter((s) => (hero?.level || 0) < s.unlockLevel);
+
+  const effectLabel = (skill: Skill, points: number) => {
+    const def = getCanonicalSkillById(skill.id);
+    if (def) {
+      return points > 0 ? formatSkillEffectTotal(def, points) : formatSkillNextPoint(def);
+    }
+    const perRank = skill.baseValuePerRank ?? skill.baseValue ?? 0;
+    return points > 0 ? `+${perRank * points}%` : `+${perRank}%`;
+  };
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="bg-gradient-to-br from-indigo-900 to-gray-800 rounded-lg p-6 border-2 border-indigo-600">
         <div className="flex justify-between items-center mb-4">
           <div>
@@ -150,19 +162,20 @@ export default function SkillsPage({ hero, userId }: SkillsPageProps) {
               <div className="text-2xl font-bold text-blue-400">{skillPoints}</div>
             </div>
             <button
-              onClick={resetSkills}
+              onClick={respecSkills}
               className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors font-semibold"
             >
-              Reset (500 tokens)
+              Respec
             </button>
           </div>
         </div>
-        
+
         {needsRetroactivePoints && (
           <div className="bg-yellow-900/30 border border-yellow-600 rounded-lg p-3 mb-4">
             <div className="text-yellow-300 text-sm">
-              ⚠️ You have {shouldHavePoints - skillPoints} missing skill points (Level {heroLevel} should have {expectedTotal} total, {shouldHavePoints} available after {pointsSpent} spent). 
-              <button 
+              ⚠️ You have {shouldHavePoints - skillPoints} missing skill points (Level {heroLevel} should have{' '}
+              {expectedTotal} total, {shouldHavePoints} available after {pointsSpent} spent).
+              <button
                 onClick={handleRetroactivePoints}
                 className="ml-2 underline hover:text-yellow-200 font-semibold"
               >
@@ -180,7 +193,6 @@ export default function SkillsPage({ hero, userId }: SkillsPageProps) {
         </div>
       )}
 
-      {/* Unlocked Skills */}
       {unlockedSkills.length > 0 && (
         <div>
           <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
@@ -192,8 +204,7 @@ export default function SkillsPage({ hero, userId }: SkillsPageProps) {
               const points = skill.points || 0;
               const isMaxed = points >= skill.maxPoints;
               const canAllocate = skillPoints > 0 && !isMaxed;
-              const effectValue = skill.baseValue * points;
-              
+
               return (
                 <div
                   key={skill.id}
@@ -205,43 +216,38 @@ export default function SkillsPage({ hero, userId }: SkillsPageProps) {
                 >
                   <div className="flex justify-between items-start mb-3">
                     <h3 className="font-bold text-lg text-white">{skill.name}</h3>
-                    <div className={`px-2 py-1 rounded text-xs font-semibold ${
-                      isMaxed ? 'bg-green-600 text-green-100' : 'bg-gray-700 text-gray-300'
-                    }`}>
+                    <div
+                      className={`px-2 py-1 rounded text-xs font-semibold ${
+                        isMaxed ? 'bg-green-600 text-green-100' : 'bg-gray-700 text-gray-300'
+                      }`}
+                    >
                       {points}/{skill.maxPoints}
                     </div>
                   </div>
-                  
+
                   <p className="text-sm text-gray-300 mb-3 min-h-[40px]">{skill.description}</p>
-                  
+
                   <div className="mb-3 space-y-1">
-                    <div className="text-xs text-gray-400">
-                      Unlocks at level {skill.unlockLevel}
-                    </div>
+                    <div className="text-xs text-gray-400">Unlocks at level {skill.unlockLevel}</div>
                     {points > 0 && (
                       <div className="text-sm font-semibold text-green-400">
-                        Current Effect: +{effectValue}%
+                        Current: {effectLabel(skill, points)}
                       </div>
                     )}
                     {!isMaxed && (
-                      <div className="text-xs text-blue-400">
-                        Next point: +{skill.baseValue}%
-                      </div>
+                      <div className="text-xs text-blue-400">Next point: {effectLabel(skill, 1)}</div>
                     )}
                   </div>
-                  
-                  {/* Progress bar */}
+
                   <div className="mb-3">
                     <div className="w-full bg-gray-700 rounded-full h-2 overflow-hidden">
-                      <div 
-                        className={`h-full transition-all ${
-                          isMaxed ? 'bg-green-500' : 'bg-indigo-500'
-                        }`}
+                      <div
+                        className={`h-full transition-all ${isMaxed ? 'bg-green-500' : 'bg-indigo-500'}`}
                         style={{ width: `${(points / skill.maxPoints) * 100}%` }}
                       />
                     </div>
                   </div>
-                  
+
                   <button
                     onClick={() => allocatePoint(skill.id)}
                     disabled={!canAllocate}
@@ -249,8 +255,8 @@ export default function SkillsPage({ hero, userId }: SkillsPageProps) {
                       isMaxed
                         ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
                         : canAllocate
-                        ? 'bg-indigo-600 hover:bg-indigo-700 text-white transform hover:scale-105'
-                        : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                          ? 'bg-indigo-600 hover:bg-indigo-700 text-white transform hover:scale-105'
+                          : 'bg-gray-700 text-gray-500 cursor-not-allowed'
                     }`}
                   >
                     {isMaxed ? '✓ Maxed' : canAllocate ? 'Allocate Point' : 'No Points Available'}
@@ -262,7 +268,6 @@ export default function SkillsPage({ hero, userId }: SkillsPageProps) {
         </div>
       )}
 
-      {/* Locked Skills */}
       {lockedSkills.length > 0 && (
         <div>
           <h2 className="text-xl font-bold text-gray-400 mb-4 flex items-center gap-2">
@@ -281,12 +286,8 @@ export default function SkillsPage({ hero, userId }: SkillsPageProps) {
                     0/{skill.maxPoints}
                   </div>
                 </div>
-                
                 <p className="text-sm text-gray-500 mb-3">{skill.description}</p>
-                
-                <div className="text-xs text-gray-500">
-                  Unlocks at level {skill.unlockLevel}
-                </div>
+                <div className="text-xs text-gray-500">Unlocks at level {skill.unlockLevel}</div>
               </div>
             ))}
           </div>

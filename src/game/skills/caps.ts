@@ -1,7 +1,13 @@
-export const MAX_SKILL_RANK = 5;
-export const CRIT_CHANCE_CAP = 35;
-export const COOLDOWN_REDUCTION_CAP = 40;
-export const DAMAGE_REDUCTION_CAP = 90;
+import { getBalanceCaps, getBundledSkillDefinitions } from './skillDefinitionsLoader';
 
-/** Divine Grace (healer slot 3): 6% double-heal proc per rank, max 30%. */
-export const DIVINE_GRACE_PROC_PER_RANK = 6;
+const bundled = getBundledSkillDefinitions();
+
+export const MAX_SKILL_RANK = bundled.skills[0]?.maxPoints ?? 5;
+
+export function getSkillCaps() {
+  return getBalanceCaps();
+}
+
+export const COOLDOWN_REDUCTION_CAP = bundled.caps.cooldownReductionPercent;
+export const CRIT_CHANCE_CAP = bundled.caps.critChancePercent;
+export const DAMAGE_REDUCTION_CAP = bundled.caps.damageReductionPercent;

@@ -5,6 +5,7 @@
 
 import { Hero, Shield, ViewerBonuses } from './types';
 import { ROLE_CONFIG } from '../fullCombatEngine';
+import { computeSkillModifiers } from '../../game/skills/computeSkillModifiers';
 
 /**
  * Apply shield to hero (from overheal or abilities)
@@ -82,7 +83,21 @@ export function calculateHealing(
   const healingMultiplier = 1 + (skillBonuses.healingMultiplier / 100);
 
   // Calculate final healing (all bonuses are multiplicative)
-  const healAmount = baseHeal * intellectBonus * wisdomBonus * healingPowerBonus * spellDamageBonus * bonuses.healingMultiplier * healingMultiplier;
+  let healAmount =
+    baseHeal *
+    intellectBonus *
+    wisdomBonus *
+    healingPowerBonus *
+    spellDamageBonus *
+    bonuses.healingMultiplier *
+    healingMultiplier;
+
+  const procMods = computeSkillModifiers(healer);
+  if (procMods.divineGraceProcPercent > 0) {
+    if (Math.random() < procMods.divineGraceProcPercent / 100) {
+      healAmount *= 2;
+    }
+  }
 
   return Math.floor(healAmount);
 }

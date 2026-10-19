@@ -5,7 +5,7 @@
 
 import { Hero, Enemy, ViewerBonuses } from './types';
 import { ROLE_CONFIG } from '../fullCombatEngine';
-import { calculateSkillBonuses } from '../fullCombatEngine';
+import { critDamageMultiplier } from '../../game/skills/computeSkillModifiers';
 
 /**
  * Calculate base hero damage with all stat scaling
@@ -91,11 +91,13 @@ export function calculateHeroDamage(
   // Check for crit chance (base 5% + gear-based + skill-based)
   const baseCritChance = 0.05; // 5% base crit chance
   const gearCritChance = hero.critChance || 0; // Gear-based crit chance (from gems, set bonuses, etc.)
-  const totalCritChance = baseCritChance + gearCritChance + (heroSkillBonuses.critChance / 100);
-  
+  const totalCritChance = Math.min(
+    0.75,
+    baseCritChance + gearCritChance + heroSkillBonuses.critChance / 100
+  );
+
   if (totalCritChance > 0 && Math.random() < totalCritChance) {
-    const critMultiplier = 2.0 + (heroSkillBonuses.critDamage / 100);
-    baseDamage *= critMultiplier;
+    baseDamage *= critDamageMultiplier(heroSkillBonuses.critDamage);
   }
 
   let heroDamage = baseDamage * bonuses.damageMultiplier;

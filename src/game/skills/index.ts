@@ -1,6 +1,5 @@
 export * from './types';
 export * from './caps';
-export * from './categoryTemplates';
 export * from './classRegistry';
 export * from './definitions';
 export * from './computeSkillModifiers';

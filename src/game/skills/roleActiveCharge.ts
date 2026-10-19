@@ -16,7 +16,6 @@ export function getEffectiveAbilityCooldownMs(
   return applyCooldownReduction(baseCooldownMs, cooldownReductionPercent);
 }
 
-/** progress 0..1; ready when progress >= 1 */
 export function getRoleActiveChargeProgress(
   cooldowns: RoleActiveCooldowns | null | undefined,
   durationMs: number,
