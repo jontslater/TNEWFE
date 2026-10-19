@@ -4,6 +4,7 @@ import { mailAPI, MailItem } from '../api/client';
 import { partyAPI } from '../api/client';
 import { Hero } from '../types/Hero';
 import { useHero } from '../hooks/useHero';
+import { canTransferItem } from '../gear/itemBinding';
 
 interface MailComposeModalProps {
   onClose: () => void;
@@ -71,6 +72,10 @@ export default function MailComposeModal({ onClose, onSent }: MailComposeModalPr
   }, [recipientSearch]);
 
   const handleAddItem = (item: any) => {
+    if (!canTransferItem(item)) {
+      alert('This item is bound and cannot be sent by mail.');
+      return;
+    }
     const existingIndex = selectedItems.findIndex(si => si.item.id === item.id);
     if (existingIndex !== -1) {
       // Increase quantity
@@ -150,7 +155,7 @@ export default function MailComposeModal({ onClose, onSent }: MailComposeModalPr
     }
   };
 
-  const availableItems = inventory.filter(inv => {
+  const availableItems = inventory.filter(inv => canTransferItem(inv)).filter(inv => {
     // Don't show already selected items (or show with remaining quantity)
     const selected = selectedItems.find(si => si.item.id === inv.id);
     if (selected) {

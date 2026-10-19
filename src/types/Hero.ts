@@ -34,6 +34,12 @@ export interface Item {
   affixes?: Array<{ id?: string; kind?: 'prefix' | 'suffix'; label?: string; stats?: Record<string, number> }>;
   legendaryEffect?: string;
   source?: string;
+  /** WoW-style binding: none | bop | boe | account */
+  binding?: 'none' | 'bop' | 'boe' | 'account';
+  isBound?: boolean;
+  boundToHeroId?: string;
+  /** Cosmetic unlocks are account-wide, not tradable */
+  cosmetic?: boolean;
   // Secondary stats
   secondaryStats?: {
     healingPower?: number;
@@ -150,6 +156,8 @@ export interface Hero {
   defense: number;
   gold: number;
   tokens: number;
+  /** Shared premium balance across all heroes (when backend provides it) */
+  accountTokens?: number;
   totalIdleTokens: number;
   lastTokenClaim: number;
   lastCommandTime: number;

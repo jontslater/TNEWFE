@@ -3,6 +3,7 @@ import { Item, Socket, Hero, Equipment } from '../types/Hero';
 import { getRarityColor, getMaxSockets, getGemColor } from '../utils/format';
 import { getSetDisplayForItem } from '../utils/setBonuses';
 import type { GearAffix } from '../gear/itemDisplay';
+import { getBindingTooltipText } from '../gear/itemBinding';
 
 interface ItemTooltipProps {
   item: Item;
@@ -109,6 +110,13 @@ export default function ItemTooltip({ item, children, position: initialPosition 
               Item Level {(item as Item & { itemLevel?: number }).itemLevel ?? (item as Item & { ilvl?: number }).ilvl}
             </div>
           )}
+
+          {(() => {
+            const bindingLine = getBindingTooltipText(item);
+            return bindingLine ? (
+              <div className="text-xs text-amber-200 mb-2">{bindingLine}</div>
+            ) : null;
+          })()}
 
           {(item as Item & { affixes?: GearAffix[] }).affixes &&
             (item as Item & { affixes?: GearAffix[] }).affixes!.length > 0 && (

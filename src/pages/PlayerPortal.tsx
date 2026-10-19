@@ -31,6 +31,8 @@ import PrestigeStore from '../components/PrestigeStore';
 import StreamStatusBanner from '../components/StreamStatusBanner';
 import GroupBoostIndicator from '../components/GroupBoostIndicator';
 import StreamQueueJoinSection from '../components/StreamQueueJoinSection';
+import { willBindOnEquip, EQUIP_BIND_CONFIRM_MESSAGE } from '../gear/itemBinding';
+import { resolveAccountTokens, accountHasCosmeticUnlock } from '../utils/accountWallet';
 
 export default function PlayerPortal() {
   const navigate = useNavigate();
@@ -59,6 +61,12 @@ export default function PlayerPortal() {
   const [dungeonQueueStatus, setDungeonQueueStatus] = useState<any>(null);
   const [grantingFounderPack, setGrantingFounderPack] = useState<{ userId: string; tier: string } | null>(null);
   const [whisperRequest, setWhisperRequest] = useState<{ heroId: string; heroName: string } | null>(null);
+
+  const accountTokens = useMemo(
+    () => resolveAccountTokens(user as { accountTokens?: number } | null, heroes, hero),
+    [user, heroes, hero]
+  );
+  const accountCosmeticsUnlocked = useMemo(() => accountHasCosmeticUnlock(heroes), [heroes]);
 
   // Refresh guild data when switching to guild tab (to catch application approvals)
   // Use a ref to track if we've already refreshed for this tab switch
@@ -699,7 +707,9 @@ export default function PlayerPortal() {
             {activeTab === 'hero' && (
               <>
               <HeroDashboard 
-                hero={hero} 
+                hero={hero}
+                accountTokens={accountTokens}
+                accountCosmeticsUnlocked={accountCosmeticsUnlocked}
                 onHeroUpdate={async (updatedHero: Hero) => {
                   // Update the current hero if it's the one being updated
                   if (hero?.id === updatedHero.id) {
@@ -731,10 +741,15 @@ export default function PlayerPortal() {
           <InventoryManager 
             hero={hero} 
             userId={user?.id}
+            accountTokens={accountTokens}
+            accountCosmeticsUnlocked={accountCosmeticsUnlocked}
             onUpdate={refetchHero}
             onEquipChange={async (slot, item) => {
               const heroId = hero?.id || user?.id;
               if (!heroId) return;
+              if (item && willBindOnEquip(item)) {
+                if (!window.confirm(EQUIP_BIND_CONFIRM_MESSAGE)) return;
+              }
               try {
                 if (item?.id) {
                   try {

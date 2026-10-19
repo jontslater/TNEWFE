@@ -9,6 +9,7 @@ import SocketModal from './SocketModal';
 import GemModal from './GemModal';
 import { heroAPI } from '../api/client';
 import { calculateItemPower, isItemBetter } from '../gear/itemDisplay';
+import { canTransferItem, getBindingTooltipText } from '../gear/itemBinding';
 import ConfirmationDialog from './ConfirmationDialog';
 import MessageAlert from './MessageAlert';
 
@@ -19,13 +20,24 @@ interface InventoryManagerProps {
   onUpgradeItem?: (itemId: string, selectedStats: Array<{ type: string; value: number }>) => Promise<void>;
   userId?: string;
   onUpdate?: () => void;
+  accountTokens?: number;
+  accountCosmeticsUnlocked?: boolean;
 }
 
 function isRarePlus(rarity: string | undefined): boolean {
   return ['rare', 'epic', 'legendary', 'artifact', 'mythic'].includes(rarity?.toLowerCase() || '');
 }
 
-export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, onUpgradeItem, userId, onUpdate }: InventoryManagerProps) {
+export default function InventoryManager({
+  hero,
+  onEquipChange,
+  onApplyUpgrade,
+  onUpgradeItem,
+  userId,
+  onUpdate,
+  accountTokens,
+  accountCosmeticsUnlocked,
+}: InventoryManagerProps) {
   const [draggedItem, setDraggedItem] = useState<{ item: Item; source: 'inventory' | 'equipment'; slot?: string } | null>(null);
   const [applyingItem, setApplyingItem] = useState<{ craftedItem: CraftedItem; recipeKey: string } | null>(null);
   const [upgradeItem, setUpgradeItem] = useState<{ item: Item; location: 'equipment' | 'inventory'; slot?: string } | null>(null);
@@ -235,6 +247,21 @@ export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, 
 
   return (
     <div className="space-y-6 pb-8">
+      {(accountTokens !== undefined || accountCosmeticsUnlocked) && (
+        <div className="bg-gray-800/80 border border-gray-600 rounded-lg p-3 text-sm text-gray-300">
+          {accountTokens !== undefined && (
+            <div>
+              <span className="text-blue-300 font-semibold">Account tokens:</span>{' '}
+              {accountTokens} <span className="text-gray-500 text-xs">(shared across all heroes)</span>
+            </div>
+          )}
+          {accountCosmeticsUnlocked && (
+            <div className="text-xs text-amber-200/90 mt-1">
+              Cosmetics and shop unlocks are account-wide and cannot be mailed or auctioned.
+            </div>
+          )}
+        </div>
+      )}
       {/* Equipment Slots */}
       <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
         <h3 className="text-2xl font-bold text-white mb-4">Equipment</h3>
@@ -1211,6 +1238,19 @@ export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, 
                               <span className="text-lime-400 flex-shrink-0" title="Upgrade vs equipped">▲</span>
                             )}
                             <span className="truncate">{item.name}</span>
+                            {getBindingTooltipText(item) && (
+                              <span
+                                className="text-[9px] text-amber-200/90 flex-shrink-0"
+                                title={getBindingTooltipText(item) || ''}
+                              >
+                                🔒
+                              </span>
+                            )}
+                            {!canTransferItem(item) && (
+                              <span className="text-[9px] text-gray-500 flex-shrink-0" title="Cannot mail, trade, or auction">
+                                No trade
+                              </span>
+                            )}
                             {(item as any).upgradeLevel && (item as any).upgradeLevel > 0 && (
                               <span className="text-amber-400 font-semibold text-[10px] flex-shrink-0">+{(item as any).upgradeLevel}</span>
                             )}

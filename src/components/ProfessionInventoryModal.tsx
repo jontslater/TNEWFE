@@ -1,5 +1,6 @@
 import { Hero, CraftedItem } from '../types/Hero';
 import { HERBALISM_RECIPES, MINING_RECIPES, ENCHANTING_RECIPES } from '../api/mock-data';
+import { canTransferItem } from '../gear/itemBinding';
 
 interface ProfessionInventoryModalProps {
   hero: Hero;
@@ -151,12 +152,17 @@ export default function ProfessionInventoryModal({ hero, isOpen, onClose, onSend
                       </button>
                       <button 
                         onClick={() => {
+                          if (!canTransferItem(firstItem as any)) {
+                            alert('This item is bound and cannot be traded.');
+                            return;
+                          }
                           const recipient = prompt('Send to (username):');
                           if (recipient) {
                             onSendItem(firstItem.id, recipient);
                           }
                         }}
-                        className="bg-blue-600 hover:bg-blue-700 text-white py-2 px-3 rounded text-sm font-semibold transition-colors"
+                        disabled={!canTransferItem(firstItem as any)}
+                        className="bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white py-2 px-3 rounded text-sm font-semibold transition-colors"
                       >
                         Send to Player
                       </button>
@@ -167,7 +173,8 @@ export default function ProfessionInventoryModal({ hero, isOpen, onClose, onSend
                       onClick={() => {
                         alert('Auction House coming soon!');
                       }}
-                      className="w-full mt-2 bg-purple-600 hover:bg-purple-700 text-white py-2 px-3 rounded text-sm font-semibold transition-colors"
+                      disabled={!canTransferItem(firstItem as any)}
+                      className="w-full mt-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-40 disabled:cursor-not-allowed text-white py-2 px-3 rounded text-sm font-semibold transition-colors"
                     >
                       List on Auction House
                     </button>

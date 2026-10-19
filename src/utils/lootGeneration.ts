@@ -11,6 +11,14 @@ export {
   wowRarityColor,
 } from '../gear/itemDisplay';
 
+export {
+  canTransferItem,
+  getBindingTooltipText,
+  getItemBindingState,
+  willBindOnEquip,
+  EQUIP_BIND_CONFIRM_MESSAGE,
+} from '../gear/itemBinding';
+
 /** @deprecated Server rolls only — returns null. */
 export function generateLoot(
   _role: string,

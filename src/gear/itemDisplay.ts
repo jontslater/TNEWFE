@@ -1,5 +1,6 @@
 import type { Item } from '../types/Hero';
 import { getRarityStyle, type ItemRarity } from '../utils/rarityDisplay';
+import type { ItemBindingPolicy } from './itemBinding';
 
 export type GearAffix = { id?: string; kind?: 'prefix' | 'suffix'; label?: string; stats?: Record<string, number> };
 
@@ -28,6 +29,10 @@ export function normalizeServerItem(raw: Record<string, unknown>): Item {
     sockets: raw.sockets as Item['sockets'],
     ...(ilvl ? { itemLevel: ilvl } : {}),
     ...(raw.affixes ? { affixes: raw.affixes as GearAffix[] } : {}),
+    ...(raw.binding ? { binding: raw.binding as ItemBindingPolicy } : {}),
+    ...(raw.isBound !== undefined ? { isBound: Boolean(raw.isBound) } : {}),
+    ...(raw.boundToHeroId ? { boundToHeroId: String(raw.boundToHeroId) } : {}),
+    ...(raw.cosmetic !== undefined ? { cosmetic: Boolean(raw.cosmetic) } : {}),
   } as Item & { itemLevel?: number; affixes?: GearAffix[] };
 }
 

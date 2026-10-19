@@ -15,6 +15,8 @@ import { getCharacterStats } from '../utils/combatUtils';
 
 interface HeroDashboardProps {
   hero: Hero;
+  accountTokens?: number;
+  accountCosmeticsUnlocked?: boolean;
   onHeroUpdate?: (updatedHero: Hero) => void;
   onHeroDelete?: () => void;
 }
@@ -27,7 +29,13 @@ const FOUNDER_BADGES = [
   { id: 'platinum', name: 'Platinum Founder', path: '/Badges/FoundersPlatinum.png' }
 ];
 
-export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: HeroDashboardProps) {
+export default function HeroDashboard({
+  hero,
+  accountTokens,
+  accountCosmeticsUnlocked,
+  onHeroUpdate,
+  onHeroDelete,
+}: HeroDashboardProps) {
   const { user } = useAuth();
   
   // STRICT ADMIN CHECK - Only 'theneverendingwar' gets admin access
@@ -979,8 +987,11 @@ export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: Hero
                 <div className="text-xs text-gray-400">Gold</div>
               </div>
               <div className="text-center">
-                <div className="text-2xl font-bold text-blue-400">{hero.tokens}</div>
-                <div className="text-xs text-gray-400">Tokens</div>
+                <div className="text-2xl font-bold text-blue-400">
+                  {formatNumber(accountTokens ?? hero.tokens ?? 0)}
+                </div>
+                <div className="text-xs text-gray-400">Account tokens</div>
+                <div className="text-[10px] text-gray-500">Shared across all heroes</div>
               </div>
             </div>
             {/* Claim Idle Rewards Button */}
@@ -1015,9 +1026,10 @@ export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: Hero
               )}
             </div>
             {/* Founder Pack cosmetics (no combat or reward bonuses) */}
-            {heroTier && (
+            {(heroTier || accountCosmeticsUnlocked) && (
               <div className="mt-2 p-2 bg-amber-900/30 border border-amber-700/50 rounded text-left">
                 <div className="text-xs font-semibold text-amber-400 mb-1">⭐ Founder Pack (cosmetic)</div>
+                <div className="text-[10px] text-amber-200/80 mb-1">Account-wide — applies to every hero on your account</div>
                 <div className="text-xs text-gray-300 space-y-0.5">
                   <div>Founder badge, title, and tier-locked name styles</div>
                   {heroTier === 'silver' || heroTier === 'gold' || heroTier === 'platinum' ? (
