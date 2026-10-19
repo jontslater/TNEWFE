@@ -1,13 +1,15 @@
 import axios from 'axios';
 import { Hero } from '../types/Hero';
+import { FEATURES } from '../config/features';
 import { Guild } from '../types/Guild';
 import { Raid, WorldBoss } from '../types/Raid';
 import { mockHero, mockGuild, mockRaids, mockWorldBoss } from './mock-data';
+import { isOverlayBrowserRoute } from '../utils/overlayRoutes';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true'; // Default to backend API
 
-// API Client
+// API Client (for portal/authenticated routes)
 const apiClient = axios.create({
   baseURL: API_URL,
   headers: {
@@ -34,7 +36,11 @@ apiClient.interceptors.response.use(
       localStorage.removeItem('auth_token');
       // Only redirect if not already on auth callback or home page
       const currentPath = window.location.pathname;
-      if (currentPath !== '/' && !currentPath.includes('/auth/callback')) {
+      if (
+        !isOverlayBrowserRoute(currentPath) &&
+        currentPath !== '/' &&
+        !currentPath.includes('/auth/callback')
+      ) {
         console.warn('Authentication token expired or invalid. Redirecting to home...');
         // Use setTimeout to avoid navigation during render
         setTimeout(() => {
@@ -46,8 +52,51 @@ apiClient.interceptors.response.use(
   }
 );
 
+// Overlay API Client (for browser-source/overlay routes using streamer keys)
+const overlayClient = axios.create({
+  baseURL: API_URL,
+  headers: {
+    'Content-Type': 'application/json'
+  }
+});
+
+// Add streamer key OR auth token to overlay requests
+overlayClient.interceptors.request.use((config) => {
+  // Try streamer key first (for browser source/overlay)
+  const streamerKey = sessionStorage.getItem('streamer_key');
+  if (streamerKey) {
+    config.headers['X-Streamer-Key'] = streamerKey;
+  } else {
+    // Fall back to JWT for authenticated portal access
+    const token = localStorage.getItem('auth_token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+  }
+  return config;
+});
+
+// Overlay client does NOT redirect on 401 (overlay runs in OBS, not browser)
+overlayClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401 || error.response?.status === 403) {
+      console.error('[Overlay] Auth error:', error.response?.data?.error || 'Unauthorized');
+      // Log but don't redirect (overlay context)
+    }
+    return Promise.reject(error);
+  }
+);
+
 // Hero API
 export const heroAPI = {
+  /** Admin portal: GET /api/admin/heroes (JWT; server enforces admin). */
+  async getAdminAllHeroes(): Promise<Hero[]> {
+    const response = await apiClient.get('/api/admin/heroes');
+    const data = response.data;
+    return Array.isArray(data) ? data : data?.heroes ?? [];
+  },
+
   async getAllHeroes(): Promise<Hero[]> {
     if (USE_MOCK) {
       return new Promise((resolve) => {
@@ -78,7 +127,7 @@ export const heroAPI = {
 
     // Debug logging to inspect what the backend is returning for hero + equipment
     try {
-      // eslint-disable-next-line no-console
+       
       console.log('[HeroAPI] getHero response:', {
         userId,
         id: response.data?.id,
@@ -88,7 +137,7 @@ export const heroAPI = {
         equipment: response.data?.equipment,
       });
       if (response.data?.equipment) {
-        // eslint-disable-next-line no-console
+         
         console.log('[HeroAPI] equipment slots:', Object.keys(response.data.equipment));
       }
     } catch (e) {
@@ -181,6 +230,30 @@ export const heroAPI = {
     }
     
     const response = await apiClient.put(`/api/heroes/${userId}`, updates);
+    return response.data;
+  },
+
+  async sellInventoryItems(
+    heroId: string,
+    itemIds: string[]
+  ): Promise<{ success: boolean; goldGained?: number; newGold?: number; sold?: unknown[] }> {
+    const response = await apiClient.post(`/api/heroes/${heroId}/inventory/sell`, { itemIds });
+    return response.data;
+  },
+
+  /** Adventure/wave progress only (JWT). XP/gold use overlayAPI.syncDeltas. */
+  async syncAdventureProgress(
+    heroId: string,
+    payload: {
+      currentWave?: number;
+      highestWave?: number;
+      winStreak?: number;
+      difficultyPercent?: number;
+      lastAdventureSyncAt?: number;
+      adventureState?: Record<string, unknown>;
+    }
+  ) {
+    const response = await apiClient.post(`/api/heroes/${heroId}/progress-sync`, payload);
     return response.data;
   },
 
@@ -1041,6 +1114,9 @@ export const raidAPI = {
   },
   
   async simulateRaid(raidId: string, participants: string[]): Promise<{success: boolean, outcome: 'success' | 'failure', rewards: any, message: string}> {
+    if (!FEATURES.raidSimulate) {
+      throw new Error('Raid simulation is disabled until POST /api/raids/:raidId/simulate exists on the backend.');
+    }
     const response = await apiClient.post(`/api/raids/${raidId}/simulate`, { participants });
     return response.data;
   },
@@ -1178,9 +1254,31 @@ export const raidAPI = {
         setTimeout(() => resolve({ success: true }), 300);
       });
     }
-    
-    const response = await apiClient.post('/api/worldboss/signup', { userId });
+    // Backend has POST /api/worldboss/:bossId/join — not /worldboss/signup
+    const boss = await this.getWorldBoss();
+    if (!boss?.id) {
+      throw new Error('No active world boss to join.');
+    }
+    const response = await apiClient.post(`/api/worldboss/${boss.id}/join`, {
+      userId,
+      username: userId,
+      heroLevel: 1,
+      heroRole: 'berserker',
+    });
     return response.data;
+  },
+
+  /** @deprecated Use signupForRaid with guildId. */
+  async joinRaid(raidId: string, heroId: string, guildId?: string): Promise<{ success: boolean }> {
+    if (!guildId) {
+      throw new Error('Guild id required — use signupForRaid or the stream queue API.');
+    }
+    return this.signupForRaid(raidId, guildId, [heroId]);
+  },
+
+  /** @deprecated No dedicated leave endpoint — use guild signup flow or queue leave. */
+  async leaveRaid(_raidId: string, _heroId: string): Promise<{ success: boolean }> {
+    throw new Error('leaveRaid is not implemented on the backend. Use queueAPI.leaveQueue for chat queues.');
   },
   
   // Queue methods
@@ -1369,10 +1467,46 @@ export const skillsAPI = {
     return response.data;
   },
 
+  async respecSkills(userId: string, body?: { cost?: number }) {
+    const response = await apiClient.post(`/api/skills/${userId}/respec`, body ?? {});
+    return response.data;
+  },
+
+  async getSkillDefinitions() {
+    const response = await apiClient.get('/api/skills/definitions');
+    return response.data;
+  },
+
   async addRetroactivePoints(userId: string) {
     const response = await apiClient.post(`/api/skills/retroactive-points/${userId}`);
     return response.data;
   }
+};
+
+export const gearAPI = {
+  async getCatalog() {
+    const response = await apiClient.get('/api/gear/catalog');
+    return response.data;
+  },
+  async getSets() {
+    const response = await apiClient.get('/api/gear/sets');
+    return response.data;
+  },
+  async equipItem(heroId: string, itemId: string, slot: string) {
+    const response = await apiClient.post(`/api/heroes/${heroId}/equip`, { itemId, slot });
+    return response.data;
+  },
+  async unequipItem(heroId: string, slot: string) {
+    const response = await apiClient.post(`/api/heroes/${heroId}/unequip`, { slot });
+    return response.data;
+  },
+};
+
+export const balanceAPI = {
+  async getBalance() {
+    const response = await apiClient.get('/api/balance');
+    return response.data;
+  },
 };
 
 // Auction House API
@@ -1633,7 +1767,23 @@ export const dungeonAPI = {
       groupId
     });
     return response.data;
-  }
+  },
+
+  async updateInstanceProgress(
+    instanceId: string,
+    body: { room?: number; participants?: unknown[]; combatLogEntries?: unknown[] }
+  ) {
+    const response = await apiClient.post(`/api/dungeon/instance/${instanceId}/progress`, body);
+    return response.data;
+  },
+
+  async completeInstance(
+    instanceId: string,
+    body: { success?: boolean; finalParticipants?: unknown[]; participants?: unknown[] }
+  ) {
+    const response = await apiClient.post(`/api/dungeon/instance/${instanceId}/complete`, body);
+    return response.data;
+  },
 };
 
 // Enchanting API
@@ -2938,6 +3088,7 @@ export const streamSettingsAPI = {
       showLevelUps: boolean;
       showGold: boolean;
       customMessage: string | null;
+      sendWhenOffline: boolean;
     };
   }> {
     const response = await apiClient.get(`/api/stream/settings/${twitchId}`);
@@ -2952,6 +3103,7 @@ export const streamSettingsAPI = {
     showLevelUps?: boolean;
     showGold?: boolean;
     customMessage?: string | null;
+    sendWhenOffline?: boolean;
   }): Promise<{
     success: boolean;
     message: string;
@@ -2969,7 +3121,206 @@ export const streamSettingsAPI = {
   }> {
     const response = await apiClient.post(`/api/stream/settings/${twitchId}/test`);
     return response.data;
+  },
+
+  async getOverlayKey(twitchId: string): Promise<{
+    overlayKey: string;
+  }> {
+    const response = await apiClient.get(`/api/stream/settings/${twitchId}/overlay-key`);
+    return response.data;
+  },
+
+  async regenerateOverlayKey(twitchId: string): Promise<{
+    overlayKey: string;
+  }> {
+    const response = await apiClient.post(`/api/stream/settings/${twitchId}/overlay-key/regenerate`);
+    return response.data;
   }
 };
 
-export { apiClient };
+// Overlay API (uses streamer keys or JWT)
+export const overlayAPI = {
+  /**
+   * Idempotent XP/gold batch sync for browser sources.
+   * POST /api/overlay/sync — requires X-Streamer-Key (or streamer JWT).
+   */
+  async syncDeltas(
+    streamerId: string,
+    batchId: string,
+    deltas: Array<{
+      heroId: string;
+      xpGained: number;
+      goldGained: number;
+      timestamp?: number;
+    }>,
+    options?: {
+      kills?: Array<{
+        heroId: string;
+        enemyLevel: number;
+        kind: 'normal' | 'elite' | 'boss' | 'dungeonBoss' | 'raidBoss';
+        contentId?: string;
+        difficulty?: string;
+        contentType?: string;
+        instanceId?: string;
+        fromAbility?: boolean;
+      }>;
+    }
+  ): Promise<{
+    success: boolean;
+    alreadyProcessed?: boolean;
+    deltasApplied?: number;
+    deltasFailed?: number;
+    results?: unknown[];
+    drops?: Array<{ heroId: string; item: Record<string, unknown> }>;
+  }> {
+    const response = await overlayClient.post('/api/overlay/sync', {
+      streamerId,
+      batchId,
+      deltas,
+      kills: options?.kills,
+    });
+    return response.data;
+  },
+
+  /**
+   * Canonical idle loot rolls (streamer key).
+   * POST /api/battlefields/twitch:{streamerId}/loot/roll
+   */
+  async rollBattlefieldLoot(
+    streamerId: string,
+    kills: Array<{
+      heroId: string;
+      enemyLevel: number;
+      kind: string;
+      contentType?: string;
+      contentId?: string;
+      difficulty?: string;
+      instanceId?: string;
+      fromAbility?: boolean;
+    }>
+  ): Promise<{
+    success: boolean;
+    drops?: Array<{ heroId: string; item: Record<string, unknown> }>;
+    errors?: unknown[];
+  }> {
+    const twitchId = streamerId.replace(/^twitch:/, '');
+    const battlefieldId = `twitch:${twitchId}`;
+    const response = await overlayClient.post(
+      `/api/battlefields/${encodeURIComponent(battlefieldId)}/loot/roll`,
+      { streamerId: twitchId, kills }
+    );
+    return response.data;
+  },
+
+  /**
+   * @deprecated Use rollBattlefieldLoot — alias kept for older overlays.
+   */
+  async rollOverlayLoot(
+    streamerId: string,
+    kills: Array<{ heroId: string; enemyLevel: number; kind: string; contentType?: string }>
+  ) {
+    const response = await overlayClient.post('/api/overlay/loot-roll', {
+      streamerId,
+      kills,
+    });
+    return response.data;
+  },
+
+  /**
+   * Get current chat activity metrics for a streamer
+   * Requires X-Streamer-Key header or ownership via JWT
+   */
+  async updateDungeonInstanceProgress(
+    instanceId: string,
+    body: { room?: number; participants?: unknown[]; combatLogEntries?: unknown[] }
+  ) {
+    const response = await overlayClient.post(`/api/dungeon/instance/${instanceId}/progress`, body);
+    return response.data;
+  },
+
+  async completeDungeonInstance(
+    instanceId: string,
+    body: { success?: boolean; finalParticipants?: unknown[]; participants?: unknown[] }
+  ) {
+    const response = await overlayClient.post(`/api/dungeon/instance/${instanceId}/complete`, body);
+    return response.data;
+  },
+
+  async updateRaidInstanceProgress(
+    instanceId: string,
+    wave: number,
+    participants: unknown[],
+    combatLogEntries: unknown[] = []
+  ) {
+    const response = await overlayClient.post(`/api/raids/instance/${instanceId}/progress`, {
+      wave,
+      participants,
+      combatLogEntries,
+    });
+    return response.data;
+  },
+
+  async completeRaidInstance(
+    instanceId: string,
+    success: boolean,
+    finalParticipants: unknown[],
+    finalCombatLog: unknown[] = []
+  ) {
+    const response = await overlayClient.post(`/api/raids/instance/${instanceId}/complete`, {
+      success,
+      finalParticipants,
+      finalCombatLog,
+    });
+    return response.data;
+  },
+
+  async getChatActivity(streamerId: string): Promise<{
+    streamerId: string;
+    activeUsers: number;
+    groupBoost: {
+      active: boolean;
+      multiplier: number;
+      attackBonus: number;
+      defenseBonus: number;
+      healingBonus: number;
+    };
+  }> {
+    const response = await overlayClient.get(`/api/chat/activity/${streamerId}`);
+    return response.data;
+  }
+};
+
+export const cosmeticsAPI = {
+  async getCatalog(): Promise<{
+    catalog: Array<{
+      id: string;
+      category: string;
+      name: string;
+      priceTokens: number;
+      rarity: string;
+      purchasable: boolean;
+      source: string;
+      roleFilter?: string;
+    }>;
+  }> {
+    const response = await apiClient.get('/api/cosmetics');
+    return response.data;
+  },
+
+  async getOwned(): Promise<{ ownedCosmetics: string[] }> {
+    const response = await apiClient.get('/api/cosmetics/owned');
+    return response.data;
+  },
+
+  async purchase(cosmeticId: string, heroId: string) {
+    const response = await apiClient.post('/api/cosmetics/purchase', { cosmeticId, heroId });
+    return response.data;
+  },
+
+  async equip(userId: string, slot: string, cosmeticId: string | null) {
+    const response = await apiClient.post(`/api/cosmetics/${userId}/equip`, { slot, cosmeticId });
+    return response.data;
+  },
+};
+
+export { apiClient, overlayClient };

@@ -4,6 +4,7 @@
  */
 
 import { Item, Equipment } from '../types/Hero';
+import { calculateBackendSetBonuses, getSetDisplayForBackendItem } from '../gear/setBonusEngine';
 
 // Equipment Set Definitions - Named sets for each category
 export const EQUIPMENT_SETS = {
@@ -136,6 +137,30 @@ export function calculateSetBonuses(
   equipment: Equipment | undefined,
   role: string
 ): SetBonuses {
+  const backend = calculateBackendSetBonuses(equipment, role);
+  const legacy = calculateLegacySetBonuses(equipment, role);
+  return {
+    attack: backend.attack + legacy.attack,
+    defense: backend.defense + legacy.defense,
+    hp: backend.hp + legacy.hp,
+    intellect: backend.intellect + legacy.intellect,
+    strength: backend.strength + legacy.strength,
+    dexterity: backend.dexterity + legacy.dexterity,
+    wisdom: backend.wisdom + legacy.wisdom,
+    stamina: backend.stamina + legacy.stamina,
+    healingPower: backend.healingPower + legacy.healingPower,
+    spellDamage: backend.spellDamage + legacy.spellDamage,
+    meleeDamage: backend.meleeDamage + legacy.meleeDamage,
+    hpRegen: backend.hpRegen + legacy.hpRegen,
+    damageReduction: backend.damageReduction + legacy.damageReduction,
+    critChance: backend.critChance + legacy.critChance,
+  };
+}
+
+function calculateLegacySetBonuses(
+  equipment: Equipment | undefined,
+  role: string
+): SetBonuses {
   const bonuses: SetBonuses = {
     attack: 0,
     defense: 0,
@@ -181,9 +206,9 @@ export function calculateSetBonuses(
     const set = setsForCategory[setName as keyof typeof setsForCategory];
     let pieceCount = 0;
     
-    set.pieces.forEach(slot => {
+    set.pieces.forEach((slot: any) => {
       const item = equipment[slot];
-      if (item && item.setName === setName) {
+      if (item && itemBelongsToSet(item, setName)) {
         pieceCount++;
       }
     });
@@ -231,7 +256,76 @@ export function calculateSetBonuses(
   return bonuses;
 }
 
+function itemBelongsToSet(item: Item, setName: string): boolean {
+  if (!item) return false;
+  const raw = item as Item & { setId?: string };
+  return raw.setName === setName || raw.setId === setName;
+}
 
+export type SetBonusTierLine = {
+  pieces: number;
+  description: string;
+  active: boolean;
+};
+
+/** Set progress for portal tooltips (2/4-piece tiers with descriptions). */
+export function getSetDisplayForItem(
+  equipment: Equipment | undefined,
+  role: string,
+  item: Item
+): {
+  setName: string;
+  pieceCount: number;
+  maxPieces: number;
+  tiers: SetBonusTierLine[];
+} | null {
+  const backendDisplay = getSetDisplayForBackendItem(equipment, item);
+  if (backendDisplay) return backendDisplay;
+
+  const setName = item.setName || (item as Item & { setId?: string }).setId;
+  if (!setName) return null;
+
+  const roleLower = role.toLowerCase();
+  const tankRoles = ['guardian', 'paladin', 'warden', 'bloodknight', 'vanguard', 'brewmaster', 'crusader', 'knight'];
+  const healerRoles = ['cleric', 'atoner', 'druid', 'lightbringer', 'shaman', 'mistweaver', 'chronomancer', 'bard', 'priest'];
+  const meleeDpsRoles = ['berserker', 'crusader', 'assassin', 'reaper', 'bladedancer', 'monk', 'stormwarrior', 'hunter'];
+
+  let categoryKey: keyof typeof EQUIPMENT_SETS = 'casterDps';
+  if (tankRoles.includes(roleLower)) categoryKey = 'tank';
+  else if (healerRoles.includes(roleLower)) categoryKey = 'healer';
+  else if (meleeDpsRoles.includes(roleLower)) categoryKey = 'physicalDps';
+
+  type SetDefView = {
+    pieces: string[];
+    bonuses: Record<number, { description?: string }>;
+  };
+  const setsForCategory = EQUIPMENT_SETS[categoryKey] || {};
+  const setDef = (setsForCategory as Record<string, SetDefView>)[setName];
+  if (!setDef) return null;
+
+  let pieceCount = 0;
+  if (equipment) {
+    setDef.pieces.forEach((slot: string) => {
+      const equipped = (equipment as Record<string, Item | null | undefined>)[slot];
+      if (equipped && itemBelongsToSet(equipped, setName)) pieceCount++;
+    });
+  }
+
+  const tiers: SetBonusTierLine[] = [2, 3, 4, 5]
+    .filter((n) => setDef.bonuses[n])
+    .map((n) => ({
+      pieces: n,
+      description: setDef.bonuses[n].description || `${n}-piece bonus`,
+      active: pieceCount >= n,
+    }));
+
+  return {
+    setName,
+    pieceCount: Math.min(pieceCount, setDef.pieces.length),
+    maxPieces: setDef.pieces.length,
+    tiers,
+  };
+}
 
 
 

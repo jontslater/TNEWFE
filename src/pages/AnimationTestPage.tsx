@@ -24,7 +24,7 @@ import { getSkillTree, calculateSkillBonuses, getTotalSkillPoints, getAvailableS
 import { heroAPI } from '../api/client';
 import { Hero } from '../types/Hero';
 import { calculateEquipmentBonuses, getEquipmentHpRegen } from '../utils/equipmentBonuses';
-import { generateLoot, isItemBetter, calculateItemPower } from '../utils/lootGeneration';
+import { isItemBetter, calculateItemPower } from '../gear/itemDisplay';
 import { calculateHeroBaseDamage } from '../utils/heroDamage';
 import { calculateSetBonuses } from '../utils/setBonuses';
 import LevelUpEffect from '../components/LevelUpEffect';
@@ -3379,7 +3379,7 @@ export default function AnimationTestPage() {
   const processAutoBuy = (hero: TestHero): TestHero => {
     if (!autoBuyEnabled || hero.hp <= 0) return hero;
     
-    let updatedHero = { ...hero };
+    const updatedHero = { ...hero };
     const gold = updatedHero.gold || 0;
     
     // Priority order: Health Potion (if HP < 30%), then buffs
@@ -3685,66 +3685,8 @@ export default function AnimationTestPage() {
       });
       }
       
-      // Generate and auto-equip loot for each hero
-      const isBoss = isBossEnemy(enemy.name);
-      heroes.forEach(hero => {
-        // Generate loot for this hero's role
-        const loot = generateLoot(hero.role, {
-          enemyLevel: enemy.level || 1,
-          waveCount: waveCount,
-          isBoss: isBoss
-        });
-        
-        if (loot) {
-          // Auto-equip if better than current item
-          const currentItem = hero.equipment?.[loot.slot];
-          if (isItemBetter(loot, currentItem)) {
-            setHeroes(prev => prev.map(h => {
-              if (h.id !== hero.id) return h;
-              
-              const newEquipment = { ...(h.equipment || {}) };
-              const oldItem = newEquipment[loot.slot];
-              newEquipment[loot.slot] = loot;
-              
-              // Recalculate stats with new equipment
-              const newHero = { ...h, equipment: newEquipment };
-              
-              // Update base stats from equipment
-              let attackBonus = 0;
-              let defenseBonus = 0;
-              let hpBonus = 0;
-              
-              Object.values(newEquipment).forEach((item: any) => {
-                if (item) {
-                  attackBonus += item.attack || 0;
-                  defenseBonus += item.defense || 0;
-                  hpBonus += item.hp || 0;
-                }
-              });
-              
-              // Apply equipment bonuses (keep base stats, add equipment bonuses)
-              // Note: This is simplified - in full implementation, base stats would be separate
-              const equipmentBonuses = calculateEquipmentBonuses(newEquipment);
-              
-              // Show loot notification
-              const rarityColors: Record<string, string> = {
-                common: '#9ca3af',
-                uncommon: '#10b981',
-                rare: '#3b82f6',
-                epic: '#a855f7',
-                legendary: '#f59e0b'
-              };
-              const rarityColor = rarityColors[loot.rarity] || '#9ca3af';
-              
-              showStaggeredLootSCT(hero.id, loot.name);
-              
-              return newHero;
-            }));
-          } else {
-            // Item is worse, just log it (could auto-sell later)
-          }
-        }
-      });
+      // Dev test page: client loot generation removed (server rolls in production overlay)
+      void isBossEnemy(enemy.name);
     }
     
     const ref = enemyRefs.current.get(enemyId);
@@ -4261,7 +4203,7 @@ export default function AnimationTestPage() {
         return;
       }
       
-      let baseDamage = latestEnemy.attack || 300;
+      const baseDamage = latestEnemy.attack || 300;
       let finalDamage = calculateDamage(latestEnemy, latestHero, baseDamage);
       
       // Check Last Stand
@@ -4395,7 +4337,7 @@ export default function AnimationTestPage() {
         return;
       }
       
-      let baseDamage = enemy.attack || 300;
+      const baseDamage = enemy.attack || 300;
       let finalDamage = calculateDamage(enemy, latestHero, baseDamage);
       
       // Check Last Stand
@@ -5141,28 +5083,8 @@ export default function AnimationTestPage() {
       tokens: (hero.tokens || 0) + rewards.tokens,
       xp: (hero.xp || 0) + rewards.experience
     })));
-    // Generate guaranteed loot
-    for (let i = 0; i < rewards.lootCount; i++) {
-      heroes.forEach(hero => {
-        const loot = generateLoot(hero.role, {
-          enemyLevel: raidData.boss.level,
-          waveCount: raidData.waves,
-          isBoss: true,
-          forceSetPiece: Math.random() < 0.6 // 60% chance for set piece from raid boss
-        });
-        if (loot) {
-          const currentItem = hero.equipment?.[loot.slot];
-          if (isItemBetter(loot, currentItem)) {
-            setHeroes(prev => prev.map(h => {
-              if (h.id !== hero.id) return h;
-              const newEquipment = { ...(h.equipment || {}), [loot.slot]: loot };
-              showStaggeredLootSCT(hero.id, loot.name);
-              return { ...h, equipment: newEquipment };
-            }));
-          }
-        }
-      });
-    }
+    // Raid loot: server-rolled in production (no client generateLoot)
+    console.log(`[AnimationTest] Raid loot slots: ${rewards.lootCount} (server only)`);
     
     setActiveRaid(null);
     setRaidData(null);

@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { loginWithTwitch } from '../utils/twitchOAuth';
 import Navigation from '../components/Navigation';
+import SiteFooter from '../components/SiteFooter';
 
 export default function LandingPage() {
   const navigate = useNavigate();
@@ -147,12 +148,7 @@ export default function LandingPage() {
         </div>
       </div>
 
-      {/* Footer */}
-      <footer className="bg-gray-900 py-8 border-t border-gray-800">
-        <div className="container mx-auto px-4 text-center text-gray-500">
-          <p>© 2025 The Never Ending War. All rights reserved.</p>
-        </div>
-      </footer>
+      <SiteFooter />
     </div>
   );
 }

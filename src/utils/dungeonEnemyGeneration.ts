@@ -2,9 +2,12 @@
  * Dungeon Enemy Generation Utility
  * Generates enemies for dungeon rooms based on dungeon definitions
  * Maps dungeon enemy types to existing enemy templates or creates new ones
+ * 
+ * BALANCE: Uses linear scaling from balanceConfig
  */
 
 import { Enemy } from './combat/types';
+import { buildDungeonBoss, buildNormalEnemies, idleKillGold } from '../combat/balance';
 
 // Map dungeon enemy type names to existing enemy template types
 const DUNGEON_ENEMY_MAP: Record<string, string> = {
@@ -30,62 +33,32 @@ const DUNGEON_ENEMY_MAP: Record<string, string> = {
   'Mimic': 'Mimic'
 };
 
-// Get base stats for a dungeon enemy type
-function getDungeonEnemyBaseStats(enemyType: string, level: number): {
-  baseHp: number;
-  baseAttack: number;
-  baseDefense: number;
-  xp: number;
-} {
-  // Map to existing enemy template base stats, scaled by level
-  const mappedType = DUNGEON_ENEMY_MAP[enemyType] || enemyType;
-  
-  // Base stats per level (similar to existing enemy templates)
-  const levelMultiplier = 1 + (level * 0.15);
-  
-  // Default base stats (can be customized per type)
-  const baseStats = {
-    baseHp: Math.floor(80 * levelMultiplier),
-    baseAttack: Math.floor(12 * levelMultiplier),
-    baseDefense: Math.floor(8 * levelMultiplier),
-    xp: Math.floor(15 * level)
-  };
-  
-  // Type-specific adjustments
-  switch (enemyType.toLowerCase()) {
-    case 'goblin':
-    case 'goblin chief':
-      baseStats.baseHp = Math.floor(100 * levelMultiplier);
-      baseStats.baseAttack = Math.floor(15 * levelMultiplier);
-      break;
-    case 'skeleton':
-    case 'skeleton warrior':
-      baseStats.baseHp = Math.floor(120 * levelMultiplier);
-      baseStats.baseAttack = Math.floor(18 * levelMultiplier);
-      break;
-    case 'skeleton mage':
-      baseStats.baseHp = Math.floor(100 * levelMultiplier);
-      baseStats.baseAttack = Math.floor(22 * levelMultiplier); // Higher attack for mages
-      break;
-    case 'lich':
-      baseStats.baseHp = Math.floor(300 * levelMultiplier);
-      baseStats.baseAttack = Math.floor(30 * levelMultiplier);
-      break;
-    case 'imp':
-      baseStats.baseHp = Math.floor(90 * levelMultiplier);
-      baseStats.baseAttack = Math.floor(16 * levelMultiplier);
-      break;
-    case 'demon':
-      baseStats.baseHp = Math.floor(150 * levelMultiplier);
-      baseStats.baseAttack = Math.floor(25 * levelMultiplier);
-      break;
-    case 'demon lord':
-      baseStats.baseHp = Math.floor(500 * levelMultiplier);
-      baseStats.baseAttack = Math.floor(40 * levelMultiplier);
-      break;
+function getDungeonEnemyBaseStats(
+  level: number,
+  count: number,
+  isBoss: boolean,
+  partySize: number,
+  difficultyModifier: number
+): { baseHp: number; baseAttack: number; baseDefense: number; xp: number; gold: number } {
+  if (isBoss) {
+    const boss = buildDungeonBoss(level, partySize, difficultyModifier);
+    return {
+      baseHp: boss.hp,
+      baseAttack: boss.attack,
+      baseDefense: boss.armor,
+      xp: boss.xp,
+      gold: boss.gold,
+    };
   }
-  
-  return baseStats;
+  const packSize = (count >= 3 ? 3 : count >= 2 ? 2 : 1) as 1 | 2 | 3;
+  const normal = buildNormalEnemies(level, packSize, difficultyModifier)[0];
+  return {
+    baseHp: normal.hp,
+    baseAttack: normal.attack,
+    baseDefense: normal.armor,
+    xp: normal.xp,
+    gold: normal.gold,
+  };
 }
 
 /**
@@ -111,7 +84,13 @@ export function generateDungeonEnemies(
     const enemyLevel = level || avgHeroLevel;
     
     // Get base stats for this enemy type
-    const baseStats = getDungeonEnemyBaseStats(type, enemyLevel);
+    const baseStats = getDungeonEnemyBaseStats(
+      enemyLevel,
+      count,
+      !!isBoss,
+      heroes.length,
+      difficultyModifier
+    );
     
     // Get mapped sprite type for animation lookup
     const mappedSpriteType = DUNGEON_ENEMY_MAP[type] || type;
@@ -119,12 +98,9 @@ export function generateDungeonEnemies(
     // Generate count number of this enemy type
     for (let i = 0; i < count; i++) {
       // Apply difficulty modifier
-      const hp = Math.floor(baseStats.baseHp * difficultyModifier);
-      const attack = Math.floor(baseStats.baseAttack * difficultyModifier);
-      const defense = Math.floor(baseStats.baseDefense * difficultyModifier);
-      
-      // Bosses get 1.5x HP boost
-      const finalHp = isBoss ? Math.floor(hp * 1.5) : hp;
+      const finalHp = baseStats.baseHp;
+      const attack = baseStats.baseAttack;
+      const defense = baseStats.baseDefense;
       
       const enemy: Enemy = {
         id: `dungeon-${type}-${Date.now()}-${i}`,
@@ -135,7 +111,8 @@ export function generateDungeonEnemies(
         maxHp: finalHp,
         attack: attack,
         defense: defense,
-        xp: isBoss ? Math.floor(baseStats.xp * 1.5) : baseStats.xp,
+        xp: baseStats.xp,
+        gold: baseStats.gold || idleKillGold(enemyLevel, isBoss ? 2 : 1),
         isBoss: isBoss || false,
         isDead: false // CRITICAL: Must match idle and raid enemy creation
       };
@@ -165,10 +142,13 @@ export async function getDungeonRoom(
 ): Promise<{ id: string; name: string; enemies: any[]; isBoss: boolean } | null> {
   try {
     // Import dungeon data (backend has it, frontend needs access)
-    const { DUNGEONS } = await import('../api/client').catch(() => 
+    const { DUNGEONS } = await import('../api/client').catch(async () => {
       // Fallback: try to get from backend API
-      fetch(`/api/dungeons/${dungeonId}`).then(r => r.json()).then(d => ({ DUNGEONS: { [dungeonId]: d } }))
-    );
+      // Note: Backend route is GET /api/dungeon/:dungeonId (singular), not /api/dungeons/:id
+      const { overlayClient } = await import('../api/client');
+      const response = await overlayClient.get(`/api/dungeon/${dungeonId}`);
+      return { DUNGEONS: { [dungeonId]: response.data } };
+    });
     
     const dungeon = DUNGEONS?.[dungeonId];
     if (!dungeon || !dungeon.rooms || roomIndex >= dungeon.rooms.length) {

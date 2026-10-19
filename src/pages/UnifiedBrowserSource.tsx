@@ -450,83 +450,122 @@ export default function UnifiedBrowserSource() {
     return Object.values(battlefieldState.heroes) as Hero[];
   }, [battlefieldState?.heroes]);
 
-  // Track pending sync operations to prevent duplicate calls
-  const pendingSyncs = useRef<Map<string, NodeJS.Timeout>>(new Map());
-  
-  // Sync hero progress to backend/Firebase with debouncing
-  const syncHeroToBackend = useCallback(async (hero: Hero) => {
-    try {
-      // Only sync heroes that have a valid ID (real heroes from Firebase, not test heroes)
-      // Skip heroes with test IDs or auto-generated IDs
-      if (!hero.id || hero.id.startsWith('test-') || hero.id.startsWith('hero-')) {
-        return; // Skip test heroes
-      }
+  /** Backend overlay/sync: max 40 batches per streamer per 60s — batch all heroes into one POST. */
+  const OVERLAY_SYNC_DEBOUNCE_MS = 5000;
+  const pendingHeroProgress = useRef<Map<string, Hero>>(new Map());
+  const overlaySyncFlushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastProgressSnapshot = useRef<
+    Map<string, { xp: number; gold: number; level: number; maxXp: number }>
+  >(new Map());
 
-      const heroId = hero.id;
-      
-      // CRITICAL: Debounce sync calls - cancel any pending sync for this hero
-      // This prevents spamming the backend with multiple updates for the same hero
-      if (pendingSyncs.current.has(heroId)) {
-        clearTimeout(pendingSyncs.current.get(heroId)!);
-      }
-      
-      // Schedule sync with 5 second debounce - batches multiple rapid changes and prevents spam
-      const timeoutId = setTimeout(async () => {
-        try {
-          // Sync hero progress: XP, level, gold, HP, stats, equipment, etc.
-          await heroAPI.updateHero(heroId, {
-            xp: hero.xp,
-            level: hero.level,
-            maxXp: hero.maxXp,
-            gold: hero.gold,
-            tokens: hero.tokens,
-            hp: hero.hp,
-            maxHp: hero.maxHp,
-            attack: hero.attack,
-            defense: hero.defense,
-            skillPoints: hero.skillPoints,
-            equipment: hero.equipment,
-            // Include stats if they exist
-            stats: hero.stats,
-            // Include active buffs/debuffs if needed for persistence
-            activeBuffs: hero.activeBuffs,
-            activeDebuffs: hero.activeDebuffs,
-          });
-        } catch (error: any) {
-          // Log 404 errors (hero doesn't exist in database) - helps identify stale battlefield data
-          if (error?.response?.status === 404) {
-            console.warn(`⚠️ [Sync] Hero ${heroId} (${hero.username || hero.name}) not found in database - may be deleted. Removing from combat engine.`);
-            
-            // CRITICAL: Remove this hero from combat engine to stop 404 spam
-            // This hero was deleted or never existed, no point trying to sync it again
-            if (combatEngineRef.current) {
-              const engine = combatEngineRef.current;
-              
-              // Remove from combat engine's hero map
-              if (engine.state.heroes.has(heroId)) {
-                engine.state.heroes.delete(heroId);
-                console.log(`✅ [Sync] Removed hero ${heroId} from combat engine`);
-              }
-              
-              // Also update React state to remove from display
-              setHeroes(prev => prev.filter(h => h.id !== heroId));
-            }
-          } else {
-            // Log other errors for debugging
-            console.error(`❌ [Sync] Failed to sync hero ${heroId}:`, error?.message || error);
-          }
-        } finally {
-          // Clean up pending sync tracking
-          pendingSyncs.current.delete(heroId);
-        }
-      }, 5000); // 5 second debounce - prevents backend spam
-      
-      // Track this pending sync
-      pendingSyncs.current.set(heroId, timeoutId);
-    } catch (error) {
-      // Silently fail
+  const overlaySyncRetryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const flushOverlayProgressBatch = useCallback(async () => {
+    overlaySyncFlushTimer.current = null;
+    const heroesPending = Array.from(pendingHeroProgress.current.values());
+    pendingHeroProgress.current.clear();
+    if (heroesPending.length === 0) return;
+
+    const streamerId =
+      streamerTwitchId || battlefieldId?.replace(/^twitch:/, '') || null;
+    if (!streamerId) {
+      heroesPending.forEach((h) => pendingHeroProgress.current.set(h.id!, h));
+      return;
     }
-  }, []);
+
+    const deltas: Array<{
+      heroId: string;
+      xpGained: number;
+      goldGained: number;
+      timestamp: number;
+    }> = [];
+    const now = Date.now();
+    const snapshotsToApply: Array<{
+      heroId: string;
+      xp: number;
+      gold: number;
+      level: number;
+      maxXp: number;
+    }> = [];
+
+    for (const hero of heroesPending) {
+      if (!hero.id || hero.id.startsWith('test-') || hero.id.startsWith('hero-')) continue;
+      const heroId = hero.id;
+      const snap = lastProgressSnapshot.current.get(heroId) || {
+        xp: hero.xp || 0,
+        gold: hero.gold || 0,
+        level: hero.level || 1,
+        maxXp: hero.maxXp || 100,
+      };
+      const curXp = hero.xp || 0;
+      const curGold = hero.gold || 0;
+      const curLevel = hero.level || 1;
+      let xpGained = 0;
+      if (curLevel > snap.level) {
+        xpGained = Math.max(0, snap.maxXp - snap.xp + curXp);
+      } else {
+        xpGained = Math.max(0, curXp - snap.xp);
+      }
+      const goldGained = Math.max(0, curGold - snap.gold);
+      if (xpGained === 0 && goldGained === 0) continue;
+      deltas.push({ heroId, xpGained, goldGained, timestamp: now });
+      snapshotsToApply.push({
+        heroId,
+        xp: curXp,
+        gold: curGold,
+        level: curLevel,
+        maxXp: hero.maxXp || snap.maxXp,
+      });
+    }
+
+    if (deltas.length === 0) return;
+
+    try {
+      const { overlayAPI } = await import('../api/client');
+      const batchId = `ubs-batch-${streamerId}-${now}`;
+      await overlayAPI.syncDeltas(streamerId, batchId, deltas);
+      snapshotsToApply.forEach((s) => {
+        lastProgressSnapshot.current.set(s.heroId, {
+          xp: s.xp,
+          gold: s.gold,
+          level: s.level,
+          maxXp: s.maxXp,
+        });
+      });
+    } catch (error: any) {
+      console.error(`❌ [Sync] Failed batch overlay sync:`, error?.message || error);
+      heroesPending.forEach((h) => {
+        if (h.id) pendingHeroProgress.current.set(h.id, h);
+      });
+      if (!overlaySyncRetryTimer.current) {
+        overlaySyncRetryTimer.current = setTimeout(() => {
+          overlaySyncRetryTimer.current = null;
+          flushOverlayProgressBatch();
+        }, 8000);
+      }
+    }
+  }, [battlefieldId, streamerTwitchId]);
+
+  const queueHeroProgressSync = useCallback(
+    (hero: Hero) => {
+      if (!hero.id || hero.id.startsWith('test-') || hero.id.startsWith('hero-')) return;
+      pendingHeroProgress.current.set(hero.id, hero);
+      if (overlaySyncFlushTimer.current) {
+        clearTimeout(overlaySyncFlushTimer.current);
+      }
+      overlaySyncFlushTimer.current = setTimeout(() => {
+        flushOverlayProgressBatch();
+      }, OVERLAY_SYNC_DEBOUNCE_MS);
+    },
+    [flushOverlayProgressBatch]
+  );
+
+  const syncHeroesToBackend = useCallback(
+    (heroesToQueue: Hero[]) => {
+      heroesToQueue.forEach((h) => queueHeroProgressSync(h));
+    },
+    [queueHeroProgressSync]
+  );
 
   // Clean up temporary states when Firebase updates
   // Firebase is the source of truth - client states only override stale Firebase data
@@ -827,7 +866,7 @@ export default function UnifiedBrowserSource() {
             .filter(h => h && h.id);
           
           if (heroesToSync.length > 0) {
-            heroesToSync.forEach(hero => syncHeroToBackend(hero));
+            syncHeroesToBackend(heroesToSync);
           }
         }, 2000); // 2 second delay to allow batching
       }
@@ -898,16 +937,16 @@ export default function UnifiedBrowserSource() {
         .filter(h => h && h.id);
 
       if (heroesToSync.length > 0) {
-        heroesToSync.forEach(hero => syncHeroToBackend(hero));
+        syncHeroesToBackend(heroesToSync);
       }
     }, 60000); // 60 seconds
 
     return () => clearInterval(syncInterval);
-  }, [syncHeroToBackend, displayHeroes]);
+  }, [syncHeroesToBackend, displayHeroes]);
 
   // NOTE: Removed automatic sync after combat rewards/level-ups
   // Sync is now handled by:
-  // 1. Debounced syncHeroToBackend function (2 second debounce per hero)
+  // 1. Debounced batch overlay/sync (one POST per tick, all heroes in deltas[])
   // 2. Periodic sync every 60 seconds (safety net)
   // 3. Log callback for level-ups/rewards (debounced internally)
   // This prevents duplicate sync calls and backend spam

@@ -5,6 +5,8 @@
 
 import { Hero, Shield, ViewerBonuses } from './types';
 import { ROLE_CONFIG } from '../fullCombatEngine';
+import { computeSkillModifiers } from '../../game/skills/computeSkillModifiers';
+import { computeHealAmount } from '../../combat/balance';
 
 /**
  * Apply shield to hero (from overheal or abilities)
@@ -65,26 +67,24 @@ export function calculateHealing(
   bonuses: ViewerBonuses,
   calculateSkillBonuses: (hero: Hero) => any
 ): number {
-  // Intellect bonus (uncapped - 1% per point, better gear should heal more!)
-  const intellectBonus = 1 + ((healer.intellect || 0) * 0.01);
-  
-  // Wisdom bonus (uncapped - 0.5% per point, similar to caster damage scaling)
-  const wisdomBonus = 1 + ((healer.wisdom || 0) * 0.005);
-  
-  // Healing Power bonus (uncapped - 1% per point, better gear should heal more!)
-  const healingPowerBonus = 1 + ((healer.healingPower || 0) * 0.01);
-  
-  // Spell Damage also affects healing (healers use spell power for everything)
-  const spellDamageBonus = 1 + ((healer.spellDamage || 0) * 0.01);
-
   // Skill bonuses
   const skillBonuses = calculateSkillBonuses(healer);
   const healingMultiplier = 1 + (skillBonuses.healingMultiplier / 100);
 
-  // Calculate final healing (all bonuses are multiplicative)
-  let healAmount = baseHeal * intellectBonus * wisdomBonus * healingPowerBonus * spellDamageBonus * bonuses.healingMultiplier * healingMultiplier;
+  const procMods = computeSkillModifiers(healer);
+  const spellPower =
+    (healer as { spellPower?: number }).spellPower ??
+    getCharacterStatsFallbackSpellPower(healer);
+  let healAmount = computeHealAmount(spellPower, bonuses.healingMultiplier * healingMultiplier);
+  if (procMods.divineGraceProcPercent > 0 && Math.random() < procMods.divineGraceProcPercent / 100) {
+    healAmount *= 2;
+  }
 
   return Math.floor(healAmount);
+}
+
+function getCharacterStatsFallbackSpellPower(healer: Hero): number {
+  return Math.max(1, Math.floor((healer.intellect || 0) * 0.5 + (healer.healingPower || 0)));
 }
 
 /**

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { mailAPI, MailItem } from '../api/client';
+import { canTransferItem } from '../gear/itemBinding';
 import { partyAPI } from '../api/client';
 import { useHero } from '../hooks/useHero';
 
@@ -247,7 +248,9 @@ export default function MailComposeForm({ onClose, onSent }: MailComposeFormProp
     return acc;
   }, {} as Record<string, { name: string; type: string; rarity: string; totalQuantity: number; firstItem: any }>);
 
-  const availableItems = Object.values(groupedItems).filter(grouped => {
+  const availableItems = Object.values(groupedItems).filter((grouped) =>
+    canTransferItem(grouped.firstItem)
+  ).filter(grouped => {
     const itemName = grouped.name;
     
     // Calculate total quantity selected for this item type

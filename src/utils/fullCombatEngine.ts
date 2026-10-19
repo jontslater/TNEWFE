@@ -11,11 +11,19 @@ import { resolveCombat as resolveCombatSimple, startCombat as startCombatSimple 
 import { AdventureEngine } from './adventureEngine';
 import { getHeroSpriteType, getEnemySpriteType, getAnimationDuration } from './animationDurations';
 import { generateEnemiesForCombat } from './enemyGeneration';
-import { getCharacterStats, calculateSkillBonuses } from './combatUtils';
+import { getCharacterStats, calculateSkillBonuses, getViewerBonuses as sharedViewerBonuses } from './combatUtils';
+import {
+  applySkillDamageReductionPercent,
+  computeDamageTaken,
+  damageReduction,
+  getBalancePayload,
+  xpToNextLevel,
+} from '../combat/balance';
 import { processDebuffs, processHpRegeneration } from './combat/buffsDebuffs';
 import { ENEMY_SPRITES } from './enemySpriteConfig';
 import { createProjectile } from './projectiles';
 import { testLog } from './testLogging';
+import type { Hero as BaseHero } from '../types/Hero';
 
 // ============================================================================
 // CONSTANTS
@@ -97,59 +105,8 @@ export const HERB_GATHER_CHANCES = {
 // TYPES
 // ============================================================================
 
-export interface Hero {
-  id?: string;
-  username: string;
-  role: string;
-  level: number;
-  hp: number;
-  maxHp: number;
-  attack: number;
-  defense: number;
-  isDead?: boolean;
-  activeDebuffs?: Record<string, any>;
-  activeBuffs?: Record<string, any>;
-  cooldowns?: Record<string, number>;
-  classAbilityState?: any;
-  equipment?: Record<string, any>;
-  enchantedItems?: any[];
-  skills?: Record<string, any>;
-  stats?: any;
-  lastStandActive?: boolean;
-  lastBigHit?: number;
-  shield?: any;
-  staggerDoT?: number;
-  staggerLastTick?: number;
-  deathTime?: number;
-  deathAnimationPlaying?: boolean;
-  activeProcBuffs?: Record<string, number>;
-  activeThreatMod?: number;
-  strength?: number;
-  dexterity?: number;
-  intellect?: number;
-  wisdom?: number;
-  stamina?: number;
-  healingPower?: number;
-  spellDamage?: number;
-  meleeDamage?: number;
-  guildId?: string;
-  gold?: number;
-  potions?: { health: number };
-  autoBuy?: boolean; // Auto-buy enabled flag
-  xp?: number;
-  maxXp?: number;
-  profession?: { 
-    type: string;
-    level?: number;
-    materials?: {
-      herbs?: { common: number; uncommon: number; rare: number; epic: number };
-      ore?: { iron: number; steel: number; mithril: number; adamantite: number };
-      essence?: number;
-    };
-    totalGathered?: number;
-    lastGatherTime?: number;
-  };
-}
+// Use canonical Hero type from types/Hero.ts
+export type Hero = BaseHero;
 
 export interface Enemy {
   id: number | string;
@@ -190,7 +147,7 @@ export interface CombatState {
 
 export type AnimationCallback = (entityId: string, animation: 'idle' | 'attack' | 'hurt' | 'death' | 'heal', isHero: boolean) => void;
 export type LogCallback = (type: string, message: string) => void;
-export type CombatTextCallback = (entityId: string, amount: number, type: 'damage' | 'crit' | 'heal' | 'heal-hot' | 'dot', isHero: boolean) => void;
+export type CombatTextCallback = (entityId: string, amount: number, type: 'damage' | 'crit' | 'heal' | 'heal-hot' | 'dot' | 'loot', isHero: boolean) => void;
 
 // ============================================================================
 // COMBAT ENGINE
@@ -377,7 +334,7 @@ export class FullCombatEngine {
     this.triggerAnimation(entityId, animation, isHero);
   }
   
-  private triggerCombatText(entityId: string, amount: number, type: 'damage' | 'crit' | 'heal' | 'heal-hot' | 'dot', isHero: boolean) {
+  private triggerCombatText(entityId: string, amount: number, type: 'damage' | 'crit' | 'heal' | 'heal-hot' | 'dot' | 'loot', isHero: boolean) {
     this.combatTextCallbacks.forEach(cb => cb(entityId, amount, type, isHero));
   }
 
@@ -580,7 +537,7 @@ export class FullCombatEngine {
         triggerAnimation: (entityId: string, animation: string, isHero: boolean) =>
           this.triggerAnimation(entityId, animation as any, isHero),
         triggerHealAnimation: (username: string) => this.triggerAnimation(username, 'heal', true),
-        triggerCombatText: (entityId: string, amount: number, type: 'damage' | 'crit' | 'heal' | 'heal-hot' | 'dot', isHero: boolean) =>
+        triggerCombatText: (entityId: string, amount: number, type: 'damage' | 'crit' | 'heal' | 'heal-hot' | 'dot' | 'loot', isHero: boolean) =>
           this.triggerCombatText(entityId, amount, type, isHero),
         updateEnemyHealthBar: () => {},
         updateHeroUI: () => {}
@@ -601,7 +558,7 @@ export class FullCombatEngine {
         triggerAnimation: (entityId: string, animation: string, isHero: boolean) =>
           this.triggerAnimation(entityId, animation as any, isHero),
         triggerHealAnimation: (username: string) => this.triggerAnimation(username, 'heal', true),
-        triggerCombatText: (entityId: string, amount: number, type: 'damage' | 'crit' | 'heal' | 'heal-hot' | 'dot', isHero: boolean) =>
+        triggerCombatText: (entityId: string, amount: number, type: 'damage' | 'crit' | 'heal' | 'heal-hot' | 'dot' | 'loot', isHero: boolean) =>
           this.triggerCombatText(entityId, amount, type, isHero),
         triggerMusicalNoteEffect: (username: string, color?: string, count?: number) =>
           this.triggerMusicalNoteEffect(username, color, count),
@@ -920,11 +877,9 @@ export class FullCombatEngine {
     );
     
     // Process HP Regeneration (from regeneration_armor enchantment)
-    processHpRegeneration(
-      this.state.heroes,
-      now,
-      callbacks
-    );
+    if (!this.state.currentEnemies?.length) {
+      processHpRegeneration(this.state.heroes, now, callbacks);
+    }
   }
   
   /**
@@ -1390,18 +1345,15 @@ export class FullCombatEngine {
    * Calculate maxXp for a given level (matches backend polynomial formula)
    */
   private calculateMaxXp(level: number): number {
-    if (level <= 1) return 100;
-    // Polynomial growth: 40 * level² + 300 * level - 240 (matches backend)
-    return Math.floor(40 * level * level + 300 * level - 240);
+    return xpToNextLevel(level);
   }
 
   private levelUpHero(hero: Hero) {
-    // Cap at level 100
     if ((hero.level || 1) >= 100) {
       hero.xp = hero.maxXp || this.calculateMaxXp(100);
       return;
     }
-    
+
     hero.level = (hero.level || 1) + 1;
     hero.xp = 0;
     hero.maxXp = this.calculateMaxXp(hero.level);
@@ -1745,12 +1697,7 @@ export class FullCombatEngine {
    * Get viewer bonuses (damage/healing/defense multipliers based on viewer count)
    */
   private getViewerBonuses() {
-    const viewerCount = this.state.viewerCount || 0;
-    return {
-      damageMultiplier: 1 + (viewerCount * 0.01),  // 1% per viewer
-      healingMultiplier: 1 + (viewerCount * 0.01), // 1% per viewer
-      defenseMultiplier: 1 + (viewerCount * 0.005), // 0.5% per viewer
-    };
+    return sharedViewerBonuses(this.state.viewerCount || 0);
   }
 
   /**
@@ -1758,156 +1705,7 @@ export class FullCombatEngine {
    * Extracted from IdleDnD/game.js:6644
    */
   private calculateSkillBonuses(hero: Hero) {
-    const skills = hero.skills || {};
-    const bonuses = {
-      attack: 0,
-      defense: 0,
-      hp: 0,
-      damageMultiplier: 0,
-      healingMultiplier: 0,
-      defenseMultiplier: 0,
-      critChance: 0,
-      critDamage: 0,
-      cooldownReduction: 0,
-      lifesteal: 0,
-      speedBoost: 0
-    };
-    
-    // Skill templates (simplified - matches backend structure)
-    const skillTemplates: Record<string, { effect: string; stat?: string; baseValue: number }> = {
-      // Tank skills
-      'guardian_skill_0': { effect: 'stat_boost', stat: 'hp', baseValue: 5 },
-      'guardian_skill_1': { effect: 'defense_mult', baseValue: 3 },
-      'guardian_skill_2': { effect: 'stat_boost', stat: 'defense', baseValue: 4 },
-      'guardian_skill_3': { effect: 'stat_boost', stat: 'attack', baseValue: 2 },
-      'guardian_skill_4': { effect: 'defense_mult', baseValue: 5 },
-      'guardian_skill_5': { effect: 'cooldown_red', baseValue: 10 },
-      'guardian_skill_6': { effect: 'stat_boost', stat: 'defense', baseValue: 6 },
-      'guardian_skill_7': { effect: 'defense_mult', baseValue: 4 },
-      'guardian_skill_8': { effect: 'stat_boost', stat: 'hp', baseValue: 8 },
-      'guardian_skill_9': { effect: 'defense_mult', baseValue: 6 },
-      // Healer skills
-      'cleric_skill_0': { effect: 'healing_mult', baseValue: 5 },
-      'cleric_skill_1': { effect: 'cooldown_red', baseValue: 8 },
-      'cleric_skill_2': { effect: 'healing_mult', baseValue: 4 },
-      'cleric_skill_3': { effect: 'speed_boost', baseValue: 10 },
-      'cleric_skill_4': { effect: 'healing_mult', baseValue: 6 },
-      'cleric_skill_5': { effect: 'cooldown_red', baseValue: 12 },
-      'cleric_skill_6': { effect: 'healing_mult', baseValue: 5 },
-      'cleric_skill_7': { effect: 'cooldown_red', baseValue: 15 },
-      'cleric_skill_8': { effect: 'stat_boost', stat: 'defense', baseValue: 3 },
-      'cleric_skill_9': { effect: 'healing_mult', baseValue: 8 },
-      // DPS skills
-      'berserker_skill_0': { effect: 'damage_mult', baseValue: 5 },
-      'berserker_skill_1': { effect: 'crit_chance', baseValue: 3 },
-      'berserker_skill_2': { effect: 'crit_damage', baseValue: 10 },
-      'berserker_skill_3': { effect: 'stat_boost', stat: 'attack', baseValue: 4 },
-      'berserker_skill_4': { effect: 'speed_boost', baseValue: 8 },
-      'berserker_skill_5': { effect: 'damage_mult', baseValue: 6 },
-      'berserker_skill_6': { effect: 'crit_chance', baseValue: 5 },
-      'berserker_skill_7': { effect: 'damage_mult', baseValue: 7 },
-      'berserker_skill_8': { effect: 'lifesteal', baseValue: 5 },
-      'berserker_skill_9': { effect: 'damage_mult', baseValue: 10 }
-    };
-    
-    // Apply all skills (generic pattern matching for all classes)
-    Object.entries(skills).forEach(([skillId, skillData]: [string, any]) => {
-      if (!skillData || !skillData.points) return;
-      
-      // Try to find skill template by exact match or pattern
-      let skillDef = skillTemplates[skillId];
-      
-      // If not found, try pattern matching (class_skill_N)
-      if (!skillDef && skillId.includes('_skill_')) {
-        const parts = skillId.split('_skill_');
-        const className = parts[0];
-        const skillIndex = parseInt(parts[1]);
-        
-        // Use generic templates based on class category
-        const category = ROLE_CONFIG[className]?.category || 'dps';
-        if (category === 'tank') {
-          const tankSkills = [
-            { effect: 'stat_boost', stat: 'hp', baseValue: 5 },
-            { effect: 'defense_mult', baseValue: 3 },
-            { effect: 'stat_boost', stat: 'defense', baseValue: 4 },
-            { effect: 'stat_boost', stat: 'attack', baseValue: 2 },
-            { effect: 'defense_mult', baseValue: 5 },
-            { effect: 'cooldown_red', baseValue: 10 },
-            { effect: 'stat_boost', stat: 'defense', baseValue: 6 },
-            { effect: 'defense_mult', baseValue: 4 },
-            { effect: 'stat_boost', stat: 'hp', baseValue: 8 },
-            { effect: 'defense_mult', baseValue: 6 }
-          ];
-          skillDef = tankSkills[skillIndex] || null;
-        } else if (category === 'healer') {
-          const healerSkills = [
-            { effect: 'healing_mult', baseValue: 5 },
-            { effect: 'cooldown_red', baseValue: 8 },
-            { effect: 'healing_mult', baseValue: 4 },
-            { effect: 'speed_boost', baseValue: 10 },
-            { effect: 'healing_mult', baseValue: 6 },
-            { effect: 'cooldown_red', baseValue: 12 },
-            { effect: 'healing_mult', baseValue: 5 },
-            { effect: 'cooldown_red', baseValue: 15 },
-            { effect: 'stat_boost', stat: 'defense', baseValue: 3 },
-            { effect: 'healing_mult', baseValue: 8 }
-          ];
-          skillDef = healerSkills[skillIndex] || null;
-        } else {
-          const dpsSkills = [
-            { effect: 'damage_mult', baseValue: 5 },
-            { effect: 'crit_chance', baseValue: 3 },
-            { effect: 'crit_damage', baseValue: 10 },
-            { effect: 'stat_boost', stat: 'attack', baseValue: 4 },
-            { effect: 'speed_boost', baseValue: 8 },
-            { effect: 'damage_mult', baseValue: 6 },
-            { effect: 'crit_chance', baseValue: 5 },
-            { effect: 'damage_mult', baseValue: 7 },
-            { effect: 'lifesteal', baseValue: 5 },
-            { effect: 'damage_mult', baseValue: 10 }
-          ];
-          skillDef = dpsSkills[skillIndex] || null;
-        }
-      }
-      
-      if (!skillDef) return;
-      
-      const value = skillDef.baseValue * skillData.points;
-      
-      switch (skillDef.effect) {
-        case 'stat_boost':
-          if (skillDef.stat === 'attack') bonuses.attack += value;
-          else if (skillDef.stat === 'defense') bonuses.defense += value;
-          else if (skillDef.stat === 'hp') bonuses.hp += value;
-          break;
-        case 'damage_mult':
-          bonuses.damageMultiplier += value;
-          break;
-        case 'healing_mult':
-          bonuses.healingMultiplier += value;
-          break;
-        case 'defense_mult':
-          bonuses.defenseMultiplier += value;
-          break;
-        case 'crit_chance':
-          bonuses.critChance += value;
-          break;
-        case 'crit_damage':
-          bonuses.critDamage += value;
-          break;
-        case 'cooldown_red':
-          bonuses.cooldownReduction += value;
-          break;
-        case 'lifesteal':
-          bonuses.lifesteal += value;
-          break;
-        case 'speed_boost':
-          bonuses.speedBoost += value;
-          break;
-      }
-    });
-    
-    return bonuses;
+    return calculateSkillBonuses(hero);
   }
 
   /**
@@ -1938,7 +1736,7 @@ export class FullCombatEngine {
     // Calculate skill bonuses first
     const skillBonuses = this.calculateSkillBonuses(hero);
 
-    let stats: any = {
+    const stats: any = {
       attack: config.baseAttack + ((hero.level - 1) * config.attackPerLevel),
       defense: config.baseDefense + ((hero.level - 1) * config.defensePerLevel),
       maxHp: config.baseHp + ((hero.level - 1) * config.hpPerLevel),
@@ -1985,7 +1783,7 @@ export class FullCombatEngine {
     }
 
     // Cap total crit chance at 35%
-    stats.critChance = Math.min(stats.critChance || 0, 0.35);
+    stats.critChance = Math.min(stats.critChance || 0, 0.75);
 
     // Apply stamina to HP (1 stamina = 10 HP)
     stats.maxHp += (stats.stamina || 0) * 10;
@@ -2090,13 +1888,10 @@ export class FullCombatEngine {
       return { died: false, actualDamage: 0 };
     }
     
-    // Percentage-based damage reduction with minimum damage guarantee
     const enemyDefense = enemy.defense || 0;
-    // Formula: damage / (1 + defense / 250)
-    // Minimum 25% of original damage always gets through
-    const damageAfterDefense = damage / (1 + enemyDefense / 250);
-    const minDamage = Math.max(1, damage * 0.25);
-    const actualDamage = Math.max(minDamage, Math.floor(damageAfterDefense));
+    const attackerLevel = (enemy as { level?: number }).level || 1;
+    const dr = damageReduction(enemyDefense, attackerLevel);
+    const actualDamage = Math.max(0, Math.floor(damage * (1 - dr)));
     
     enemy.hp -= actualDamage;
     
@@ -2764,9 +2559,6 @@ export class FullCombatEngine {
     
     // Apply skill defense multipliers
     const skillBonuses = this.calculateSkillBonuses(target.hero);
-    if (skillBonuses.defenseMultiplier > 0) {
-      effectiveDefense = Math.floor(effectiveDefense * (1 + skillBonuses.defenseMultiplier / 100));
-    }
     
     // Check for debuffs/buffs
     let damageMultiplier = 1.0;
@@ -2921,14 +2713,25 @@ export class FullCombatEngine {
   ) {
     const { ironSkinActive, lastStandActive, shieldWallActive, isCrit, isBloodlust, now } = options;
     const category = ROLE_CONFIG[target.hero.role]?.category || 'dps';
+    const skillBonuses = this.calculateSkillBonuses(target.hero);
+
+    const roleShield = (target.hero.activeBuffs as Record<string, { active?: boolean; expiresAt?: number; drFraction?: number }>)
+      ?.roleActiveShield;
+    const roleActiveShieldActive =
+      roleShield?.active && (roleShield.expiresAt ?? 0) > now;
     
-    let actualDamage = Math.max(1, enemyDamage - effectiveDefense);
+    const attackerLevel = (enemy as { level?: number }).level || 1;
+    let actualDamage = computeDamageTaken(
+      enemyDamage,
+      effectiveDefense,
+      attackerLevel,
+      skillBonuses.defenseMultiplier
+    );
     actualDamage = Math.floor(actualDamage * damageMultiplier);
-    
-    // Apply skill defense multipliers (additional damage reduction)
-    const targetSkillBonuses = this.calculateSkillBonuses(target.hero);
-    if (targetSkillBonuses.defenseMultiplier > 0) {
-      actualDamage = Math.floor(actualDamage / (1 + targetSkillBonuses.defenseMultiplier / 100));
+
+    if (roleActiveShieldActive) {
+      const dr = roleShield?.drFraction ?? 0.5;
+      actualDamage = Math.floor(actualDamage * (1 - dr));
     }
     
     // Apply armor enchantment thorns effects BEFORE damage reductions
@@ -2951,7 +2754,7 @@ export class FullCombatEngine {
         const itemEnchantments = target.hero.enchantedItems!.find(ei => ei.itemId === item.id);
         if (!itemEnchantments || !itemEnchantments.enchantments) return;
         
-        itemEnchantments.enchantments.forEach(ench => {
+        itemEnchantments.enchantments.forEach((ench: any) => {
           const value = (ench.baseValue || 5) * (ench.level || 1);
           
           if (ench.type === 'thorns_armor') {
@@ -3023,9 +2826,11 @@ export class FullCombatEngine {
     }
     
     if (shieldWallActive) {
+      const sw = getBalancePayload().roleAbilities.shieldWall;
+      const dr = category === 'tank' ? sw.tankDamageReduction : sw.partyDamageReduction;
       const damageBefore = actualDamage;
-      actualDamage = Math.floor(actualDamage * 0.7);
-      blockedByAbilities += (damageBefore - actualDamage);
+      actualDamage = Math.floor(actualDamage * (1 - dr));
+      blockedByAbilities += damageBefore - actualDamage;
     }
     
     // Initialize stats if needed
@@ -3052,14 +2857,6 @@ export class FullCombatEngine {
     // Track big hits for Shield Guardian
     if (target.hero.role === 'guardian' && actualDamage >= target.hero.maxHp * 0.4) {
       target.hero.lastBigHit = now;
-    }
-    
-    actualDamage = Math.max(3, actualDamage);
-    
-    // Damage cap
-    const maxDamagePerHit = Math.floor(target.hero.maxHp * 0.35);
-    if (actualDamage > maxDamagePerHit) {
-      actualDamage = maxDamagePerHit;
     }
     
     // Shield absorption
@@ -3160,13 +2957,14 @@ export class FullCombatEngine {
           bloodlustDamage *= 1.4;
         }
         
-        let bloodlustActualDamage = Math.max(1, bloodlustDamage - effectiveDefense);
+        const bloodlustSkillDr = this.calculateSkillBonuses(target.hero).defenseMultiplier;
+        let bloodlustActualDamage = computeDamageTaken(
+          bloodlustDamage,
+          effectiveDefense,
+          attackerLevel,
+          bloodlustSkillDr
+        );
         bloodlustActualDamage = Math.floor(bloodlustActualDamage * damageMultiplier);
-        
-        const maxDamagePerHit = Math.floor(target.hero.maxHp * 0.35);
-        if (bloodlustActualDamage > maxDamagePerHit) {
-          bloodlustActualDamage = maxDamagePerHit;
-        }
         
         if (lastStandActive) {
           bloodlustActualDamage = Math.floor(bloodlustActualDamage * 0.25);
@@ -3174,7 +2972,9 @@ export class FullCombatEngine {
           bloodlustActualDamage = Math.floor(bloodlustActualDamage * 0.5);
         }
         if (shieldWallActive) {
-          bloodlustActualDamage = Math.floor(bloodlustActualDamage * 0.7);
+          const sw = getBalancePayload().roleAbilities.shieldWall;
+          const dr = category === 'tank' ? sw.tankDamageReduction : sw.partyDamageReduction;
+          bloodlustActualDamage = Math.floor(bloodlustActualDamage * (1 - dr));
         }
         
         // Shield absorption for bloodlust
@@ -3472,7 +3272,7 @@ export class FullCombatEngine {
       }
       
       // Apply level penalty to base XP
-      let xpAfterPenalty = Math.floor(baseXPSplit * levelMultiplier);
+      const xpAfterPenalty = Math.floor(baseXPSplit * levelMultiplier);
       
       // Grant XP (apply prestige level boost + prestige core bonuses + shop buffs)
       let xpMultiplier = 1.0;

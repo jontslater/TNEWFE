@@ -18,6 +18,10 @@ import { processEnemyAttack, clearActiveEnemyAttacks, getActiveEnemyAttacksCount
 import { getEnemySpriteType } from '../animationDurations';
 import { getAnimationDuration, getHeroSpriteType } from '../animationDurations';
 import { testLog } from '../testLogging';
+import { processRoleActivePhase } from '../../game/skills/processRoleActivePhase';
+import { computeSkillModifiers, rollSwiftExtraAttack } from '../../game/skills/computeSkillModifiers';
+import { getViewerBonuses } from '../combatUtils';
+import { getSwingIntervalMs } from '../../combat/balance';
 
 /**
  * Main combat resolution function
@@ -54,10 +58,11 @@ export function resolveCombat(
 
   // Get viewer bonuses
   const viewerCount = state.viewerCount || 0;
+  const chatBonuses = getViewerBonuses(viewerCount);
   const bonuses: ViewerBonuses = {
-    damageMultiplier: 1 + (viewerCount * 0.01),  // 1% per viewer
-    healingMultiplier: 1 + (viewerCount * 0.01), // 1% per viewer
-    defenseMultiplier: 1 + (viewerCount * 0.005), // 0.5% per viewer
+    damageMultiplier: chatBonuses.damageMultiplier,
+    healingMultiplier: chatBonuses.healingMultiplier,
+    defenseMultiplier: chatBonuses.defenseMultiplier,
     difficultyModifier: state.difficultyModifier || 1.0
   };
 
@@ -94,6 +99,11 @@ export function resolveCombat(
   // PHASE 4: Emergency Abilities (Last Stand, Shield Wall, Divine Shield, etc.)
   // ============================================
   processEmergencyAbilities(state.heroes, now, callbacks);
+
+  // ============================================
+  // PHASE 4.5: Role-active charge abilities (all heroes)
+  // ============================================
+  processRoleActivePhase(heroes, enemies, now, callbacks);
 
   // ============================================
   // PHASE 5: Healer Abilities (Group Heal, Instant Heal, Combat Res, etc.)
@@ -293,7 +303,7 @@ export function resolveCombat(
 
     const finalDamage = abilityResult.modifiedDamage || baseDamage;
     
-    damageActions.push({
+    const damageAction = {
       username,
       damage: finalDamage,
       role: hero.role,
@@ -304,7 +314,14 @@ export function resolveCombat(
       stormChain: aoeResult.stormChain || abilityResult.stormChain,
       targetEnemy: targetEnemy,
       initiative: combatant.initiative
-    });
+    };
+    damageActions.push(damageAction);
+
+    const speedMods = computeSkillModifiers(hero);
+    if (!isAoE && rollSwiftExtraAttack(speedMods.speedBoost)) {
+      callbacks.log('combat', `⚡ ${username} Swift — extra attack!`);
+      damageActions.push({ ...damageAction, initiative: combatant.initiative - 0.01 });
+    }
   });
 
   // ============================================
@@ -369,7 +386,7 @@ export function resolveCombat(
   // Match Electron app: Fixed 1500ms delay between actions (game.js line 14726)
   // Process all actions synchronously within each action, animations trigger immediately
   let delay = 0;
-  const ACTION_DELAY = 1500; // Fixed delay between actions (matches Electron app)
+  const ACTION_DELAY = getSwingIntervalMs();
   
   allActions.forEach((allAction, index) => {
     // Capture delay for this specific action (CRITICAL: capture before incrementing)

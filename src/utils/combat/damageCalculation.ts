@@ -5,7 +5,8 @@
 
 import { Hero, Enemy, ViewerBonuses } from './types';
 import { ROLE_CONFIG } from '../fullCombatEngine';
-import { calculateSkillBonuses } from '../fullCombatEngine';
+import { capCritChance, damageReduction } from '../../combat/balance';
+import { critDamageMultiplier } from '../../game/skills/computeSkillModifiers';
 
 /**
  * Calculate base hero damage with all stat scaling
@@ -58,7 +59,7 @@ export function calculateHeroDamage(
 
     // Apply Arcane Empowerment spell damage buff
     if (hero.activeBuffs?.spellDamageMultiplier && hero.activeBuffs.spellDamageMultiplier.remainingDuration > 0) {
-      baseDamage *= hero.activeBuffs.spellDamageMultiplier.value;
+      baseDamage *= Number(hero.activeBuffs.spellDamageMultiplier.value);
     }
   } else if (category === 'tank') {
     // Tanks: Strength adds 0.5% damage per point (CAPPED at 100)
@@ -80,7 +81,7 @@ export function calculateHeroDamage(
 
   // Apply active buffs (e.g., Battle Hymn from Bard)
   if (hero.activeBuffs?.attackMultiplier && hero.activeBuffs.attackMultiplier.remainingDuration > 0) {
-    baseDamage *= hero.activeBuffs.attackMultiplier.value;
+    baseDamage *= Number(hero.activeBuffs.attackMultiplier.value);
   }
 
   // Apply guild perks (combat bonus) - placeholder
@@ -88,14 +89,10 @@ export function calculateHeroDamage(
     baseDamage *= 1.05; // 5% guild combat bonus (placeholder)
   }
 
-  // Check for crit chance (base 5% + gear-based + skill-based)
-  const baseCritChance = 0.05; // 5% base crit chance
-  const gearCritChance = hero.critChance || 0; // Gear-based crit chance (from gems, set bonuses, etc.)
-  const totalCritChance = baseCritChance + gearCritChance + (heroSkillBonuses.critChance / 100);
-  
+  const totalCritChance = capCritChance(hero.critChance ?? 0.05);
+
   if (totalCritChance > 0 && Math.random() < totalCritChance) {
-    const critMultiplier = 2.0 + (heroSkillBonuses.critDamage / 100);
-    baseDamage *= critMultiplier;
+    baseDamage *= critDamageMultiplier(heroSkillBonuses.critDamage);
   }
 
   let heroDamage = baseDamage * bonuses.damageMultiplier;
@@ -119,13 +116,10 @@ export function applyEnemyDamage(enemy: Enemy, damage: number): { died: boolean;
   }
 
   // Percentage-based damage reduction with minimum damage guarantee
-  const enemyDefense = enemy.defense || 0;
-  // Formula: damage / (1 + defense / 250)
-  // This means: 250 defense = 50% reduction, 500 defense = 66% reduction
-  // Minimum 25% of original damage always gets through
-  const damageAfterDefense = damage / (1 + enemyDefense / 250);
-  const minDamage = Math.max(1, damage * 0.25); // At least 25% of damage
-  const actualDamage = Math.max(minDamage, Math.floor(damageAfterDefense));
+  const enemyArmor = enemy.defense || 0;
+  const attackerLevel = (enemy as { level?: number }).level || 1;
+  const dr = damageReduction(enemyArmor, attackerLevel);
+  const actualDamage = Math.max(1, Math.floor(damage * (1 - dr)));
 
   enemy.hp -= actualDamage;
 

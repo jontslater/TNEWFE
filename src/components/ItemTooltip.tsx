@@ -1,6 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
-import { Item, Socket, Hero } from '../types/Hero';
+import { Item, Socket, Hero, Equipment } from '../types/Hero';
 import { getRarityColor, getMaxSockets, getGemColor } from '../utils/format';
+import { getSetDisplayForItem } from '../utils/setBonuses';
+import type { GearAffix } from '../gear/itemDisplay';
+import { getBindingTooltipText } from '../gear/itemBinding';
 
 interface ItemTooltipProps {
   item: Item;
@@ -101,6 +104,65 @@ export default function ItemTooltip({ item, children, position: initialPosition 
               {item.rarity}
             </span>
           </div>
+
+          {((item as Item & { itemLevel?: number }).itemLevel ?? (item as Item & { ilvl?: number }).ilvl) && (
+            <div className="text-xs text-gray-400 mb-2">
+              Item Level {(item as Item & { itemLevel?: number }).itemLevel ?? (item as Item & { ilvl?: number }).ilvl}
+            </div>
+          )}
+
+          {(() => {
+            const bindingLine = getBindingTooltipText(item);
+            return bindingLine ? (
+              <div className="text-xs text-amber-200 mb-2">{bindingLine}</div>
+            ) : null;
+          })()}
+
+          {(item as Item & { affixes?: GearAffix[] }).affixes &&
+            (item as Item & { affixes?: GearAffix[] }).affixes!.length > 0 && (
+            <div className="border-t border-gray-700 pt-2 mb-3">
+              <div className="text-xs font-semibold text-sky-400 mb-1">Affixes</div>
+              <div className="space-y-0.5 text-xs">
+                {(item as Item & { affixes?: GearAffix[] }).affixes!.map((affix, idx) => (
+                  <div key={affix.id || idx} className="text-green-300">
+                    {affix.label ||
+                      `${affix.kind === 'prefix' ? 'Prefix' : affix.kind === 'suffix' ? 'Suffix' : 'Affix'}`}
+                    {affix.stats &&
+                      Object.entries(affix.stats)
+                        .filter(([, v]) => v)
+                        .map(([k, v]) => ` +${v} ${k}`)
+                        .join('')}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {hero &&
+            (() => {
+              const previewEquip: Equipment | undefined = item.slot
+                ? { ...(hero.equipment || {}), [item.slot]: item } as Equipment
+                : hero.equipment;
+              const setInfo = getSetDisplayForItem(previewEquip, hero.role || '', item);
+              if (!setInfo) return null;
+              return (
+                <div className="border-t border-gray-700 pt-2 mb-3">
+                  <div className="text-xs font-semibold text-lime-400 mb-1">
+                    {setInfo.setName} ({setInfo.pieceCount}/{setInfo.maxPieces})
+                  </div>
+                  <div className="space-y-0.5 text-xs">
+                    {setInfo.tiers.map((tier) => (
+                      <div
+                        key={tier.pieces}
+                        className={tier.active ? 'text-lime-300' : 'text-gray-500'}
+                      >
+                        ({tier.pieces}) {tier.description}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
 
           {/* Base Stats */}
           <div className="space-y-1 mb-3">

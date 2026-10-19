@@ -2,9 +2,12 @@
  * Enemy Generation Utility
  * Generates enemies locally based on hero levels (scaled like the main game)
  * Extracted from IdleDnD/game.js encounterEnemy() function
+ * 
+ * BALANCE: Uses linear scaling from balanceConfig instead of quadratic
  */
 
 import { Hero, Enemy } from './combat/types';
+import { buildNormalEnemies, waveTierMultiplier } from '../combat/balance';
 
 /**
  * DEBUG MODE: Enable only ONE enemy at a time for testing
@@ -398,7 +401,7 @@ export function generateEnemiesForCombat(
   
   if (availableEnemies.length === 0) {
     // Fallback to first enemy if none available
-    return [generateSingleEnemy(ENEMY_TEMPLATES[0], scaling, 1.0, 0)];
+    return [generateSingleEnemy(ENEMY_TEMPLATES[0], scaling, 1.0, 0, 1)];
   }
   
   // Pack scaling: reduce per-enemy stats for packs
@@ -421,7 +424,7 @@ export function generateEnemiesForCombat(
       enemyTemplate = availableEnemies[Math.floor(Math.random() * availableEnemies.length)];
     }
     
-    const enemy = generateSingleEnemy(enemyTemplate, scaling, packScaling, i);
+    const enemy = generateSingleEnemy(enemyTemplate, scaling, packScaling, i, packSize);
     enemies.push(enemy);
   }
   
@@ -434,9 +437,10 @@ export function generateEnemiesForCombat(
  */
 function generateSingleEnemy(
   template: typeof ENEMY_TEMPLATES[0],
-  scaling: { avgLevel: number; multiplier: number },
+  scaling: { avgLevel: number; multiplier: number; waveCount?: number },
   packScaling: number,
-  slotIndex: number
+  slotIndex: number,
+  packSize: number = 1
 ): Enemy {
   // FIXED: hpMultiplier should be based on scaling.multiplier, but NOT multiplied by it again
   // The hpMultiplier already accounts for difficulty scaling
@@ -458,33 +462,32 @@ function generateSingleEnemy(
   
   const enemyId = `enemy-${Date.now()}-${slotIndex}`;
   
-  // FIXED: The original code was double-scaling HP because:
-  // - hpMultiplier = 1.2 * difficultyMultiplier
-  // - difficultyMultiplier = 1.0 + ((scaling.multiplier - 1.0) * 0.8)
-  // - So hp = baseHp * scaling.multiplier * hpMultiplier = baseHp * scaling.multiplier * 1.2 * (1.0 + ((scaling.multiplier - 1.0) * 0.8))
-  // This applies scaling.multiplier twice (once directly, once via difficultyMultiplier).
-  // 
-  // The fix: Keep scaling.multiplier for level/party/gear/wave scaling, but remove the double-scaling from difficultyMultiplier.
-  // Use a simpler HP multiplier: 1.2x base, scaled by scaling.multiplier.
-  const finalHp = Math.max(1, Math.floor(template.baseHp * scaling.multiplier * 1.2 * packScaling));
+  const level = Math.max(1, Math.floor(scaling.avgLevel));
+  const waveMult =
+    waveTierMultiplier(scaling.waveCount || 1) * (scaling.multiplier || 1) * (template.isBoss ? 1.2 : 1);
+  const ps = (packSize === 2 || packSize === 3 ? packSize : 1) as 1 | 2 | 3;
+  const balancePack = buildNormalEnemies(level, ps, waveMult)[Math.min(slotIndex, ps - 1)] ||
+    buildNormalEnemies(level, ps, waveMult)[0];
+  const bossScale = template.isBoss ? 3 : 1;
+  const finalHp = Math.floor(balancePack.hp * bossScale);
+  const finalAttack = Math.floor(balancePack.attack * bossScale * attackMultiplier);
+  const finalDefense = Math.floor(balancePack.armor * (template.isBoss ? 1.2 : 1) * defenseMultiplier);
+  const finalXp = balancePack.xp * (template.isBoss ? 10 : 1);
+  const finalGold = balancePack.gold * (template.isBoss ? 2 : 1);
   
   return {
     id: enemyId,
     name: template.name,
-    enemyType: template.type, // Set enemyType for sprite lookup (prevents Goblin Chief from appearing in idle)
-    level: Math.max(1, Math.floor(scaling.avgLevel)),
+    enemyType: template.type,
+    level: level,
     hp: finalHp,
     maxHp: finalHp,
-    attack: Math.floor(template.baseAttack * scaling.multiplier * attackMultiplier * packScaling),
-    defense: Math.floor((template.baseDefense || 0) * scaling.multiplier * defenseMultiplier * packScaling),
+    attack: finalAttack,
+    defense: finalDefense,
     isDead: false,
     isBoss: template.isBoss || false,
-    // XP calculation: Apply scaling multiplier with 0.2 coefficient and cap at 8x
-    // This makes leveling slower and more balanced (60% reduction from 0.5, plus cap)
-    xp: (() => {
-      const xpMultiplier = Math.min(scaling.multiplier * 0.2, 8);
-      return Math.floor(template.xp * Math.max(1, xpMultiplier));
-    })(),
+    xp: finalXp,
+    gold: finalGold,
     activeDebuffs: {},
     abilities: {}
   };

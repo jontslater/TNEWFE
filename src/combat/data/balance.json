@@ -1,0 +1,91 @@
+{
+  "version": 1,
+  "levelCurve": {
+    "gPerLevel": 0.1,
+    "xpToNextCoefficient": 60,
+    "xpToNextExponent": 1.13
+  },
+  "combat": {
+    "armorConstantK": 400,
+    "critMultiplier": 1.5,
+    "critChanceCap": 0.35,
+    "damageReductionCap": 0.75,
+    "damageVarianceMin": 0.9,
+    "damageVarianceMax": 1.1,
+    "swingIntervalMs": 2000,
+    "healMultiplier": 3,
+    "healThreshold": 0.9,
+    "difficultyCap": 1.25,
+    "difficultyFloor": 0.4,
+    "waveTierPercentPer10Waves": 0.01,
+    "waveTierCap": 0.25
+  },
+  "chat": {
+    "percentPerActiveChatter": 0.02,
+    "damageHealCap": 0.2,
+    "lootWeightPercentPerChatter": 0.005,
+    "lootWeightCap": 0.05
+  },
+  "heroRoles": {
+    "tank": { "hp": 400, "atk": 20, "spellPower": 0, "armor": 300, "crit": 0.05 },
+    "healer": { "hp": 250, "atk": 14, "spellPower": 20, "armor": 120, "crit": 0.05 },
+    "dps": { "hp": 260, "atk": 32, "spellPower": 0, "armor": 100, "crit": 0.1 }
+  },
+  "classRatioClamp": { "min": 0.9, "max": 1.1 },
+  "gear": {
+    "setFraction": 0.4,
+    "R": {
+      "common": 1,
+      "uncommon": 1.15,
+      "rare": 1.35,
+      "epic": 1.6,
+      "legendary": 1.9,
+      "mythic": 2.25
+    },
+    "critBonusFullSet": {
+      "common": 0,
+      "uncommon": 0.02,
+      "rare": 0.05,
+      "epic": 0.08,
+      "legendary": 0.12,
+      "mythic": 0.15
+    }
+  },
+  "enemies": {
+    "normal": { "hp": 900, "atk": 40, "armor": 150 },
+    "eliteHpMultiplier": 3,
+    "eliteAtkMultiplier": 1.3,
+    "eliteArmorMultiplier": 1.2,
+    "dungeonBoss": { "hp": 8, "atk": 2.6, "armor": 1.3, "aoeFraction": 0.5, "aoeCooldownSec": 12 },
+    "raidBoss": {
+      "hp": 24,
+      "atk": 3.2,
+      "armor": 1.5,
+      "aoeFraction": 0.6,
+      "aoeCooldownSec": 10,
+      "enrageAfterSec": 360,
+      "enrageAtkPer10Sec": 0.1
+    },
+    "packScale": { "1": 1, "2": 0.6, "3": 0.45 },
+    "xpPerKill": 12,
+    "xpEliteMultiplier": 3,
+    "xpBossMultiplier": 10,
+    "goldPerKill": 5
+  },
+  "loot": {
+    "trashDropChance": 0.08,
+    "eliteDropChance": 0.25
+  },
+  "roleAbilities": {
+    "shieldWall": { "cooldownSec": 45, "durationSec": 8, "tankDamageReduction": 0.5, "partyDamageReduction": 0.2 },
+    "groupHeal": { "cooldownSec": 30, "healPercentMaxHp": 0.25 },
+    "burstStrike": { "cooldownSec": 20, "attackMultiplier": 3 }
+  },
+  "threat": { "tankMultiplier": 5, "dpsMultiplier": 1, "healMultiplier": 0.5, "tankAggroChance": 0.9 },
+  "regen": { "betweenFightsFullHealMs": 3000 },
+  "xp": {
+    "idleMinutesPerDungeonClear": 15,
+    "idleMinutesPerRaidClear": 45,
+    "idleMinutesPerDailyQuest": 20
+  }
+}

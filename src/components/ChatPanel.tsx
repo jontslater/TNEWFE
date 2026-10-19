@@ -1040,7 +1040,7 @@ export default function ChatPanel({ hero, partyId, partyLeaderId, guildId, onPar
             <div
               key={msg.id}
               className={`p-2 rounded ${
-                msg.userId === (user?.id || user?.twitchUserId) ? 'bg-blue-900/30' : 'bg-gray-800/50'
+                msg.userId === (user?.id || user?.twitchId) ? 'bg-blue-900/30' : 'bg-gray-800/50'
               }`}
             >
               <div className="flex items-start justify-between gap-2">
@@ -1071,7 +1071,7 @@ export default function ChatPanel({ hero, partyId, partyLeaderId, guildId, onPar
                 </div>
                   <div className="flex items-center gap-1">
                   {/* User menu button (not own messages) */}
-                  {msg.userId !== (user?.id || user?.twitchUserId) && (
+                  {msg.userId !== (user?.id || user?.twitchId) && (
                     <div className="relative">
                       <button
                         onClick={(e) => {
@@ -1167,10 +1167,10 @@ export default function ChatPanel({ hero, partyId, partyLeaderId, guildId, onPar
                     </div>
                   )}
                   {/* Delete button (own messages or admin) */}
-                  {(msg.userId === (user?.id || user?.twitchUserId) || isAdmin) && (
+                  {(msg.userId === (user?.id || user?.twitchId) || isAdmin) && (
                     <button
                       onClick={() => {
-                        if (isAdmin && msg.userId !== (user?.id || user?.twitchUserId)) {
+                        if (isAdmin && msg.userId !== (user?.id || user?.twitchId)) {
                           handleAdminDeleteMessage(msg.id);
                         } else {
                           deleteMessage(msg.id);

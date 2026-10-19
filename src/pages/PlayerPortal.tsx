@@ -4,7 +4,8 @@ import { useAuth } from '../hooks/useAuth';
 import { useHero } from '../hooks/useHero';
 import { useAllHeroes } from '../hooks/useAllHeroes';
 import { useGuild } from '../hooks/useGuild';
-import { raidAPI, heroAPI, foundersPackAPI } from '../api/client';
+import { useChatActivity } from '../hooks/useChatActivity';
+import { raidAPI, heroAPI, foundersPackAPI, gearAPI } from '../api/client';
 import { Raid, WorldBoss, Item } from '../types/Raid';
 import HeroDashboard from '../components/HeroDashboard';
 import ProfessionPanel from '../components/ProfessionPanel';
@@ -27,6 +28,12 @@ import AuctionHousePage from './AuctionHousePage';
 import QuestsPage from './QuestsPage';
 import SocialSidebar from '../components/SocialSidebar';
 import PrestigeStore from '../components/PrestigeStore';
+import CosmeticsPanel from '../components/CosmeticsPanel';
+import StreamStatusBanner from '../components/StreamStatusBanner';
+import GroupBoostIndicator from '../components/GroupBoostIndicator';
+import StreamQueueJoinSection from '../components/StreamQueueJoinSection';
+import { willBindOnEquip, EQUIP_BIND_CONFIRM_MESSAGE } from '../gear/itemBinding';
+import { resolveAccountTokens, accountHasCosmeticUnlock } from '../utils/accountWallet';
 
 export default function PlayerPortal() {
   const navigate = useNavigate();
@@ -38,9 +45,13 @@ export default function PlayerPortal() {
   const { heroes: allHeroes, loading: allHeroesLoading, refetch: refetchAllHeroes } = useAllHeroes(isAdmin);
   // Use hero ID for guild (hero-based guild system)
   const { guild, loading: guildLoading, refetch: refetchGuild } = useGuild(hero?.id || null);
+  
+  // Chat activity for current stream
+  const streamerId = hero?.currentBattlefieldId?.replace('twitch:', '');
+  const { data: chatActivity } = useChatActivity(streamerId, !!streamerId);
   const [raids, setRaids] = useState<Raid[]>([]);
   const [worldBoss, setWorldBoss] = useState<WorldBoss | null>(null);
-  const [activeTab, setActiveTab] = useState<'hero' | 'inventory' | 'profession' | 'guild' | 'raids' | 'skills' | 'dungeon' | 'browserSource' | 'achievements' | 'allHeroes' | 'auction' | 'quests' | 'prestige'>('hero');
+  const [activeTab, setActiveTab] = useState<'hero' | 'inventory' | 'profession' | 'guild' | 'raids' | 'skills' | 'dungeon' | 'browserSource' | 'achievements' | 'allHeroes' | 'auction' | 'quests' | 'prestige' | 'cosmetics'>('hero');
   const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
   const [adminSelectedHero, setAdminSelectedHero] = useState<Hero | null>(null);
   const [testHeroId, setTestHeroId] = useState<string>('9CcbfbvtTt3ckqyn7sBH'); // Dingo Dynasty hero ID
@@ -51,6 +62,12 @@ export default function PlayerPortal() {
   const [dungeonQueueStatus, setDungeonQueueStatus] = useState<any>(null);
   const [grantingFounderPack, setGrantingFounderPack] = useState<{ userId: string; tier: string } | null>(null);
   const [whisperRequest, setWhisperRequest] = useState<{ heroId: string; heroName: string } | null>(null);
+
+  const accountTokens = useMemo(
+    () => resolveAccountTokens(user as { accountTokens?: number } | null, heroes, hero),
+    [user, heroes, hero]
+  );
+  const accountCosmeticsUnlocked = useMemo(() => accountHasCosmeticUnlock(heroes), [heroes]);
 
   // Refresh guild data when switching to guild tab (to catch application approvals)
   // Use a ref to track if we've already refreshed for this tab switch
@@ -239,7 +256,7 @@ export default function PlayerPortal() {
           console.error('[PlayerPortal] ❌ Failed to fetch Dingo Dynasty hero:', err);
         });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [isAdmin]);
 
   if (!isAuthenticated) {
@@ -497,6 +514,16 @@ export default function PlayerPortal() {
             >
               ⭐ Prestige Store
             </button>
+            <button
+              onClick={() => setActiveTab('cosmetics')}
+              className={`px-6 py-4 font-semibold transition-colors border-b-2 ${
+                activeTab === 'cosmetics'
+                  ? 'text-pink-400 border-pink-400'
+                  : 'text-gray-400 border-transparent hover:text-gray-300'
+              }`}
+            >
+              ✨ Cosmetics
+            </button>
             {isAdmin && (
               <button
                 onClick={() => setActiveTab('allHeroes')}
@@ -515,6 +542,24 @@ export default function PlayerPortal() {
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
+        {/* Stream Status Banner */}
+        <StreamStatusBanner 
+          currentBattlefieldId={hero.currentBattlefieldId}
+          heroName={hero.name}
+        />
+        
+        {/* Group Boost Indicator - Show when active on a stream */}
+        {chatActivity && streamerId && (
+          <div className="mb-6">
+            <GroupBoostIndicator 
+              chatActivityLevel={chatActivity.chatActivityLevel}
+              activeBoosts={chatActivity.activeBoosts}
+              groupSize={chatActivity.chatterCount}
+              enemyStrength={100}
+            />
+          </div>
+        )}
+        
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Social Sidebar (Party & Chat) - Right side, always visible except on auction/quests */}
           {activeTab !== 'auction' && activeTab !== 'quests' && (
@@ -552,7 +597,7 @@ export default function PlayerPortal() {
                     const isSelected = h.id === hero.id;
                     const key = `${h.id}-${(h as any).characterId || h.role || idx}`;
                     const classInfo = CLASS_DATA.find(c => c.key === h.role);
-                    const category = classInfo?.category || getCategoryFromRole(h.role);
+                    const category = classInfo?.category || (h.role === 'warrior' || h.role === 'paladin' ? 'tank' : h.role === 'priest' || h.role === 'druid' ? 'healer' : 'dps');
                     const gearScore = getItemScore(h.equipment || {}, h.role);
                     const isPinned = (h as any).pinned || false;
                     const categoryColors = {
@@ -671,8 +716,11 @@ export default function PlayerPortal() {
               : 'lg:col-span-9'
           }`}>
             {activeTab === 'hero' && (
+              <>
               <HeroDashboard 
-                hero={hero} 
+                hero={hero}
+                accountTokens={accountTokens}
+                accountCosmeticsUnlocked={accountCosmeticsUnlocked}
                 onHeroUpdate={async (updatedHero: Hero) => {
                   // Update the current hero if it's the one being updated
                   if (hero?.id === updatedHero.id) {
@@ -694,20 +742,40 @@ export default function PlayerPortal() {
                   }
                 }}
               />
+              <StreamQueueJoinSection
+                hero={hero}
+                defaultStreamerTwitchId={user?.twitchId || ''}
+              />
+              </>
             )}
         {activeTab === 'inventory' && (
           <InventoryManager 
             hero={hero} 
             userId={user?.id}
+            accountTokens={accountTokens}
+            accountCosmeticsUnlocked={accountCosmeticsUnlocked}
             onUpdate={refetchHero}
             onEquipChange={async (slot, item) => {
               const heroId = hero?.id || user?.id;
               if (!heroId) return;
+              if (item && willBindOnEquip(item)) {
+                if (!window.confirm(EQUIP_BIND_CONFIRM_MESSAGE)) return;
+              }
               try {
-                if (item) {
+                if (item?.id) {
+                  try {
+                    await gearAPI.equipItem(heroId, item.id, slot);
+                  } catch {
+                    await heroAPI.equipItem(heroId, slot, item);
+                  }
+                } else if (item) {
                   await heroAPI.equipItem(heroId, slot, item);
                 } else {
-                  await heroAPI.unequipItem(heroId, slot);
+                  try {
+                    await gearAPI.unequipItem(heroId, slot);
+                  } catch {
+                    await heroAPI.unequipItem(heroId, slot);
+                  }
                 }
                 // Small delay to ensure backend has processed
                 await new Promise(resolve => setTimeout(resolve, 100));
@@ -819,6 +887,9 @@ export default function PlayerPortal() {
             )}
             {activeTab === 'prestige' && hero && (
               <PrestigeStore hero={hero} onUpdate={refetchHero} />
+            )}
+            {activeTab === 'cosmetics' && hero && (
+              <CosmeticsPanel hero={hero} onHeroRefresh={refetchHero} />
             )}
             {activeTab === 'auction' && (
               <div className="space-y-4">
@@ -1048,7 +1119,7 @@ export default function PlayerPortal() {
                                           type="button"
                                           disabled={isGranting || isCurrentTier}
                                           onClick={async () => {
-                                            if (!window.confirm(`Grant ${tier.toUpperCase()} Founder Pack to ${group.label}? This will grant benefits to all their heroes.`)) {
+                                            if (!window.confirm(`Grant ${tier.toUpperCase()} Founder Pack to ${group.label}? This grants cosmetic unlocks only (badge, title, name styles, etc.).`)) {
                                               return;
                                             }
                                             setGrantingFounderPack({ userId: group.twitchId, tier });

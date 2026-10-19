@@ -16,14 +16,6 @@ const GOLD_SHOP_ITEMS = {
     icon: '🧪',
     effect: 'Automatically heals you during combat when low on health'
   },
-  xpboost: { 
-    name: 'XP Boost Scroll', 
-    cost: 25, // Reduced from 100 (balanced economy)
-    description: '+50% XP for 5min combat time', 
-    type: 'buff',
-    icon: '📜',
-    effect: 'Gain 50% more experience from combat for 5 minutes'
-  },
   attackbuff: { 
     name: 'Sharpening Stone', 
     cost: 15, // Reduced from 150 (balanced economy)
@@ -42,23 +34,11 @@ const GOLD_SHOP_ITEMS = {
   }
 };
 
-const TOKEN_SHOP_PRICES = {
-  common: 50, // Increased from 25 (2x for monetization)
-  rare: 200, // Increased from 100 (2x for monetization)
-  epic: 600, // Increased from 300 (2x for monetization)
-  legendary: 2500, // Increased from 1000 (2.5x for monetization)
-  mythic: 10000 // Ultra-rare tier (3.5x multiplier - slightly weaker than raid/dungeon mythic at 4.0x)
-};
-
-const RARITIES = ['common', 'rare', 'epic', 'legendary', 'mythic'] as const;
-const SLOTS = ['weapon', 'armor', 'accessory', 'shield'] as const;
-
 export default function StorePage() {
   const navigate = useNavigate();
   const { user, isAuthenticated } = useAuth();
   const { hero, heroes, refetch: refetchHero } = useHero(user?.twitchId || null);
   const [purchasing, setPurchasing] = useState(false);
-  const [selectedTokenItem, setSelectedTokenItem] = useState<{ rarity: string; slot: string; heroId: string | null; quantity?: number } | null>(null);
   const [selectedGoldItem, setSelectedGoldItem] = useState<{ itemKey: string; heroId: string | null; quantity?: number } | null>(null);
   const [selectedTokenPack, setSelectedTokenPack] = useState<{ type: string; heroId: string | null } | null>(null);
   const [slotInfo, setSlotInfo] = useState<{
@@ -198,10 +178,9 @@ export default function StorePage() {
         premium: 24.99
       };
 
-      const price = packPrices[packType] || 0;
-
       // Create Stripe checkout session and redirect
-      await createCheckoutSession(result.purchaseId, price);
+      // Note: Price is looked up on backend from purchaseId for security
+      await createCheckoutSession(result.purchaseId);
       // Note: createCheckoutSession will redirect to Stripe automatically
       
       setSelectedTokenPack(null);
@@ -212,77 +191,6 @@ export default function StorePage() {
     } finally {
       setPurchasing(false);
     }
-  };
-
-  const handleTokenPurchaseClick = (rarity: string, slot: string) => {
-    // Check if user has multiple heroes
-    if (!heroes || heroes.length === 0) {
-      alert('No heroes found. Create a hero first!');
-      return;
-    }
-
-    if (heroes.length === 1) {
-      // Only one hero - show modal with quantity selector
-      setSelectedTokenItem({ rarity, slot, heroId: heroes[0].id || null, quantity: 1 });
-      return;
-    }
-
-    // Multiple heroes - show selection modal with quantity
-    setSelectedTokenItem({ rarity, slot, heroId: null, quantity: 1 });
-  };
-
-  const handleTokenPurchase = async (rarity: string, slot: string, heroId: string, quantity: number = 1) => {
-    if (!heroId) return;
-
-    const costPerItem = TOKEN_SHOP_PRICES[rarity as keyof typeof TOKEN_SHOP_PRICES];
-    const totalCost = costPerItem * quantity;
-    const targetHero = heroes?.find(h => h.id === heroId);
-    
-    if (!targetHero) {
-      alert('Hero not found');
-      return;
-    }
-
-    if ((targetHero.tokens || 0) < totalCost) {
-      alert(`Not enough tokens! ${targetHero.name} needs ${totalCost}t (${quantity}x ${costPerItem}t, has ${targetHero.tokens || 0}t)`);
-      return;
-    }
-
-    setPurchasing(true);
-    try {
-      // Use hero document ID (backend expects hero doc ID, not Twitch user ID)
-      await heroAPI.purchaseTokenGear(heroId, rarity, slot, quantity);
-      alert(`✅ Purchased ${quantity}x ${rarity} ${slot} for ${targetHero.name}!`);
-      setSelectedTokenItem(null);
-      refetchHero();
-    } catch (error: any) {
-      const errorMsg = error.response?.data?.error || 'Failed to purchase gear';
-      alert(errorMsg);
-      console.error('Purchase error:', error);
-    } finally {
-      setPurchasing(false);
-      setSelectedTokenItem(null);
-    }
-  };
-
-  const getRarityColor = (rarity: string) => {
-    return {
-      common: 'text-gray-400',
-      rare: 'text-blue-400',
-      epic: 'text-purple-400',
-      legendary: 'text-yellow-400',
-      mythic: 'text-red-400'
-    }[rarity] || 'text-gray-400';
-  };
-
-  const getRarityBg = (rarity: string) => {
-    return {
-      common: 'bg-gray-700 border-gray-500',
-      rare: 'bg-blue-900/30 border-blue-500',
-      epic: 'bg-purple-900/30 border-purple-500',
-      legendary: 'bg-yellow-900/30 border-yellow-500',
-      mythic: 'bg-red-900/30 border-red-500'
-    }[rarity] || 'bg-gray-700';
   };
 
   if (!isAuthenticated) {
@@ -332,7 +240,7 @@ export default function StorePage() {
               <div></div>
               <div>
                 <h1 className="text-5xl font-bold text-white mb-2">🏪 Hero Store</h1>
-                <p className="text-xl text-gray-400">Enhance your hero with consumables and guaranteed gear</p>
+                <p className="text-xl text-gray-400">Gold consumables and token packs — combat power comes from play, not the shop</p>
               </div>
               <button
                 onClick={() => navigate('/purchases/history')}
@@ -538,72 +446,6 @@ export default function StorePage() {
             </div>
           </div>
 
-          {/* Token Shop */}
-          <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-            <h2 className="text-3xl font-bold text-white mb-4 flex items-center gap-3">
-              <span>🎫</span> Token Shop
-            </h2>
-            <p className="text-gray-400 mb-6">
-              Purchase guaranteed gear with tokens • Choose rarity and slot • Stats scale with your level
-            </p>
-
-            {/* Token Pricing */}
-            <div className="bg-gray-900 rounded-lg p-4 mb-6 border border-gray-700">
-              <div className="text-sm font-semibold text-white mb-2">Token Prices:</div>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                {Object.entries(TOKEN_SHOP_PRICES).map(([rarity, cost]) => (
-                  <div key={rarity} className="text-center">
-                    <span className={`font-semibold capitalize ${getRarityColor(rarity)}`}>{rarity}</span>
-                    <span className="text-gray-400 ml-2">{cost}t</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Gear Grid */}
-            <div className="space-y-6">
-              {RARITIES.map(rarity => (
-                <div key={rarity}>
-                  <h3 className={`text-xl font-bold capitalize mb-3 ${getRarityColor(rarity)}`}>
-                    {rarity} Gear
-                  </h3>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    {SLOTS.map(slot => {
-                      const cost = TOKEN_SHOP_PRICES[rarity];
-                      // Check if any hero can afford it
-                      const canAfford = heroes?.some(h => (h.tokens || 0) >= cost) || false;
-                      const slotIcon = slot === 'weapon' ? '⚔️' : slot === 'armor' ? '🛡️' : slot === 'accessory' ? '💍' : '🔰';
-
-                      return (
-                        <div
-                          key={`${rarity}-${slot}`}
-                          className={`rounded-lg p-4 border-2 transition-all ${getRarityBg(rarity)} ${
-                            canAfford ? 'hover:shadow-lg cursor-pointer' : 'opacity-50'
-                          }`}
-                          onClick={() => {
-                            if (canAfford && !purchasing) {
-                              handleTokenPurchaseClick(rarity, slot);
-                            }
-                          }}
-                        >
-                          <div className="text-3xl mb-2 text-center">{slotIcon}</div>
-                          <div className="font-semibold text-white text-center capitalize mb-2">{slot}</div>
-                          <div className="text-sm text-gray-400 text-center mb-3">
-                            Guaranteed {rarity} drop
-                          </div>
-                          <div className="text-center">
-                            <div className="text-xl font-bold text-blue-400">{cost}t</div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-
           {/* Hero Selection Modal for Token Packs */}
           {selectedTokenPack && heroes && heroes.length > 1 && (
             <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
@@ -766,124 +608,6 @@ export default function StorePage() {
             </div>
           )}
 
-          {/* Token Purchase Hero Selection Modal */}
-          {selectedTokenItem && heroes && heroes.length > 0 && (
-            <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-              <div className="bg-gray-900 rounded-lg max-w-2xl w-full border border-gray-700 p-6">
-                <h3 className="text-2xl font-bold text-white mb-4">Purchase Item</h3>
-                <p className="text-gray-400 mb-4">
-                  Which hero should receive{' '}
-                  <span className={`font-bold capitalize ${getRarityColor(selectedTokenItem.rarity)}`}>
-                    {selectedTokenItem.rarity} {selectedTokenItem.slot}
-                  </span>?
-                </p>
-
-                {/* Quantity Selector */}
-                <div className="mb-6">
-                  <label className="block text-sm font-semibold text-gray-300 mb-2">Quantity</label>
-                  <div className="flex items-center gap-4">
-                    <button
-                      onClick={() => {
-                        if (selectedTokenItem.quantity && selectedTokenItem.quantity > 1) {
-                          setSelectedTokenItem({ ...selectedTokenItem, quantity: selectedTokenItem.quantity - 1 });
-                        }
-                      }}
-                      disabled={!selectedTokenItem.quantity || selectedTokenItem.quantity <= 1}
-                      className="bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed text-white w-10 h-10 rounded font-bold"
-                    >
-                      -
-                    </button>
-                    <input
-                      type="number"
-                      min="1"
-                      max="100"
-                      value={selectedTokenItem.quantity || 1}
-                      onChange={(e) => {
-                        const qty = Math.max(1, Math.min(100, parseInt(e.target.value) || 1));
-                        setSelectedTokenItem({ ...selectedTokenItem, quantity: qty });
-                      }}
-                      className="w-20 text-center bg-gray-800 text-white border border-gray-600 rounded px-3 py-2"
-                    />
-                    <button
-                      onClick={() => {
-                        const currentQty = selectedTokenItem.quantity || 1;
-                        if (currentQty < 100) {
-                          setSelectedTokenItem({ ...selectedTokenItem, quantity: currentQty + 1 });
-                        }
-                      }}
-                      disabled={selectedTokenItem.quantity && selectedTokenItem.quantity >= 100}
-                      className="bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed text-white w-10 h-10 rounded font-bold"
-                    >
-                      +
-                    </button>
-                    <span className="text-gray-400 text-sm">
-                      Total: <span className="text-blue-400 font-semibold">
-                        {(TOKEN_SHOP_PRICES[selectedTokenItem.rarity as keyof typeof TOKEN_SHOP_PRICES] || 0) * (selectedTokenItem.quantity || 1)}t
-                      </span>
-                    </span>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 max-h-96 overflow-y-auto">
-                  {heroes.map((h) => {
-                    const costPerItem = TOKEN_SHOP_PRICES[selectedTokenItem.rarity as keyof typeof TOKEN_SHOP_PRICES];
-                    const quantity = selectedTokenItem.quantity || 1;
-                    const totalCost = costPerItem * quantity;
-                    const canAfford = (h.tokens || 0) >= totalCost;
-                    
-                    return (
-                      <button
-                        key={h.id}
-                        onClick={() => {
-                          if (canAfford && h.id) {
-                            handleTokenPurchase(selectedTokenItem.rarity, selectedTokenItem.slot, h.id, quantity);
-                          }
-                        }}
-                        disabled={!canAfford || purchasing || !h.id}
-                        className={`text-left p-4 rounded-lg border-2 transition-all ${
-                          canAfford && !purchasing && h.id
-                            ? 'border-blue-500 hover:border-blue-400 hover:bg-gray-800'
-                            : 'border-gray-600 bg-gray-800 opacity-50 cursor-not-allowed'
-                        }`}
-                      >
-                        <div className="font-bold text-white mb-1">{h.name}</div>
-                        <div className="text-sm text-gray-400 mb-2">Level {h.level} • {h.role}</div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm text-gray-300">
-                            Tokens: <span className={canAfford ? 'text-blue-400 font-semibold' : 'text-red-400'}>
-                              {h.tokens || 0}t
-                            </span>
-                          </span>
-                          {!canAfford && (
-                            <span className="text-xs text-red-400">
-                              Need {totalCost}t
-                            </span>
-                          )}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <div className="bg-gray-800 rounded p-4 mb-6">
-                  <div className="text-sm text-gray-300">
-                    <div className="mb-2">✨ <strong>Guaranteed {selectedTokenItem.rarity} quality</strong></div>
-                    <div className="mb-2">📊 Stats scale with hero's level</div>
-                    <div className="mb-2">🎲 Random proc effects for rare+ gear</div>
-                    <div>⚡ Instant delivery to inventory</div>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => setSelectedTokenItem(null)}
-                  disabled={purchasing}
-                  className="w-full bg-gray-700 hover:bg-gray-600 text-white py-3 rounded font-semibold transition-colors"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
         </div>
       </div>
     </>

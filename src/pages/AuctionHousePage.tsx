@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { auctionAPI, heroAPI } from '../api/client';
 import { formatNumber } from '../utils/format';
+import { canTransferItem } from '../gear/itemBinding';
 
 interface Listing {
   id: string;
@@ -727,6 +728,7 @@ function CreateListingModal({ inventory = [], heroes = [], selectedHeroId = null
 
   // Filter inventory based on selected hero and item type
   const filteredInventory = (inventory || []).filter((item: any) => {
+    if (!canTransferItem(item)) return false;
     // Filter by hero if one is selected
     if (selectedHeroId && item.heroId !== selectedHeroId) {
       return false;
@@ -842,6 +844,11 @@ function CreateListingModal({ inventory = [], heroes = [], selectedHeroId = null
   const handleCreate = async () => {
     if (!selectedItem || !startingPrice) {
       alert('Please select an item and set a starting price');
+      return;
+    }
+
+    if (!canTransferItem(selectedItem)) {
+      alert('This item is bound and cannot be listed on the auction house.');
       return;
     }
 

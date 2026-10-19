@@ -8,6 +8,7 @@ import { CombatState, Hero, Enemy } from './combat/types';
 import { ROLE_CONFIG, SHOP_ITEMS, HERB_GATHER_CHANCES } from './fullCombatEngine';
 import { generateEnemiesForCombat } from './enemyGeneration';
 import { getCharacterStats } from './combatUtils';
+import { applyXpWithLevelUps, xpToNextLevel } from '../combat/balance';
 
 /**
  * Adventure Engine Class
@@ -345,24 +346,16 @@ export class AdventureEngine {
 
       // Grant travel XP (matches Electron app line 8928)
       hero.xp = (hero.xp || 0) + 3;
-      // Calculate maxXp using polynomial formula (matches backend)
-      // Formula: 40 * level² + 300 * level - 240
-      const calculateMaxXp = (level: number): number => {
-        if (level <= 1) return 100;
-        return Math.floor(40 * level * level + 300 * level - 240);
-      };
-      hero.maxXp = hero.maxXp || calculateMaxXp(hero.level || 1);
+      hero.maxXp = hero.maxXp || xpToNextLevel(hero.level || 1);
 
-      // Handle level ups (cap at level 100)
-      if (this.onLevelUpHero) {
-        while (hero.xp >= hero.maxXp && (hero.level || 1) < 100) {
+      const levelResult = applyXpWithLevelUps(hero.level || 1, hero.xp || 0, 100);
+      hero.level = levelResult.level;
+      hero.xp = levelResult.xp;
+      hero.maxXp = levelResult.maxXp;
+      if (levelResult.levelsGained > 0 && this.onLevelUpHero) {
+        for (let i = 0; i < levelResult.levelsGained; i++) {
           this.onLevelUpHero(hero);
         }
-      }
-      
-      // Cap XP at maxXp if at level 100
-      if ((hero.level || 1) >= 100) {
-        hero.xp = Math.min(hero.xp, hero.maxXp || calculateMaxXp(100));
       }
 
       // Profession gathering during travel

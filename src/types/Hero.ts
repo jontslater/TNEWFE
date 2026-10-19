@@ -28,6 +28,18 @@ export interface Item {
   wisdom?: number;
   // Set name for gear sets
   setName?: string;
+  setId?: string;
+  itemLevel?: number;
+  ilvl?: number;
+  affixes?: Array<{ id?: string; kind?: 'prefix' | 'suffix'; label?: string; stats?: Record<string, number> }>;
+  legendaryEffect?: string;
+  source?: string;
+  /** WoW-style binding: none | bop | boe | account */
+  binding?: 'none' | 'bop' | 'boe' | 'account';
+  isBound?: boolean;
+  boundToHeroId?: string;
+  /** Cosmetic unlocks are account-wide, not tradable */
+  cosmetic?: boolean;
   // Secondary stats
   secondaryStats?: {
     healingPower?: number;
@@ -132,6 +144,8 @@ export interface RestedXp {
 export interface Hero {
   id?: string;
   name: string;
+  characterName?: string; // Alias for name (legacy support)
+  username?: string; // Twitch/TikTok username
   role: string;
   level: number;
   hp: number;
@@ -142,6 +156,8 @@ export interface Hero {
   defense: number;
   gold: number;
   tokens: number;
+  /** Shared premium balance across all heroes (when backend provides it) */
+  accountTokens?: number;
   totalIdleTokens: number;
   lastTokenClaim: number;
   lastCommandTime: number;
@@ -156,6 +172,32 @@ export interface Hero {
   profession: Profession | null;
   restedXp?: RestedXp;
   joinedAt: number;
+  // Combat-specific properties
+  hpRegen?: number;
+  damageReduction?: number;
+  critChance?: number;
+  healingPower?: number;
+  spellDamage?: number;
+  meleeDamage?: number;
+  strength?: number;
+  dexterity?: number;
+  stamina?: number;
+  wisdom?: number;
+  intellect?: number;
+  activeDebuffs?: Record<string, any>;
+  cooldowns?: Record<string, number>;
+  classAbilityState?: any;
+  enchantedItems?: any[];
+  lastStandActive?: boolean;
+  lastBigHit?: number;
+  shield?: any;
+  staggerDoT?: number;
+  staggerLastTick?: number;
+  deathAnimationPlaying?: boolean;
+  activeProcBuffs?: Record<string, number>;
+  activeThreatMod?: number;
+  guildId?: string;
+  autoBuy?: boolean;
   // Skills system
   skills?: Record<string, { points: number }>;
   skillPoints?: number;
@@ -171,6 +213,7 @@ export interface Hero {
   auraEffect?: string; // Aura effect style: 'bronze' | 'silver' | 'gold' | 'platinum' | null
   auraColor?: string; // Custom hex color for aura effect (e.g., "#FF5733") - overrides tier default color
   spellEffect?: string; // Spell effect style: 'bronze' | 'silver' | 'gold' | 'platinum' | null - Enhanced visual effects for projectiles/abilities
+  equippedCosmetics?: Record<string, string | undefined>;
   inventory?: Item[]; // Hero's inventory items (gear, consumables, etc.)
   shopBuffs?: Record<string, { remainingDuration: number; lastUpdateTime: number }>; // Active shop buffs
   // Prestige system
@@ -222,6 +265,12 @@ export interface Profession {
       steel: number;
       mithril: number;
       adamantite: number;
+    };
+    gems?: {
+      ruby: number;
+      sapphire: number;
+      emerald: number;
+      diamond: number;
     };
     essence?: number;
   };
