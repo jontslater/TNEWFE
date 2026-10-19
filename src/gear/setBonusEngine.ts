@@ -53,12 +53,7 @@ function applyTier(bonuses: SetBonuses, tier: BackendGearSet['bonuses'][string])
   if (tier.meleeDamage) bonuses.meleeDamage += tier.meleeDamage;
   if (tier.critChance) bonuses.critChance += tier.critChance;
   if (tier.damageReduction) bonuses.damageReduction += tier.damageReduction;
-  if (tier.hook === 'shield_wall_party_dr' && typeof tier.value === 'number') {
-    bonuses.damageReduction += tier.value;
-  }
-  if (tier.hook === 'group_heal_bonus' && typeof tier.value === 'number') {
-    bonuses.healingPower += tier.value * 100;
-  }
+  // Hook-based tiers are applied at combat time via getCombatSetHookModifiers — not here.
 }
 
 export function calculateBackendSetBonuses(

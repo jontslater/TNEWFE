@@ -21,7 +21,7 @@ export function useAllHeroes(enabled: boolean) {
     if (!enabled) return;
     try {
       setLoading(true);
-      const list = await heroAPI.getAllHeroes();
+      const list = await heroAPI.getAdminAllHeroes();
       // Sort alphabetically by name, then by role
       list.sort((a, b) => {
         const nameA = (a.name || '').toLowerCase();

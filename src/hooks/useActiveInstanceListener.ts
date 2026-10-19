@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { collection, query, where, onSnapshot, QuerySnapshot, DocumentData, updateDoc, doc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, QuerySnapshot, DocumentData } from 'firebase/firestore';
 import { db } from '../utils/firebase';
 import { ACTIVE_INSTANCE_STATUSES } from '../constants/instanceStatus';
 
@@ -52,15 +52,7 @@ export function useActiveInstanceListener(
         const ageMs = Date.now() - createdAt.getTime();
 
         if (ageMs > RAID_TIMEOUT_MS) {
-          try {
-            await updateDoc(doc(db, 'raidInstances', instance.id), {
-              status: 'completed',
-              completedAt: new Date(),
-              timeoutReason: 'Auto-completed after 2 hour timeout',
-            });
-          } catch (err) {
-            console.error('[ActiveInstance Listener] Failed to auto-complete raid:', err);
-          }
+          console.warn('[ActiveInstance Listener] Raid instance timed out (client ignores stale instance)');
           setActiveInstance({ type: null, instanceId: null });
           setLoading(false);
           return;
@@ -94,11 +86,7 @@ export function useActiveInstanceListener(
           const ageMs = Date.now() - createdAt.getTime();
 
           if (ageMs > DUNGEON_TIMEOUT_MS) {
-            updateDoc(doc(db, 'dungeonInstances', instance.id), {
-              status: 'completed',
-              completedAt: new Date(),
-              timeoutReason: 'Auto-completed after 2 hour timeout',
-            }).catch((err) => console.error('[ActiveInstance Listener] dungeon timeout:', err));
+            console.warn('[ActiveInstance Listener] Dungeon instance timed out (client ignores stale instance)');
             return { type: null, instanceId: null };
           }
 

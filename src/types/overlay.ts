@@ -126,6 +126,8 @@ export interface OverlayEnemy {
     value?: number;
   }>;
   isDead?: boolean;
+  /** Hero id credited for loot roll when this enemy was killed. */
+  lootCreditHeroId?: string;
   abilities?: Record<string, any>;
 }
 

@@ -458,6 +458,8 @@ export default function UnifiedBrowserSource() {
     Map<string, { xp: number; gold: number; level: number; maxXp: number }>
   >(new Map());
 
+  const overlaySyncRetryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const flushOverlayProgressBatch = useCallback(async () => {
     overlaySyncFlushTimer.current = null;
     const heroesPending = Array.from(pendingHeroProgress.current.values());
@@ -466,7 +468,10 @@ export default function UnifiedBrowserSource() {
 
     const streamerId =
       streamerTwitchId || battlefieldId?.replace(/^twitch:/, '') || null;
-    if (!streamerId) return;
+    if (!streamerId) {
+      heroesPending.forEach((h) => pendingHeroProgress.current.set(h.id!, h));
+      return;
+    }
 
     const deltas: Array<{
       heroId: string;
@@ -475,6 +480,13 @@ export default function UnifiedBrowserSource() {
       timestamp: number;
     }> = [];
     const now = Date.now();
+    const snapshotsToApply: Array<{
+      heroId: string;
+      xp: number;
+      gold: number;
+      level: number;
+      maxXp: number;
+    }> = [];
 
     for (const hero of heroesPending) {
       if (!hero.id || hero.id.startsWith('test-') || hero.id.startsWith('hero-')) continue;
@@ -497,7 +509,8 @@ export default function UnifiedBrowserSource() {
       const goldGained = Math.max(0, curGold - snap.gold);
       if (xpGained === 0 && goldGained === 0) continue;
       deltas.push({ heroId, xpGained, goldGained, timestamp: now });
-      lastProgressSnapshot.current.set(heroId, {
+      snapshotsToApply.push({
+        heroId,
         xp: curXp,
         gold: curGold,
         level: curLevel,
@@ -511,8 +524,25 @@ export default function UnifiedBrowserSource() {
       const { overlayAPI } = await import('../api/client');
       const batchId = `ubs-batch-${streamerId}-${now}`;
       await overlayAPI.syncDeltas(streamerId, batchId, deltas);
+      snapshotsToApply.forEach((s) => {
+        lastProgressSnapshot.current.set(s.heroId, {
+          xp: s.xp,
+          gold: s.gold,
+          level: s.level,
+          maxXp: s.maxXp,
+        });
+      });
     } catch (error: any) {
       console.error(`❌ [Sync] Failed batch overlay sync:`, error?.message || error);
+      heroesPending.forEach((h) => {
+        if (h.id) pendingHeroProgress.current.set(h.id, h);
+      });
+      if (!overlaySyncRetryTimer.current) {
+        overlaySyncRetryTimer.current = setTimeout(() => {
+          overlaySyncRetryTimer.current = null;
+          flushOverlayProgressBatch();
+        }, 8000);
+      }
     }
   }, [battlefieldId, streamerTwitchId]);
 

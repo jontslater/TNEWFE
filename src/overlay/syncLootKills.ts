@@ -23,7 +23,13 @@ export function mapEnemyKillKind(
 }
 
 export function assignHeroIdsToKills(
-  enemies: Array<{ level?: number; isBoss?: boolean; isElite?: boolean; name?: string }>,
+  enemies: Array<{
+    level?: number;
+    isBoss?: boolean;
+    isElite?: boolean;
+    name?: string;
+    lootCreditHeroId?: string;
+  }>,
   heroIds: string[],
   gameMode?: string,
   instance?: { dungeonId?: string; raidId?: string; difficulty?: string }
@@ -33,7 +39,7 @@ export function assignHeroIdsToKills(
   const contentType =
     gameMode === 'dungeon' ? 'dungeon' : gameMode === 'raid' ? 'raid' : undefined;
   return enemies.map((enemy, i) => ({
-    heroId: heroIds[i % heroIds.length],
+    heroId: enemy.lootCreditHeroId || heroIds[i % heroIds.length],
     enemyLevel: enemy.level || 1,
     kind: mapEnemyKillKind(enemy, gameMode),
     contentId,
@@ -54,6 +60,5 @@ export function killsForBattlefieldLootRoll(kills: OverlaySyncKill[]): Array<{
       heroId: k.heroId,
       enemyLevel: k.enemyLevel,
       kind: k.kind,
-      contentType: k.contentType,
     }));
 }

@@ -17,7 +17,7 @@ import { generateEnemiesForCombat } from '../utils/enemyGeneration';
 import { generateDungeonEnemies } from '../utils/dungeonEnemyGeneration';
 import HeroSpriteJS from '../components/HeroSpriteJS';
 import EnemySpriteJS from '../components/EnemySpriteJS';
-import { battlefieldAPI, heroAPI, questAPI, overlayClient, balanceAPI } from '../api/client';
+import { battlefieldAPI, heroAPI, questAPI, overlayClient, balanceAPI, gearAPI, dungeonAPI, raidAPI } from '../api/client';
 import { fetchBalance } from '../combat/balanceLoader';
 import { useAuth } from '../hooks/useAuth';
 import { useActiveInstanceListener } from '../hooks/useActiveInstanceListener';
@@ -86,6 +86,7 @@ import {
   type OverlayRoleActiveHooks,
 } from '../game/skills/overlayRoleActive';
 import { SkillChargeBar } from '../overlay/SkillChargeBar';
+import { OverlayHeroCardErrorBoundary } from '../overlay/OverlayHeroCardErrorBoundary';
 import {
   getHeroChargeBarVariant,
   getHeroKillFxLabel,
@@ -94,6 +95,8 @@ import {
 } from '../cosmetics/heroCosmetics';
 import { AbilityAnnouncement } from '../overlay/AbilityAnnouncement';
 import { critDamageMultiplier, computeSkillModifiers } from '../game/skills/computeSkillModifiers';
+import { mergeHeroesAfterRoleActive } from '../overlay/roleActiveHeroMerge';
+import { getCombatSetHookModifiers } from '../gear/combatSetHooks';
 
 // Type aliases for backward compatibility
 type Hero = OverlayHero;
@@ -374,6 +377,7 @@ export default function CleanBattlefieldSource() {
   
   // Adventure tick function ref (to access from checkCombatVictory)
   const adventureTickRef = useRef<(() => void) | null>(null);
+  const checkCombatVictoryRef = useRef<(() => Promise<void>) | null>(null);
   
   // Extract twitchId from battlefieldId for WebSocket connection
   const twitchId = battlefieldId?.split(':')[1] || null;
@@ -2240,16 +2244,67 @@ export default function CleanBattlefieldSource() {
       const newHp = Math.max(0, Math.round(target.hp - damage));
       const died = newHp === 0 && !target.isDead;
       const updated = [...currentEnemies];
-      updated[targetIndex] = { ...target, hp: newHp, isDead: died || target.isDead };
+      updated[targetIndex] = {
+        ...target,
+        hp: newHp,
+        isDead: died || target.isDead,
+        lootCreditHeroId: died ? casterId : target.lootCreditHeroId,
+      };
       enemiesRef.current = updated;
+      const casterHeroForHooks = heroesRef.current.find((h) => h.id === casterId);
+      if (!died && casterHeroForHooks && newHp > 0) {
+        const dotFrac = getCombatSetHookModifiers(casterHeroForHooks.equipment).burstStrikeDotFraction;
+        if (dotFrac > 0) {
+          const tickDamage = Math.max(1, Math.floor(damage * dotFrac));
+          updated[targetIndex] = {
+            ...updated[targetIndex],
+            activeDebuffs: {
+              ...(updated[targetIndex].activeDebuffs || {}),
+              corruption: {
+                expiresAt: Date.now() + 6000,
+                appliedBy: casterId,
+                lastTick: Date.now(),
+                value: tickDamage,
+              },
+            },
+          };
+          enemiesRef.current = updated;
+        }
+      }
       const enemyRef = getEnemySpriteRef(enemyId);
       if (died && enemyRef.current) {
         enemyRef.current.playAnimation('death');
+        trackQuest(casterId, 'kill', 1);
+        if (target.isBoss) {
+          trackQuest(casterId, 'defeatBosses', 1);
+        }
+        const casterHero = heroesRef.current.find((h) => h.id === casterId);
+        const killFx = casterHero ? getHeroKillFxLabel(casterHero) : null;
+        const enemyElement = document.querySelector(`[data-enemy-id="${enemyId}"]`);
+        if (enemyElement) {
+          const rect = enemyElement.getBoundingClientRect();
+          addSCT(
+            `${killFx ? `${killFx} ` : ''}Kill!`,
+            rect.left + rect.width / 2,
+            rect.top - 10,
+            'xp'
+          );
+        }
+        const remaining = updated.filter((e) => e.hp > 0 && !e.isDead);
+        if (remaining.length === 0) {
+          setTimeout(() => {
+            if (combatInProgress.current) {
+              checkCombatVictoryRef.current?.().catch((err) =>
+                console.error('[Combat] Error in checkCombatVictory (role active):', err)
+              );
+            }
+          }, 1500);
+        }
       } else if (enemyRef.current) {
         enemyRef.current.playAnimation('hurt');
       }
       const enemyElement = document.querySelector(`[data-enemy-id="${enemyId}"]`);
-      if (enemyElement) {
+      if (enemyElement && !died) {
         const rect = enemyElement.getBoundingClientRect();
         addSCT(String(damage), rect.left + rect.width / 2, rect.top + 20, isCrit ? 'crit' : 'damage');
       }
@@ -2270,23 +2325,27 @@ export default function CleanBattlefieldSource() {
   };
 
   const applyRoleActiveGroupHeal = (casterId: string, healsByHeroId: Record<string, number>) => {
+    const caster = heroesRef.current.find((h) => h.id === casterId);
+    const hotFrac = caster ? getCombatSetHookModifiers(caster.equipment).groupHealHotFraction : 0;
     setHeroes((currentHeroes) => {
       const updated = currentHeroes.map((h) => {
         const amt = healsByHeroId[h.id];
         if (!amt) return h;
-        trackQuest(casterId, 'heal', amt);
+        const hotBonus = hotFrac > 0 ? Math.floor(amt * hotFrac) : 0;
+        const totalHeal = amt + hotBonus;
+        trackQuest(casterId, 'heal', totalHeal);
         const maxHp = h.maxHp || 1;
-        const newHp = Math.min(maxHp, h.hp + amt);
+        const newHp = Math.min(maxHp, h.hp + totalHeal);
         const heroElement = document.querySelector(`[data-hero-id="${h.id}"]`);
         if (heroElement) {
           const rect = heroElement.getBoundingClientRect();
-          addSCT(`+${amt}`, rect.left + rect.width / 2, rect.top + 20, 'heal');
+          addSCT(`+${totalHeal}${hotBonus > 0 ? ' HoT' : ''}`, rect.left + rect.width / 2, rect.top + 20, 'heal');
         }
         const stats = h.stats || { totalDamage: 0, totalHealing: 0, damageBlocked: 0 };
         return {
           ...h,
           hp: newHp,
-          stats: { ...stats, totalHealing: (stats.totalHealing || 0) + amt },
+          stats: { ...stats, totalHealing: (stats.totalHealing || 0) + totalHeal },
         };
       });
       heroesRef.current = updated;
@@ -2331,28 +2390,7 @@ export default function CleanBattlefieldSource() {
       }
       if (outcome.changed) {
         setHeroes((prev) => {
-          const merged = prev.map((h) => {
-            const from = outcome.heroes.find((o) => o.id === h.id);
-            if (!from) return h;
-            const fromStats = (from as { stats?: Hero['stats'] }).stats;
-            return {
-              ...h,
-              hp: from.hp ?? h.hp,
-              isDead: from.isDead ?? h.isDead,
-              stats: fromStats
-                ? {
-                    totalDamage: (h.stats?.totalDamage || 0) + (fromStats.totalDamage || 0),
-                    totalHealing: (h.stats?.totalHealing || 0) + (fromStats.totalHealing || 0),
-                    damageBlocked: (h.stats?.damageBlocked || 0) + (fromStats.damageBlocked || 0),
-                  }
-                : h.stats,
-              cooldowns: from.cooldowns ?? h.cooldowns,
-              activeBuffs: { ...h.activeBuffs, ...from.activeBuffs },
-              tauntExpiry:
-                (from as { tauntExpiry?: number }).tauntExpiry ??
-                (h as { tauntExpiry?: number }).tauntExpiry,
-            };
-          });
+          const merged = mergeHeroesAfterRoleActive(prev, outcome.heroes as Hero[]);
           heroesRef.current = merged as Hero[];
           return merged as Hero[];
         });
@@ -4346,7 +4384,13 @@ export default function CleanBattlefieldSource() {
 
         // CRITICAL: Mark as dead immediately if HP reaches 0
         const died = newHp === 0 && !target.isDead;
-        updatedEnemies[targetIndex] = { ...target, hp: newHp, shield: newShield, isDead: died || target.isDead };
+        updatedEnemies[targetIndex] = {
+          ...target,
+          hp: newHp,
+          shield: newShield,
+          isDead: died || target.isDead,
+          lootCreditHeroId: died ? hero.id : target.lootCreditHeroId,
+        };
         
         // CORRUPTED HIGH PRIEST: Check for skeleton mage spawn at 50% HP (only once!)
         const isCorruptedHighPriest = target.enemyType === 'Corrupted High Priest' || target.name === 'Corrupted High Priest';
@@ -4453,6 +4497,18 @@ export default function CleanBattlefieldSource() {
           // Track boss kills separately
           if (target.isBoss) {
             trackQuest(hero.id, 'defeatBosses', 1);
+          }
+
+          const killFx = getHeroKillFxLabel(hero);
+          const killEnemyEl = document.querySelector(`[data-enemy-id="${target.id}"]`);
+          if (killEnemyEl) {
+            const rect = killEnemyEl.getBoundingClientRect();
+            addSCT(
+              `${killFx ? `${killFx} ` : ''}Kill!`,
+              rect.left + rect.width / 2,
+              rect.top - 10,
+              'xp'
+            );
           }
           
           // ENCHANTING: Grant essence from enemy defeats (for heroes with enchanting profession)
@@ -5780,36 +5836,16 @@ export default function CleanBattlefieldSource() {
                 
                 // Update instance data in Firebase to trigger room change
                 if (instanceData.id) {
-                  import('firebase/firestore').then(({ doc, updateDoc, getDoc }) => {
-                    const nextRoom = currentRoom + 1;
-                    console.log(`[Dungeon] 🔧 Updating Firebase: currentRoom ${currentRoom} -> ${nextRoom}, status should remain 'active'`);
-                    updateDoc(doc(db, 'dungeonInstances', instanceData.id), {
-                      currentRoom: nextRoom,
-                      status: 'active', // CRITICAL: Preserve status as 'active' so instance listener doesn't lose it
-                      updatedAt: new Date()
-                    }).then(() => {
-                      console.log(`[Dungeon] ✅ Advanced to room ${nextRoom + 1} (currentRoom index: ${nextRoom})`);
-                      console.log(`[Dungeon] 🔍 Status should be 'active' - instance listener should still find this dungeon`);
-                      
-                      // Force update instanceData to trigger useEffect immediately
-                      // The onSnapshot listener should also detect this, but this ensures it happens
-                      setTimeout(() => {
-                        console.log(`[Dungeon] 🔄 Manually refreshing instanceData to trigger next room...`);
-                        // Re-fetch the instance to get updated currentRoom
-                        getDoc(doc(db, 'dungeonInstances', instanceData.id)).then((snapshot) => {
-                          if (snapshot.exists()) {
-                            const updatedData = { id: snapshot.id, ...snapshot.data() };
-                            console.log(`[Dungeon] 📥 Updated instanceData with new currentRoom:`, updatedData.currentRoom);
-                            setInstanceData(updatedData);
-                          }
-                        }).catch(err => {
-                          console.error('[Dungeon] Failed to refresh instanceData:', err);
-                        });
-                      }, 500); // Small delay to ensure Firebase write completes
-                    }).catch(err => {
-                      console.error('[Dungeon] Failed to advance room:', err);
-                    });
-                  });
+                  const nextRoom = currentRoom + 1;
+                  dungeonAPI
+                    .updateInstanceProgress(instanceData.id, { room: nextRoom })
+                    .then(() => {
+                      console.log(`[Dungeon] ✅ Advanced to room index ${nextRoom} via API`);
+                      setInstanceData((prev: any) =>
+                        prev ? { ...prev, currentRoom: nextRoom, status: 'active' } : prev
+                      );
+                    })
+                    .catch((err) => console.error('[Dungeon] Failed to advance room:', err));
                 }
                 
                 // Clear combat state (new room will spawn new enemies)
@@ -5840,25 +5876,10 @@ export default function CleanBattlefieldSource() {
             // Mark dungeon as complete in Firebase (this will trigger listener to return to idle)
             // Backend will reset party status to 'forming' when instance completes
             if (instanceData.id) {
-              import('firebase/firestore').then(({ doc, updateDoc }) => {
-                updateDoc(doc(db, 'dungeonInstances', instanceData.id), {
-                  status: 'completed',
-                  completedAt: new Date(),
-                  currentRoom: currentRoom  // Keep currentRoom at the last valid room, don't increment
-                }).then(() => {
-                  console.log(`[Dungeon] ✅ Marked dungeon as complete - listener will return to idle mode`);
-                  // Party status will be reset by backend when instance completes
-                }).catch(err => {
-                  console.error('[Dungeon] Failed to mark complete:', err);
-                  // Even if Firebase update fails, clear state to prevent hanging
-                  setTimeout(() => {
-                    setEnemies([]);
-                    enemiesRef.current = [];
-                    setInCombat(false);
-                    combatInProgress.current = false;
-                  }, 2000);
-                });
-              });
+              dungeonAPI
+                .completeInstance(instanceData.id, { success: true })
+                .then(() => console.log(`[Dungeon] ✅ Marked dungeon complete via API`))
+                .catch((err) => console.error('[Dungeon] Failed to mark complete:', err));
             } else {
               // No instance ID - clear state anyway to prevent hanging
               console.warn('[Dungeon] No instance ID, clearing state anyway');
@@ -5893,18 +5914,18 @@ export default function CleanBattlefieldSource() {
             setInCombat(false);
             combatInProgress.current = false;
             
-            // Mark raid as complete in Firebase
             if (instanceData.id) {
-              import('firebase/firestore').then(({ doc, updateDoc }) => {
-                updateDoc(doc(db, 'raidInstances', instanceData.id), {
-                  status: 'completed',
-                  completedAt: new Date(),
-                  currentWave: currentWave + 1
-                }).then(() => {
-                  console.log(`[Raid] ✅ Marked raid as complete`);
-                }).catch(err => {
+              const participants = heroesRef.current.map((h) => ({
+                heroId: h.id,
+                name: h.name,
+                role: h.role,
+                hp: h.hp,
+              }));
+              raidAPI
+                .completeRaid(instanceData.id, true, participants, [])
+                .then(() => console.log(`[Raid] ✅ Marked raid as complete via API`))
+                .catch((err) => {
                   console.error('[Raid] Failed to mark complete:', err);
-                  // Clear state anyway to prevent hanging
                   setTimeout(() => {
                     setEnemies([]);
                     enemiesRef.current = [];
@@ -5912,7 +5933,6 @@ export default function CleanBattlefieldSource() {
                     combatInProgress.current = false;
                   }, 2000);
                 });
-              });
             } else {
               // No instance ID - clear state anyway
               console.warn('[Raid] No instance ID, clearing state anyway');
@@ -5945,45 +5965,25 @@ export default function CleanBattlefieldSource() {
               console.log('[Raid] 🧹 Cleared pending combat round timeout');
             }
             
-            // Update Firebase to advance wave (this will trigger useEffect to spawn next wave)
             const instanceId = instanceData.id || currentInstanceId;
             if (instanceId) {
-              import('firebase/firestore').then(({ doc, updateDoc }) => {
-                const nextWave = currentWave + 1;
-                console.log(`[Raid] 🔧 Updating Firebase: currentWave ${currentWave} -> ${nextWave} (instanceId: ${instanceId})`);
-                updateDoc(doc(db, 'raidInstances', instanceId), {
-                  currentWave: nextWave,
-                  status: 'active', // Keep status as active
-                  updatedAt: new Date()
-                }).then(() => {
-                  console.log(`[Raid] ✅ Advanced to wave ${nextWave + 1} (currentWave index: ${nextWave})`);
-                  console.log(`[Raid] ⏳ Waiting for instance listener to detect change and trigger raid setup useEffect...`);
-                  
-                  // Force update instanceData to trigger useEffect immediately
-                  // The onSnapshot listener should also detect this, but this ensures it happens
-                  setTimeout(() => {
-                    console.log(`[Raid] 🔄 Manually refreshing instanceData to trigger next wave...`);
-                    // Re-fetch the instance to get updated currentWave
-                    import('firebase/firestore').then(({ doc, getDoc }) => {
-                      getDoc(doc(db, 'raidInstances', instanceId)).then((snapshot) => {
-                        if (snapshot.exists()) {
-                          const updatedData = { id: snapshot.id, ...snapshot.data() };
-                          console.log(`[Raid] 📥 Updated instanceData with new currentWave:`, updatedData.currentWave);
-                          setInstanceData(updatedData);
-                        }
-                      }).catch(err => {
-                        console.error('[Raid] Failed to refresh instanceData:', err);
-                      });
-                    });
-                  }, 500); // Small delay to ensure Firebase write completes
-                }).catch(err => {
-                  console.error('[Raid] ❌ Failed to advance wave:', err);
-                  // Even if update fails, try to manually trigger next wave after delay
-                  setTimeout(() => {
-                    console.log('[Raid] ⚠️ Firebase update failed, but continuing anyway...');
-                  }, 2000);
-                });
-              });
+              const nextWave = currentWave + 1;
+              const participants = heroesRef.current.map((h) => ({
+                heroId: h.id,
+                name: h.name,
+                role: h.role,
+                hp: h.hp,
+              }));
+              console.log(`[Raid] 🔧 Advancing wave via API: ${currentWave} -> ${nextWave}`);
+              raidAPI
+                .updateRaidProgress(instanceId, nextWave, participants, [])
+                .then(() => {
+                  console.log(`[Raid] ✅ Advanced to wave ${nextWave + 1}`);
+                  setInstanceData((prev: { id?: string; currentWave?: number } | null) =>
+                    prev ? { ...prev, currentWave: nextWave, status: 'active' } : prev
+                  );
+                })
+                .catch((err) => console.error('[Raid] ❌ Failed to advance wave:', err));
             } else {
               console.error('[Raid] ⚠️ No instance ID available! Cannot advance wave.');
               console.error('[Raid] instanceData:', instanceData);
@@ -6273,166 +6273,52 @@ export default function CleanBattlefieldSource() {
           // Track which guaranteed slots have dropped (for bosses)
           const guaranteedSlotsDropped = new Set<string>();
           
-          // Helper function to process and distribute loot
-          const processLootItem = (loot: any, targetHero: Hero) => {
-            if (!loot) return;
-            
-            console.log(`[Loot] Generated ${loot.rarity} ${loot.name} (slot: ${loot.slot})`);
-            
-            // Track which guaranteed slots have dropped
+          const processLootItem = async (loot: any, targetHero: Hero) => {
+            if (!loot || loot.locked) return;
+            console.log(`[Loot] Server drop ${loot.rarity} ${loot.name} (slot: ${loot.slot})`);
             if (allowedSlots?.includes(loot.slot)) {
               guaranteedSlotsDropped.add(loot.slot);
             }
-            
-            // ========================================
-            // AUTOMATED GEAR DISTRIBUTION
-            // ========================================
-            // 1. Check if item is locked (skip if locked - shouldn't happen for new loot, but safety check)
-            if (loot.locked) {
-              console.log(`[Loot] 🔒 Skipping ${loot.name} - item is locked (unexpected for new loot)`);
-              return;
-            }
-            
-            // 2. Find best hero for this item (check ALL heroes, not just targetHero)
             let bestHero: Hero | null = null;
             let bestImprovement = 0;
-            
             for (const hero of aliveHeroes) {
-              // Skip if hero doesn't have this slot or slot is invalid
               if (!hero.equipment) continue;
-              
               const currentItem = hero.equipment[loot.slot];
-              
-              // Check if current item is locked (don't replace locked items)
-              if (currentItem?.locked) {
-                console.log(`[Loot] 🔒 Skipping ${hero.name} - current ${loot.slot} is locked`);
-                continue;
-              }
-              
-              // Calculate improvement for this hero (role-specific, considers spell power and set bonuses)
+              if (currentItem?.locked) continue;
               const improvement = calculateItemImprovement(loot, currentItem, hero, hero.equipment);
-              
               if (improvement > bestImprovement) {
                 bestImprovement = improvement;
                 bestHero = hero;
               }
             }
-            
-            // 3. Make decision based on best improvement
-            if (bestHero && bestImprovement > 0.1) {
-              // Significantly better (>10% improvement) - auto-equip or auto-gift
-              const currentItem = bestHero.equipment?.[loot.slot];
-              const oldPower = currentItem ? calculateItemPower(currentItem) : 0;
-              const newPower = calculateItemPower(loot);
-              
-              // Calculate sell value of old item
-              let sellGold = 0;
-              if (currentItem && !currentItem.locked) {
-                const itemValue = currentItem.attack + currentItem.defense + currentItem.hp;
-                const rarityMult = { common: 1, uncommon: 1.3, rare: 2, epic: 3, legendary: 4 }[currentItem.rarity as string] || 1;
-                sellGold = Math.floor(itemValue * rarityMult * 0.25);
-                console.log(`[Loot] 💰 Sold old ${currentItem.rarity} ${currentItem.name} for ${sellGold}g`);
-              }
-              
-              // Update hero with new equipment and gold
-              setHeroes(current => {
-                const updated = current.map(h => {
-                  if (h.id === bestHero!.id) {
-                    const newEquipment = { ...h.equipment, [loot.slot]: loot };
-                    const newGold = (h.gold || 0) + sellGold;
-                    return { ...h, equipment: newEquipment, gold: newGold };
-                  }
-                  return h;
-                });
-                heroesRef.current = updated;
-                return updated;
-              });
-              
-              // Track equipment and gold changes for batch sync
-              const updatedHero = heroesRef.current.find(h => h.id === bestHero!.id);
-              if (updatedHero) {
-                trackEquipmentChange(bestHero!.id, updatedHero.equipment);
-                trackHeroStatChange(bestHero!.id, {
-                  gold: updatedHero.gold - (bestHero!.gold || 0) // Track gold delta
-                });
-              }
-              
-              const action = bestHero.id === targetHero.id ? 'equipped' : 'gifted';
-              console.log(`[Loot] ✅ ${loot.rarity} ${loot.name} ${action} to ${bestHero.name} (${oldPower} → ${newPower} power, ${Math.round(bestImprovement * 100)}% improvement)`);
-              
-              // Show rare-drop announcement for Rare/Epic/Legendary/Mythic
-              if (['rare', 'epic', 'legendary', 'mythic'].includes(loot.rarity)) {
-                setRareLootAnnouncement({
-                  itemName: loot.name,
-                  rarity: loot.rarity,
-                  heroName: bestHero.name
-                });
-                // Auto-hide after 5 seconds
-                setTimeout(() => {
-                  setRareLootAnnouncement(null);
-                }, 5000);
-              }
-              
-              // Show loot SCT
-              setTimeout(() => {
-                const heroElement = document.querySelector(`[data-hero-id="${bestHero!.id}"]`);
-                if (heroElement) {
-                  const rect = heroElement.getBoundingClientRect();
-                  const rarityColor = { common: '🔘', uncommon: '🟢', rare: '🔵', epic: '🟣', legendary: '🟠' }[loot.rarity] || '📦';
-                  const giftIcon = bestHero!.id !== targetHero.id ? '🎁' : '';
-                  addSCT(`${giftIcon}${rarityColor} ${loot.name}`, rect.left + rect.width / 2, rect.top + 35, 'loot');
-                }
-              }, 300);
-            } else if (['epic', 'legendary', 'mythic'].includes(loot.rarity)) {
-              // Epic+ items: Keep in inventory even if not better (for potential future use)
-              console.log(`[Loot] 📦 Keeping ${loot.rarity} ${loot.name} in inventory (epic+ item, not better for anyone currently)`);
-              
-              // Add to hero inventory and sync to backend
-              setHeroes(current => {
-                const updated = current.map(h => {
-                  if (h.id === targetHero.id) {
-                    const updatedInventory = [...(h.inventory || []), loot];
-                    return { ...h, inventory: updatedInventory };
-                  }
-                  return h;
-                });
-                heroesRef.current = updated;
-                return updated;
-              });
-              
-              // Track inventory change for batch sync
-              const updatedHero = heroesRef.current.find(h => h.id === targetHero.id);
-              if (updatedHero) {
-                trackInventoryChange(targetHero.id, updatedHero.inventory);
-              }
-            } else {
-              // Auto-sell (item not better for anyone, and not epic+)
-              const itemValue = loot.attack + loot.defense + loot.hp;
-              const rarityMult = { common: 1, uncommon: 1.3, rare: 2, epic: 3, legendary: 4 }[loot.rarity as string] || 1;
-              const sellGold = Math.floor(itemValue * rarityMult * 0.25);
-              
-              // Give gold to random hero (who generated the loot)
-              console.log(`[Loot] 💰 Auto-sold ${loot.rarity} ${loot.name} for ${sellGold}g (not better for anyone)`);
-              
-              setHeroes(current => {
-                const updated = current.map(h => {
-                  if (h.id === targetHero.id) {
-                    return { ...h, gold: (h.gold || 0) + sellGold };
-                  }
-                  return h;
-                });
-                heroesRef.current = updated;
-                return updated;
-              });
-              
-              // Track gold change for batch sync
-              const updatedHero = heroesRef.current.find(h => h.id === targetHero.id);
-              if (updatedHero) {
-                trackHeroStatChange(targetHero.id, {
-                  gold: updatedHero.gold - (targetHero.gold || 0) // Track gold delta
-                });
+            if (bestHero && bestImprovement > 0.1 && loot.id && loot.slot) {
+              try {
+                await gearAPI.equipItem(bestHero.id, loot.id, loot.slot);
+                console.log(`[Loot] Server equip ${loot.name} → ${bestHero.name}`);
+              } catch (err) {
+                console.warn('[Loot] Server equip failed; item stays in server inventory:', err);
               }
             }
+            const announceHero = bestHero || targetHero;
+            if (['rare', 'epic', 'legendary', 'mythic'].includes(loot.rarity)) {
+              setRareLootAnnouncement({
+                itemName: loot.name,
+                rarity: loot.rarity,
+                heroName: announceHero.name,
+              });
+              setTimeout(() => setRareLootAnnouncement(null), 5000);
+            }
+            setTimeout(() => {
+              const heroElement = document.querySelector(`[data-hero-id="${announceHero.id}"]`);
+              if (heroElement) {
+                const rect = heroElement.getBoundingClientRect();
+                const rarityColor =
+                  { common: '🔘', uncommon: '🟢', rare: '🔵', epic: '🟣', legendary: '🟠' }[
+                    loot.rarity as string
+                  ] || '📦';
+                addSCT(`${rarityColor} ${loot.name}`, rect.left + rect.width / 2, rect.top + 35, 'loot');
+              }
+            }, 300);
           };
           
           const streamerId = twitchId || null;
@@ -6457,9 +6343,14 @@ export default function CleanBattlefieldSource() {
               deltas.push({ heroId, xpGained, goldGained, timestamp: nowTs });
             });
             const batchId = `cbs-loot-${streamerId}-${nowTs}`;
-            const drops = await requestServerLootDrops(streamerId, batchId, deltas, kills);
-            if (deltas.length > 0) {
-              heroStatChangesRef.current.clear();
+            let drops: Awaited<ReturnType<typeof requestServerLootDrops>> = [];
+            try {
+              drops = await requestServerLootDrops(streamerId, batchId, deltas, kills);
+              if (deltas.length > 0) {
+                heroStatChangesRef.current.clear();
+              }
+            } catch (lootErr) {
+              console.warn('[Loot] Victory loot request failed (non-fatal):', lootErr);
             }
 
             for (const drop of drops) {
@@ -6470,7 +6361,7 @@ export default function CleanBattlefieldSource() {
               if (allowedSlots?.includes(drop.item.slot)) {
                 guaranteedSlotsDropped.add(drop.item.slot);
               }
-              processLootItem(drop.item, targetHero);
+              await processLootItem(drop.item, targetHero);
               setLootToasts((prev) =>
                 pushLootToast(prev, {
                   heroId: targetHero.id,
@@ -6539,21 +6430,23 @@ export default function CleanBattlefieldSource() {
           setInCombat(false);
           combatInProgress.current = false;
           
-          // Mark instance as failed in Firebase (this will trigger listener to return to idle)
           const instanceId = instanceData.id || currentInstanceId;
           if (instanceId) {
-            const collection = gameMode === 'raid' ? 'raidInstances' : 'dungeonInstances';
-            import('firebase/firestore').then(({ doc, updateDoc }) => {
-              updateDoc(doc(db, collection, instanceId), {
-                status: 'failed',
-                failedAt: new Date(),
-                failureReason: 'Party wipe - all heroes died'
-              }).then(() => {
-                console.log(`[${gameMode === 'raid' ? 'Raid' : 'Dungeon'}] ✅ Marked as failed - returning to idle mode`);
-                // Instance listener will detect status change and return to idle
-              }).catch(err => {
+            const participants = heroesRef.current.map((h) => ({
+              heroId: h.id,
+              name: h.name,
+              role: h.role,
+              hp: h.hp,
+            }));
+            const markFailed = gameMode === 'raid'
+              ? raidAPI.completeRaid(instanceId, false, participants, [])
+              : dungeonAPI.completeInstance(instanceId, { success: false, participants });
+            markFailed
+              .then(() =>
+                console.log(`[${gameMode === 'raid' ? 'Raid' : 'Dungeon'}] ✅ Marked as failed via API`)
+              )
+              .catch((err) => {
                 console.error(`[${gameMode === 'raid' ? 'Raid' : 'Dungeon'}] Failed to mark as failed:`, err);
-                // Even if Firebase update fails, clear state and return to idle
                 setTimeout(() => {
                   setEnemies([]);
                   enemiesRef.current = [];
@@ -6563,7 +6456,6 @@ export default function CleanBattlefieldSource() {
                   setGameMode('idle');
                 }, 2000);
               });
-            });
           } else {
             // No instance ID - clear state and return to idle anyway
             console.warn(`[${gameMode === 'raid' ? 'Raid' : 'Dungeon'}] No instance ID, clearing state and returning to idle`);
@@ -6637,10 +6529,13 @@ export default function CleanBattlefieldSource() {
 
     // OLD executeHeal removed - using new one with Cursed debuff support (line ~1217)
 
+    checkCombatVictoryRef.current = checkCombatVictory;
+
     startCombatRound();
 
     // Cleanup
     return () => {
+      checkCombatVictoryRef.current = null;
       if (combatRoundTimeoutRef.current) {
         clearTimeout(combatRoundTimeoutRef.current);
         combatRoundTimeoutRef.current = null;
@@ -8887,8 +8782,8 @@ export default function CleanBattlefieldSource() {
         const hasShield = (hero.shield || 0) > 0;
 
         return (
+          <OverlayHeroCardErrorBoundary key={spriteKey} heroId={hero.id}>
           <div
-            key={spriteKey}
             data-hero-id={hero.id}
             style={{
               position: 'absolute',
@@ -9210,6 +9105,7 @@ export default function CleanBattlefieldSource() {
               />
             </div>
           </div>
+          </OverlayHeroCardErrorBoundary>
         );
       })}
 

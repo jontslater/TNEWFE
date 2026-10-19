@@ -24,10 +24,6 @@ export const SkillChargeBar: React.FC<SkillChargeBarProps> = ({
   const ability = resolveActiveAbility(heroRole);
   const category = ability.role;
   const fillColor = roleCategoryColor(category);
-  const flameStyle =
-    chargeBarVariant === 'flame'
-      ? { background: 'linear-gradient(90deg, #f97316 0%, #ef4444 100%)', boxShadow: ready ? '0 0 8px #f97316' : undefined }
-      : { backgroundColor: fillColor, boxShadow: ready ? `0 0 8px ${fillColor}` : undefined };
 
   const [, setTick] = useState(0);
   useEffect(() => subscribeSkillChargeTicker(() => setTick((t) => t + 1)), []);
@@ -37,6 +33,17 @@ export const SkillChargeBar: React.FC<SkillChargeBarProps> = ({
   const now = getSkillChargeNow();
   const { progress, ready } = getRoleActiveChargeProgress(cooldowns, durationMs, now);
   const widthPct = Math.round(progress * 100);
+
+  const flameStyle =
+    chargeBarVariant === 'flame'
+      ? {
+          background: 'linear-gradient(90deg, #f97316 0%, #ef4444 100%)',
+          boxShadow: ready ? '0 0 8px #f97316' : undefined,
+        }
+      : {
+          backgroundColor: fillColor,
+          boxShadow: ready ? `0 0 8px ${fillColor}` : undefined,
+        };
 
   return (
     <div
@@ -49,7 +56,11 @@ export const SkillChargeBar: React.FC<SkillChargeBarProps> = ({
         borderRadius: '2px',
         overflow: 'hidden',
         transform: 'translateY(-40px)',
-        boxShadow: ready ? (chargeBarVariant === 'flame' ? '0 0 6px #f97316' : `0 0 6px ${fillColor}`) : undefined,
+        boxShadow: ready
+          ? chargeBarVariant === 'flame'
+            ? '0 0 6px #f97316'
+            : `0 0 6px ${fillColor}`
+          : undefined,
       }}
       title={ability.name}
     >

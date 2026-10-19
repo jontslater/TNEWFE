@@ -85,6 +85,28 @@ overlayClient.interceptors.response.use(
 
 // Hero API
 export const heroAPI = {
+  /** Admin portal: GET /api/heroes/admin/all (X-Admin-Key), with internal-key fallback. */
+  async getAdminAllHeroes(): Promise<Hero[]> {
+    const adminKey = import.meta.env.VITE_ADMIN_KEY as string | undefined;
+    const internalKey = import.meta.env.VITE_INTERNAL_API_KEY as string | undefined;
+    try {
+      const response = await apiClient.get('/api/heroes/admin/all', {
+        headers: adminKey ? { 'X-Admin-Key': adminKey } : {},
+      });
+      const data = response.data;
+      return Array.isArray(data) ? data : data?.heroes ?? [];
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status === 404 && internalKey) {
+        const response = await apiClient.get('/api/heroes', {
+          headers: { 'X-Internal-Key': internalKey },
+        });
+        return response.data;
+      }
+      throw err;
+    }
+  },
+
   async getAllHeroes(): Promise<Hero[]> {
     if (USE_MOCK) {
       return new Promise((resolve) => {
@@ -1755,7 +1777,23 @@ export const dungeonAPI = {
       groupId
     });
     return response.data;
-  }
+  },
+
+  async updateInstanceProgress(
+    instanceId: string,
+    body: { room?: number; participants?: unknown[]; combatLogEntries?: unknown[] }
+  ) {
+    const response = await apiClient.post(`/api/dungeon/instance/${instanceId}/progress`, body);
+    return response.data;
+  },
+
+  async completeInstance(
+    instanceId: string,
+    body: { success?: boolean; finalParticipants?: unknown[]; participants?: unknown[] }
+  ) {
+    const response = await apiClient.post(`/api/dungeon/instance/${instanceId}/complete`, body);
+    return response.data;
+  },
 };
 
 // Enchanting API
@@ -3173,7 +3211,7 @@ export const overlayAPI = {
     const battlefieldId = `twitch:${twitchId}`;
     const response = await overlayClient.post(
       `/api/battlefields/${encodeURIComponent(battlefieldId)}/loot/roll`,
-      { kills }
+      { streamerId: twitchId, kills }
     );
     return response.data;
   },

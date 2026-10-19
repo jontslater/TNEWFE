@@ -3,6 +3,8 @@ import { capCritChance } from '../../combat/balance';
 import { resolveActiveAbility, abilityKindFromId } from './activeAbilities';
 import { beginRoleActiveCooldown, resolveDurationForHero } from './roleActiveCharge';
 import type { ActiveAbilityKind } from './activeAbilities';
+import type { Equipment } from '../../types/Hero';
+import { getCombatSetHookModifiers } from '../../gear/combatSetHooks';
 
 export interface MinimalCombatHero {
   id: string;
@@ -18,6 +20,7 @@ export interface MinimalCombatHero {
   tauntExpiry?: number;
   critChance?: number;
   skills?: Record<string, { points?: number }> | null;
+  equipment?: Equipment;
 }
 
 export interface MinimalEnemy {
@@ -52,7 +55,11 @@ export function tryFireRoleActiveAbility(
   const ability = resolveActiveAbility(hero.role);
   const kind = abilityKindFromId(ability.id);
   const mods = computeSkillModifiers(hero);
-  const durationMs = resolveDurationForHero(hero.role, mods.cooldownReduction);
+  const setHooks = getCombatSetHookModifiers(hero.equipment);
+  let durationMs = resolveDurationForHero(hero.role, mods.cooldownReduction);
+  if (setHooks.burstStrikeChargeRateBonus > 0) {
+    durationMs = Math.max(1000, Math.floor(durationMs * (1 - setHooks.burstStrikeChargeRateBonus)));
+  }
   const readyAt = hero.cooldowns?.roleActiveReadyAt ?? 0;
   if (readyAt > 0 && now < readyAt) return null;
 
@@ -64,7 +71,9 @@ export function tryFireRoleActiveAbility(
       if (aliveEnemies.length === 0) return null;
       const hpRatio = hero.maxHp > 0 ? hero.hp / hero.maxHp : 1;
       if (hpRatio > 0.6) return null;
-      const nextCooldowns = beginRoleActiveCooldown(hero.cooldowns, durationMs, now);
+      const wallDuration =
+        durationMs + (setHooks.shieldWallCooldownMsDelta < 0 ? setHooks.shieldWallCooldownMsDelta : 0);
+      const nextCooldowns = beginRoleActiveCooldown(hero.cooldowns, wallDuration, now);
       const base: RoleActiveFireResult = {
         abilityName: ability.name,
         kind,
@@ -76,7 +85,8 @@ export function tryFireRoleActiveAbility(
       const tankDrPct = Number(
         effect.tankDamageReductionPercent ?? effect.damageReductionPercent ?? 50
       );
-      const partyDrPct = Number(effect.partyDamageReductionPercent ?? 20);
+      const partyDrPct =
+        Number(effect.partyDamageReductionPercent ?? 20) + setHooks.shieldWallPartyDrBonus * 100;
       const dur = Number(effect.durationMs ?? 8000);
       return {
         ...base,
@@ -102,12 +112,18 @@ export function tryFireRoleActiveAbility(
           roleActiveDurationMs: nextCooldowns.roleActiveDurationMs!,
         },
       };
-      const frac = Number(effect.healPercentOfCasterMaxHp ?? 25) / 100;
+      const frac =
+        Number(
+          effect.healPercentOfEachAllyMaxHp ??
+            effect.healPercentOfCasterMaxHp ??
+            25
+        ) / 100;
       const mult =
         effect.scalesWithHealingMultiplier !== false
           ? 1 + mods.healingMultiplier / 100
           : 1;
-      const perAlly = Math.floor(hero.maxHp * frac * mult);
+      const healMult = 1 + setHooks.groupHealBonusFraction;
+      const perAlly = Math.floor(hero.maxHp * frac * mult * healMult);
       const heals: Record<string, number> = {};
       allies.forEach((h) => {
         if (!h || h.isDead || h.hp <= 0) return;
@@ -129,10 +145,14 @@ export function tryFireRoleActiveAbility(
       };
       const atkMult = Number(effect.attackDamagePercent ?? 300) / 100;
       let damage = Math.floor((hero.attack || 0) * atkMult * (1 + mods.damageMultiplier / 100));
-      const critChance = capCritChance(hero.critChance ?? 0.05);
+      const critChance = capCritChance((hero.critChance ?? 0.05) + setHooks.burstStrikeCritBonus);
       const isCrit = effect.canCrit !== false && Math.random() < critChance;
       if (isCrit) {
         damage = Math.floor(damage * critDamageMultiplier(mods.critDamage));
+      }
+      if (setHooks.burstStrikeCleaveFraction > 0 && aliveEnemies.length > 1) {
+        const cleave = Math.floor(damage * setHooks.burstStrikeCleaveFraction);
+        damage += cleave;
       }
       return {
         ...base,
