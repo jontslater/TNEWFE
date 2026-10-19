@@ -762,10 +762,7 @@ function applyEnemyDamageToHero(
   actualDamage = Math.floor(actualDamage * damageMultiplier);
 
   // Apply skill defense multipliers (additional damage reduction)
-  const targetSkillBonuses = calculateSkillBonuses(target.hero);
-  if (targetSkillBonuses.defenseMultiplier > 0) {
-    actualDamage = Math.floor(actualDamage / (1 + targetSkillBonuses.defenseMultiplier / 100));
-  }
+  // Skill DR already applied via effectiveDefense multiplier above — do not double-apply.
 
   // Apply armor enchantment thorns effects BEFORE damage reductions
   // Collect all enchantment effects first to stack them properly

@@ -63,8 +63,8 @@ export function processHealerAbilities(
     };
   }
 
-  // HEALER: GROUP HEAL - When party average HP is below 70%
-  if (now >= healer.cooldowns.groupHeal) {
+  // GROUP HEAL: driven by role-active charge bar (`processRoleActivePhase`).
+  if (false && now >= healer.cooldowns.groupHeal) {
     let totalHpPercent = 0;
     let aliveCount = 0;
 

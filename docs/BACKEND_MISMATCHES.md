@@ -2,7 +2,9 @@
 
 > **Firestore composite indexes:** Deploy only from **`jontslater/idleDnD-Backend`** (`firebase.json` + `firestore.indexes.json`). This frontend repo does not ship index definitions — avoid deploying a duplicate `firestore.indexes.json` from TNEWFE so index sets do not conflict.
 
-**Updated**: 2026-10-15  
+**Skills / role-active abilities:** Frontend uses `src/game/skills/` (category templates mirror backend `skills.js` until `GET /api/skills/definitions` ships). Role defaults: Shield Wall / Group Heal / Burst Strike; class overrides: guardian, cleric, shaman, berserker. Assumption: backend defs will match `activeAbilities.ts` cooldowns and effect fields.
+
+**Updated**: 2026-10-19  
 **Backend branch**: `jontslater/idleDnD-Backend@cursor/fix-critical-issues-3f3e`  
 **Frontend branch**: `jontslater/TNEWFE@cursor/refactor-overlay-security-code-health-c08c`
 

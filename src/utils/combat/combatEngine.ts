@@ -18,6 +18,7 @@ import { processEnemyAttack, clearActiveEnemyAttacks, getActiveEnemyAttacksCount
 import { getEnemySpriteType } from '../animationDurations';
 import { getAnimationDuration, getHeroSpriteType } from '../animationDurations';
 import { testLog } from '../testLogging';
+import { processRoleActivePhase } from '../../game/skills/processRoleActivePhase';
 
 /**
  * Main combat resolution function
@@ -94,6 +95,11 @@ export function resolveCombat(
   // PHASE 4: Emergency Abilities (Last Stand, Shield Wall, Divine Shield, etc.)
   // ============================================
   processEmergencyAbilities(state.heroes, now, callbacks);
+
+  // ============================================
+  // PHASE 4.5: Role-active charge abilities (all heroes)
+  // ============================================
+  processRoleActivePhase(heroes, enemies, now, callbacks);
 
   // ============================================
   // PHASE 5: Healer Abilities (Group Heal, Instant Heal, Combat Res, etc.)

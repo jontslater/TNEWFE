@@ -62,6 +62,11 @@ import { SyncManager } from '../overlay/syncManager';
 import { useScheduledGuildRaidsMonitoring } from '../overlay/scheduledGuildRaids';
 import { OverlayQueueStrip } from '../overlay/OverlayQueueStrip';
 import { useBattlefieldQueueFirestore } from '../hooks/useBattlefieldQueueFirestore';
+import { calculateSkillBonuses } from '../utils/combatUtils';
+import { processOverlayRoleActiveCharges } from '../game/skills/overlayRoleActive';
+import { SkillChargeBar } from '../overlay/SkillChargeBar';
+import { AbilityAnnouncement } from '../overlay/AbilityAnnouncement';
+import { critDamageMultiplier, computeSkillModifiers } from '../game/skills/computeSkillModifiers';
 
 // Type aliases for backward compatibility
 type Hero = OverlayHero;
@@ -98,12 +103,14 @@ type CombatAction = OverlayCombatAction;
   tauntExpiry?: number; // Timestamp when taunt expires (forces enemy targeting)
   fadeExpiry?: number; // Timestamp when fade expires (reduces threat)
   cooldowns?: {
-    groupHeal?: number; // Last use timestamp
+    groupHeal?: number;
     shieldWall?: number;
     chainLightning?: number;
     whirlwind?: number;
     bloodthirst?: number;
-    raiseDead?: number; // Necromancer skeleton summon cooldown
+    raiseDead?: number;
+    roleActiveReadyAt?: number;
+    roleActiveDurationMs?: number;
   };
   // Minion properties (for necromancer skeletons)
   isMinion?: boolean;
@@ -524,6 +531,11 @@ export default function CleanBattlefieldSource() {
     itemName: string;
     rarity: string;
     heroName: string;
+  } | null>(null);
+  const [abilityAnnouncement, setAbilityAnnouncement] = useState<{
+    abilityName: string;
+    heroName: string;
+    category: 'tank' | 'healer' | 'dps';
   } | null>(null);
   
   // Determine twitchId for instance listener: prefer authenticated user, fallback to battlefieldId
@@ -1566,6 +1578,29 @@ export default function CleanBattlefieldSource() {
   // Refs for current combat state (so combat round has fresh data)
   const heroesRef = useRef<Hero[]>([]);
   const enemiesRef = useRef<Enemy[]>([]);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      const now = Date.now();
+      setHeroes((current) => {
+        if (!current.length) return current;
+        const { heroes: nextHeroes, enemies: nextEnemies, announcements } =
+          processOverlayRoleActiveCharges(current, enemiesRef.current, now);
+        if (announcements.length > 0) {
+          const last = announcements[announcements.length - 1];
+          setAbilityAnnouncement(last);
+          window.setTimeout(() => setAbilityAnnouncement(null), 2500);
+        }
+        if (nextEnemies !== enemiesRef.current) {
+          enemiesRef.current = nextEnemies;
+          setEnemies(nextEnemies);
+        }
+        heroesRef.current = nextHeroes;
+        return nextHeroes;
+      });
+    }, 500);
+    return () => clearInterval(id);
+  }, []);
   
   // Get or create sprite ref
   const getHeroSpriteRef = (heroId: string) => {
@@ -2909,7 +2944,8 @@ export default function CleanBattlefieldSource() {
       // =============================================================
       // PHASE 2: EMERGENCY ABILITIES (Group Heal, Shield Wall)
       // =============================================================
-      // GROUP HEAL (Cleric) - When 2+ heroes below 50% HP
+      // GROUP HEAL / SHIELD WALL: legacy triggers — role-active charge bar handles these now.
+      if (false) {
       const injuredHeroes = currentHeroes.filter(h => !h.isDead && h.hp > 0 && (h.hp / h.maxHp) < 0.5);
       const clericHealers = currentHeroes.filter(h => h.role === 'cleric' && !h.isDead && h.hp > 0);
       
@@ -2954,6 +2990,8 @@ export default function CleanBattlefieldSource() {
             baseHeal = Math.floor(baseHeal * bonuses.healing);
           }
           
+          const clericMods = computeSkillModifiers(cleric);
+          baseHeal *= 1 + clericMods.healingMultiplier / 100;
           const singleTargetHeal = Math.floor(baseHeal);
           
           // Heal all allies (30% of their max HP, or calculated heal, whichever is higher)
@@ -3050,6 +3088,7 @@ export default function CleanBattlefieldSource() {
             addSCT('+Shield Wall', rect.left + rect.width / 2, rect.top + 20, 'loot');
           }
         }
+      }
       }
       
       // =============================================================
@@ -3228,8 +3267,8 @@ export default function CleanBattlefieldSource() {
         const aliveEnemies = currentEnemies.filter(e => e.hp > 0);
         if (aliveEnemies.length === 0) return;
         
-        // CHAIN LIGHTNING (Shaman) - AoE if 2+ enemies
-        if (hero.role === 'shaman' && aliveEnemies.length >= 2) {
+        // CHAIN LIGHTNING / WHIRLWIND: fired via role-active charge bar
+        if (false && hero.role === 'shaman' && aliveEnemies.length >= 2) {
           const cooldown = hero.cooldowns?.chainLightning || 0;
           if (now >= cooldown) {
             console.log(`[Chain Lightning] ⚡ ${hero.name} casts CHAIN LIGHTNING! (hits ${Math.min(3, aliveEnemies.length)} enemies)`);
@@ -3337,8 +3376,7 @@ export default function CleanBattlefieldSource() {
           }
         }
         
-        // WHIRLWIND (Berserker) - AoE if 2+ enemies
-        if (hero.role === 'berserker' && aliveEnemies.length >= 2) {
+        if (false && hero.role === 'berserker' && aliveEnemies.length >= 2) {
           const cooldown = hero.cooldowns?.whirlwind || 0;
           if (now >= cooldown) {
             console.log(`[Whirlwind] 🌪️ ${hero.name} uses WHIRLWIND! (hits all ${aliveEnemies.length} enemies)`);
@@ -3594,9 +3632,10 @@ export default function CleanBattlefieldSource() {
         console.log(`[Viewer Bonus] 👥 ${activeChatterCount} chatters → ${((bonuses.healing - 1) * 100).toFixed(0)}% healing bonus`);
       }
       
-      // Check for Divine Grace proc (30% chance for 2x healing)
+      const healerSkillMods = computeSkillModifiers(healer);
+      const divineGraceChance = healerSkillMods.divineGraceProcPercent / 100;
       let divineGraceActive = false;
-      if (Math.random() < 0.30) {
+      if (divineGraceChance > 0 && Math.random() < divineGraceChance) {
         divineGraceActive = true;
         baseHeal *= 2;
         console.log(`[Divine Grace] ✨ ${healer.name} procs DIVINE GRACE! (2x healing)`);
@@ -3632,6 +3671,7 @@ export default function CleanBattlefieldSource() {
         });
       }
       
+      baseHeal *= 1 + healerSkillMods.healingMultiplier / 100;
       let healAmount = Math.floor(baseHeal);
       
       // Check for CURSED debuff on target (-50% healing received)
@@ -4033,9 +4073,10 @@ export default function CleanBattlefieldSource() {
       // Roll for critical hit (base 5% + gear + Critical Strike buff)
       const baseCritChance = 0.05; // 5% base crit chance
       const critChance = criticalStrikeActive ? 1.0 : (baseCritChance + (hero.critChance || 0));
-      const isCrit = Math.random() < critChance;
+      const skillMods = computeSkillModifiers(hero);
+      const isCrit = Math.random() < Math.min(0.35, critChance + skillMods.critChance / 100);
       if (isCrit) {
-        damage = Math.round(damage * 2);
+        damage = Math.round(damage * critDamageMultiplier(skillMods.critDamage));
         console.log(`[Combat] ⚡ CRITICAL HIT! ${hero.name} crits for ${damage}!`);
       }
       
@@ -5226,12 +5267,17 @@ export default function CleanBattlefieldSource() {
       
       // Check for Shield Wall (Guardian ability - 30% DR for all allies)
       const allCurrentHeroes = testHealer ? [...heroesRef.current, testHealer] : heroesRef.current;
-      const shieldWallActive = allCurrentHeroes.some(h => h.activeBuffs?.shieldWall?.active && h.activeBuffs.shieldWall.expiresAt > Date.now());
-      if (shieldWallActive) {
+      const nowShield = Date.now();
+      const targetRoleShield = (targetHeroRef.activeBuffs as any)?.roleActiveShield;
+      if (
+        targetRoleShield?.active &&
+        targetRoleShield.expiresAt > nowShield
+      ) {
+        const dr = targetRoleShield.drFraction ?? 0.5;
         const damageBefore = actualDamage;
-        actualDamage = Math.floor(actualDamage * 0.70);
-        blockedByAbilities += (damageBefore - actualDamage);
-        console.log(`[Shield Wall] 🛡️ Damage reduced by 30%: ${Math.floor(actualDamage / 0.7)} → ${actualDamage}`);
+        actualDamage = Math.floor(actualDamage * (1 - dr));
+        blockedByAbilities += damageBefore - actualDamage;
+        console.log(`[Shield Wall] 🛡️ Self DR ${Math.round(dr * 100)}%`);
       }
       
       // SANITY CAP
@@ -7634,51 +7680,6 @@ export default function CleanBattlefieldSource() {
     return (newValue - currentValue) / currentValue;
   };
 
-  // Calculate skill bonuses from skill tree
-  const calculateSkillBonuses = (hero: Hero): any => {
-    const skills = hero.skills || {};
-    const bonuses = {
-      attack: 0,
-      defense: 0,
-      hp: 0,
-      damageMultiplier: 0,
-      healingMultiplier: 0,
-      defenseMultiplier: 0,
-      critChance: 0,
-      critDamage: 0
-    };
-
-    // Simplified skill templates (matches backend pattern)
-    const category = isTankRole(hero.role) ? 'tank' : isHealerRole(hero.role) ? 'healer' : 'dps';
-    
-    Object.entries(skills).forEach(([skillId, skillData]: [string, any]) => {
-      if (!skillData || !skillData.points) return;
-      
-      const points = skillData.points;
-      
-      // Parse skill index from skillId (format: "classname_skill_0")
-      const skillIndex = parseInt(skillId.split('_skill_')[1] || '0');
-      
-      // Apply bonuses based on category and skill index
-      if (category === 'tank') {
-        if (skillIndex === 0 || skillIndex === 8) bonuses.hp += 5 * points;
-        if (skillIndex === 2 || skillIndex === 6) bonuses.defense += 4 * points;
-        if (skillIndex === 3) bonuses.attack += 2 * points;
-        if (skillIndex === 1 || skillIndex === 4 || skillIndex === 7 || skillIndex === 9) bonuses.defenseMultiplier += 3 * points;
-      } else if (category === 'healer') {
-        if (skillIndex === 0 || skillIndex === 2 || skillIndex === 4 || skillIndex === 6 || skillIndex === 9) bonuses.healingMultiplier += 5 * points;
-        if (skillIndex === 8) bonuses.defense += 3 * points;
-      } else { // DPS
-        if (skillIndex === 0 || skillIndex === 5 || skillIndex === 7 || skillIndex === 9) bonuses.damageMultiplier += 5 * points;
-        if (skillIndex === 1 || skillIndex === 6) bonuses.critChance += 3 * points;
-        if (skillIndex === 2) bonuses.critDamage += 10 * points;
-        if (skillIndex === 3) bonuses.attack += 4 * points;
-      }
-    });
-
-    return bonuses;
-  };
-
   // Calculate comprehensive stats from equipment (including skill bonuses, HP regen, etc.)
   const calculateHeroStats = (hero: Hero): Hero => {
     // If no equipment, use basic level-based stats
@@ -8407,6 +8408,11 @@ export default function CleanBattlefieldSource() {
                 </span>
               </div>
 
+              <SkillChargeBar
+                heroRole={hero.role}
+                cooldowns={hero.cooldowns}
+                skills={hero.skills}
+              />
               {/* HP Bar - Smaller for OBS */}
               <div style={{
                 width: '120px',
@@ -8783,6 +8789,13 @@ export default function CleanBattlefieldSource() {
             heroName={rareLootAnnouncement.heroName}
           />
         )}
+        {abilityAnnouncement && (
+          <AbilityAnnouncement
+            abilityName={abilityAnnouncement.abilityName}
+            heroName={abilityAnnouncement.heroName}
+            category={abilityAnnouncement.category}
+          />
+        )}
         
         {/* Raid Party - heroes state already filtered to participants! */}
         {heroes.map((hero, index) => {
@@ -8844,6 +8857,11 @@ export default function CleanBattlefieldSource() {
                 {hero.isDead && ' 💀'}
               </div>
               
+              <SkillChargeBar
+                heroRole={hero.role}
+                cooldowns={hero.cooldowns}
+                skills={hero.skills}
+              />
               {/* HP Bar - Smaller for OBS */}
               <div style={{
                 width: '120px',
@@ -9368,6 +9386,11 @@ export default function CleanBattlefieldSource() {
               </div>
             )}
 
+            <SkillChargeBar
+              heroRole={hero.role}
+              cooldowns={hero.cooldowns}
+              skills={hero.skills}
+            />
             {/* HP Bar - Smaller for OBS */}
             <div style={{
               width: '120px',

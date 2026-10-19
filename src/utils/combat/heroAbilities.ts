@@ -355,13 +355,6 @@ export function applyHeroAbilities(
     modifiedDamage *= 1.05; // 5% guild combat bonus (placeholder)
   }
 
-  // Check for skill-based crit chance
-  if (heroSkillBonuses.critChance > 0 && Math.random() < (heroSkillBonuses.critChance / 100)) {
-    const critMultiplier = 2.0 + (heroSkillBonuses.critDamage / 100);
-    modifiedDamage *= critMultiplier;
-    callbacks.log('damage', `💥 ${hero.username} SKILL CRITICAL STRIKE!`);
-  }
-
   // Apply viewer bonuses
   modifiedDamage *= bonuses.damageMultiplier;
 
