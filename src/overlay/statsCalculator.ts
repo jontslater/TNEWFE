@@ -51,20 +51,6 @@ export const calculateAverageGearScore = (heroes: OverlayHero[]): number => {
   return Math.floor(total / heroes.length);
 };
 
-export const getFounderGoldMultiplier = (founderPackTier: string | null | undefined): number => {
-  if (!founderPackTier) return 1.0;
-  
-  const tierMultipliers: Record<string, number> = {
-    bronze: 1.05,
-    silver: 1.10,
-    gold: 1.15,
-    platinum: 1.20,
-    diamond: 1.25
-  };
-  
-  return tierMultipliers[founderPackTier.toLowerCase()] || 1.0;
-};
-
 export const calculateMaxXp = (level: number): number => {
   const baseXp = 100;
   return Math.floor(baseXp * Math.pow(level, 1.5));

@@ -28,8 +28,7 @@ const PACK_TIERS: PackTier[] = [
       'Exclusive "Founder" Title',
       '25 Premium Tokens',
       'Unique Name Color',
-      'Discord Founder Role',
-      'Early Access to New Features'
+      'Discord Founder Role'
     ]
   },
   {
@@ -45,8 +44,7 @@ const PACK_TIERS: PackTier[] = [
       '75 Premium Tokens',
       'Unique Name Color',
       'Exclusive Name Frame',
-      'Discord Founder Role',
-      'Early Access to New Features'
+      'Discord Founder Role'
     ]
   },
   {
@@ -65,8 +63,7 @@ const PACK_TIERS: PackTier[] = [
       'Exclusive Aura Effect',
       'Exclusive Spell Effects',
       'Discord Founder Role',
-      'Early Access to New Features',
-      'Early Art Previews'
+      'Early art & cosmetic previews'
     ]
   },
   {
@@ -86,8 +83,7 @@ const PACK_TIERS: PackTier[] = [
       'Exclusive Spell Effects',
       'Founder Statue in Game',
       'Discord Founder Role',
-      'Early Access to New Features',
-      'Early Art Previews',
+      'Early art & cosmetic previews',
       'Exclusive Founder Chat Badge'
     ]
   }
@@ -153,7 +149,8 @@ export default function FoundersPackPage() {
             Founders Pack
           </h1>
           <p className="text-xl text-gray-300 max-w-3xl mx-auto">
-            Support the game's development and get exclusive rewards! Founder Pack funds go directly to artists and game development.
+            Support development and unlock exclusive cosmetics only — badges, titles, name colors, frames,
+            auras, and spell effects. No combat, gold, or XP bonuses.
           </p>
           <div className="mt-4 text-yellow-400 font-semibold">
             ⭐ Limited Time Offer - Support Early Development ⭐
@@ -199,11 +196,8 @@ export default function FoundersPackPage() {
                 ))}
               </div>
 
-              {/* Premium Currency Bonus */}
-              <div className="bg-white/10 rounded-lg p-3 mb-4 text-center">
-                <div className="text-yellow-300 font-bold text-lg">
-                  +{pack.premiumCurrency} Premium Tokens
-                </div>
+              <div className="bg-white/10 rounded-lg p-3 mb-4 text-center text-sm text-white/90">
+                Includes {pack.premiumCurrency} premium tokens for the cosmetic shop (not combat power).
               </div>
 
               {/* Purchase Button */}

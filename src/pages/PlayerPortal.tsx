@@ -1080,7 +1080,7 @@ export default function PlayerPortal() {
                                           type="button"
                                           disabled={isGranting || isCurrentTier}
                                           onClick={async () => {
-                                            if (!window.confirm(`Grant ${tier.toUpperCase()} Founder Pack to ${group.label}? This will grant benefits to all their heroes.`)) {
+                                            if (!window.confirm(`Grant ${tier.toUpperCase()} Founder Pack to ${group.label}? This grants cosmetic unlocks only (badge, title, name styles, etc.).`)) {
                                               return;
                                             }
                                             setGrantingFounderPack({ userId: group.twitchId, tier });

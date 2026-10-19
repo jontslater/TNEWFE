@@ -50,7 +50,6 @@ import {
   getThreatWeight, 
   calculateGearScore, 
   calculateAverageGearScore, 
-  getFounderGoldMultiplier, 
   calculateMaxXp, 
   calculateItemImprovement 
 } from '../overlay/statsCalculator';
@@ -5944,21 +5943,9 @@ export default function CleanBattlefieldSource() {
           return sum + (enemy.gold || BALANCE.enemy.goldScaling(enemy.level, 1.0));
         }, 0);
         
-        // Helper function to get founder pack gold multiplier
-        const getFounderGoldMultiplier = (founderPackTier: string | null | undefined): number => {
-          if (!founderPackTier) return 1.0; // No founder pack = 100% (no bonus)
-          const multipliers: Record<string, number> = {
-            'bronze': 1.10,  // +10% gold
-            'silver': 1.20,  // +20% gold
-            'gold': 1.30,    // +30% gold
-            'platinum': 1.50 // +50% gold
-          };
-          return multipliers[founderPackTier.toLowerCase()] || 1.0;
-        };
-        
         // Track XP gains and level ups (for SCT outside setState)
         const xpResults: Array<{heroId: string; name: string; xp: number; leveledUp: boolean; oldLevel?: number; newLevel?: number; isDead: boolean}> = [];
-        const goldResults: Array<{heroId: string; name: string; gold: number; baseGold: number; multiplier: number}> = [];
+        const goldResults: Array<{heroId: string; name: string; gold: number}> = [];
         
         // Grant XP and check for level ups (EVEN DEAD HEROES GET XP!)
         setHeroes(currentHeroes => {
@@ -5975,18 +5962,12 @@ export default function CleanBattlefieldSource() {
             const newXP = (hero.xp || 0) + xpToGrant;
             const maxXP = hero.maxXp || (100 + hero.level * 10);
             
-            // Calculate gold with founder pack multiplier
-            const founderTier = (hero as any).founderPackTier || null;
-            const goldMultiplier = getFounderGoldMultiplier(founderTier);
-            const goldToGrant = Math.floor(totalBaseGold * goldMultiplier);
+            const goldToGrant = Math.floor(totalBaseGold);
             
-            // Track gold results for SCT
             goldResults.push({
               heroId: hero.id,
               name: hero.name,
               gold: goldToGrant,
-              baseGold: totalBaseGold,
-              multiplier: goldMultiplier
             });
             
             // Apply gold to hero
@@ -6109,14 +6090,7 @@ export default function CleanBattlefieldSource() {
             const heroElement = document.querySelector(`[data-hero-id="${result.heroId}"]`);
             if (heroElement) {
               const rect = heroElement.getBoundingClientRect();
-              // Show gold amount with multiplier indicator if founder pack
-              if (result.multiplier > 1.0) {
-                const bonusPercent = ((result.multiplier - 1.0) * 100).toFixed(0);
-                console.log(`[Gold] 💰 ${result.name} earned ${result.gold}g (${result.baseGold}g base + ${bonusPercent}% founder bonus)`);
-                addSCT(`💰 ${result.gold}g`, rect.left + rect.width / 2, rect.top + 60, 'gold');
-              } else {
-                addSCT(`💰 ${result.gold}g`, rect.left + rect.width / 2, rect.top + 60, 'gold');
-              }
+              addSCT(`💰 ${result.gold}g`, rect.left + rect.width / 2, rect.top + 60, 'gold');
             }
           }
         });

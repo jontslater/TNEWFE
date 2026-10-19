@@ -1014,35 +1014,19 @@ export default function HeroDashboard({ hero, onHeroUpdate, onHeroDelete }: Hero
                 </div>
               )}
             </div>
-            {/* Founder Pack Earning Boosts */}
+            {/* Founder Pack cosmetics (no combat or reward bonuses) */}
             {heroTier && (
               <div className="mt-2 p-2 bg-amber-900/30 border border-amber-700/50 rounded text-left">
-                <div className="text-xs font-semibold text-amber-400 mb-1">⭐ Founder Pack Benefits</div>
+                <div className="text-xs font-semibold text-amber-400 mb-1">⭐ Founder Pack (cosmetic)</div>
                 <div className="text-xs text-gray-300 space-y-0.5">
-                  {heroTier === 'bronze' && (
-                    <>
-                      <div>💰 +10% Gold from kills</div>
-                      <div>💎 +0.5 tokens/hour</div>
-                    </>
-                  )}
-                  {heroTier === 'silver' && (
-                    <>
-                      <div>💰 +20% Gold from kills</div>
-                      <div>💎 +1.0 tokens/hour</div>
-                    </>
-                  )}
-                  {heroTier === 'gold' && (
-                    <>
-                      <div>💰 +30% Gold from kills</div>
-                      <div>💎 +1.5 tokens/hour</div>
-                    </>
-                  )}
-                  {heroTier === 'platinum' && (
-                    <>
-                      <div>💰 +50% Gold from kills</div>
-                      <div>💎 +2.0 tokens/hour</div>
-                    </>
-                  )}
+                  <div>Founder badge, title, and tier-locked name styles</div>
+                  {heroTier === 'silver' || heroTier === 'gold' || heroTier === 'platinum' ? (
+                    <div>Name frame (Silver+)</div>
+                  ) : null}
+                  {heroTier === 'gold' || heroTier === 'platinum' ? (
+                    <div>Aura &amp; spell VFX (Gold+)</div>
+                  ) : null}
+                  {heroTier === 'platinum' ? <div>Founders Hall recognition (Platinum)</div> : null}
                 </div>
               </div>
             )}
