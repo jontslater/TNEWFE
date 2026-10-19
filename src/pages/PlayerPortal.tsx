@@ -5,7 +5,7 @@ import { useHero } from '../hooks/useHero';
 import { useAllHeroes } from '../hooks/useAllHeroes';
 import { useGuild } from '../hooks/useGuild';
 import { useChatActivity } from '../hooks/useChatActivity';
-import { raidAPI, heroAPI, foundersPackAPI } from '../api/client';
+import { raidAPI, heroAPI, foundersPackAPI, gearAPI } from '../api/client';
 import { Raid, WorldBoss, Item } from '../types/Raid';
 import HeroDashboard from '../components/HeroDashboard';
 import ProfessionPanel from '../components/ProfessionPanel';
@@ -736,10 +736,20 @@ export default function PlayerPortal() {
               const heroId = hero?.id || user?.id;
               if (!heroId) return;
               try {
-                if (item) {
+                if (item?.id) {
+                  try {
+                    await gearAPI.equipItem(heroId, item.id, slot);
+                  } catch {
+                    await heroAPI.equipItem(heroId, slot, item);
+                  }
+                } else if (item) {
                   await heroAPI.equipItem(heroId, slot, item);
                 } else {
-                  await heroAPI.unequipItem(heroId, slot);
+                  try {
+                    await gearAPI.unequipItem(heroId, slot);
+                  } catch {
+                    await heroAPI.unequipItem(heroId, slot);
+                  }
                 }
                 // Small delay to ensure backend has processed
                 await new Promise(resolve => setTimeout(resolve, 100));

@@ -28,6 +28,12 @@ export interface Item {
   wisdom?: number;
   // Set name for gear sets
   setName?: string;
+  setId?: string;
+  itemLevel?: number;
+  ilvl?: number;
+  affixes?: Array<{ id?: string; kind?: 'prefix' | 'suffix'; label?: string; stats?: Record<string, number> }>;
+  legendaryEffect?: string;
+  source?: string;
   // Secondary stats
   secondaryStats?: {
     healingPower?: number;

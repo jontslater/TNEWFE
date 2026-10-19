@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Hero, Item, CraftedItem } from '../types/Hero';
 import ItemTooltip from './ItemTooltip';
 import { getRarityColor, getRarityBg, getMaxSockets } from '../utils/format';
@@ -8,6 +8,7 @@ import ReforgeModal from './ReforgeModal';
 import SocketModal from './SocketModal';
 import GemModal from './GemModal';
 import { heroAPI } from '../api/client';
+import { calculateItemPower, isItemBetter } from '../gear/itemDisplay';
 import ConfirmationDialog from './ConfirmationDialog';
 import MessageAlert from './MessageAlert';
 
@@ -35,7 +36,12 @@ export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, 
   const [usingGem, setUsingGem] = useState<{ gem: Item } | null>(null); // When using a Gem item
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set()); // Selected item IDs for batch operations
   const [batchMode, setBatchMode] = useState(false); // Toggle batch selection mode
-  
+  const [invSearch, setInvSearch] = useState('');
+  const [invSlotFilter, setInvSlotFilter] = useState<string>('all');
+  const [invRarityFilter, setInvRarityFilter] = useState<string>('all');
+  const [invSetOnly, setInvSetOnly] = useState(false);
+  const [invSort, setInvSort] = useState<'power' | 'ilvl' | 'rarity' | 'name'>('power');
+
   // Custom confirmation dialog state (replaces window.confirm)
   const [confirmDialog, setConfirmDialog] = useState<{
     message: string;
@@ -73,7 +79,6 @@ export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, 
 
     // Equip the item
     if (source === 'inventory') {
-      // Equipping from inventory
       onEquipChange(targetSlot, item);
     } else if (source === 'equipment' && sourceSlot) {
       // Swapping equipment slots
@@ -131,13 +136,54 @@ export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, 
     item.type && ['ruby', 'sapphire', 'emerald', 'diamond'].includes(item.type)
   );
   // Gear items (equipable items that aren't profession items or consumables)
-  const regularItems = inventoryItems.filter(item => 
+  const regularItemsBase = inventoryItems.filter(item => 
     !(item as any).professionItem && 
     !((item as any).type === 'potion' || (item as any).type === 'buff' || (item as any).itemKey) &&
     !((item as any).type === 'socket') &&
     !((item as any).recipeKey === 'gem_socket') &&
     !(item.type && ['ruby', 'sapphire', 'emerald', 'diamond'].includes(item.type))
   );
+
+  const rarityRank: Record<string, number> = {
+    common: 0,
+    uncommon: 1,
+    rare: 2,
+    epic: 3,
+    legendary: 4,
+    mythic: 5,
+  };
+
+  const regularItems = useMemo(() => {
+    const q = invSearch.trim().toLowerCase();
+    let list = regularItemsBase.filter((item) => {
+      if (invSlotFilter !== 'all' && item.slot !== invSlotFilter) return false;
+      if (invRarityFilter !== 'all' && item.rarity !== invRarityFilter) return false;
+      if (invSetOnly && !(item.setName || (item as Item & { setId?: string }).setId)) return false;
+      if (q && !item.name.toLowerCase().includes(q)) return false;
+      return true;
+    });
+    list = [...list].sort((a, b) => {
+      if (invSort === 'name') return a.name.localeCompare(b.name);
+      if (invSort === 'ilvl') {
+        const ai = (a as Item & { itemLevel?: number }).itemLevel ?? 0;
+        const bi = (b as Item & { itemLevel?: number }).itemLevel ?? 0;
+        return bi - ai;
+      }
+      if (invSort === 'rarity') {
+        return (rarityRank[b.rarity] ?? 0) - (rarityRank[a.rarity] ?? 0);
+      }
+      return calculateItemPower(b, hero.role) - calculateItemPower(a, hero.role);
+    });
+    return list;
+  }, [
+    regularItemsBase,
+    invSearch,
+    invSlotFilter,
+    invRarityFilter,
+    invSetOnly,
+    invSort,
+    hero.role,
+  ]);
   
   // Calculate inventory slots used (count unique item types, not quantities)
   // All items in inventoryItems should be counted (excluding equipped items which are already filtered out)
@@ -165,7 +211,7 @@ export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, 
   
   // Each regular gear item is 1 slot (counted individually)
   // Total count: profession items (grouped) + consumables (grouped) + gems (grouped) + regular items (individual)
-  const uniqueSlotCount = professionGroups.size + consumableGroups.size + gemGroups.size + regularItems.length;
+  const uniqueSlotCount = professionGroups.size + consumableGroups.size + gemGroups.size + regularItemsBase.length;
   const maxInventorySlots = hero.bankSize || 50;
   
   // Verification: ensure all items are accounted for
@@ -884,11 +930,58 @@ export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, 
             )}
 
             {/* Regular Gear/Loot Section */}
-            {regularItems.length > 0 && (
+            {(regularItemsBase.length > 0 || invSearch || invSlotFilter !== 'all') && (
               <div>
+                <div className="flex flex-wrap gap-2 mb-3 items-end">
+                  <input
+                    type="search"
+                    value={invSearch}
+                    onChange={(e) => setInvSearch(e.target.value)}
+                    placeholder="Search gear…"
+                    className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-sm text-white min-w-[140px]"
+                  />
+                  <select
+                    value={invSlotFilter}
+                    onChange={(e) => setInvSlotFilter(e.target.value)}
+                    className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-sm text-white"
+                  >
+                    <option value="all">All slots</option>
+                    {['weapon', 'armor', 'shield', 'helm', 'cloak', 'gloves', 'boots', 'accessory', 'ring1', 'ring2'].map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={invRarityFilter}
+                    onChange={(e) => setInvRarityFilter(e.target.value)}
+                    className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-sm text-white"
+                  >
+                    <option value="all">All rarities</option>
+                    {['common', 'uncommon', 'rare', 'epic', 'legendary', 'mythic'].map((r) => (
+                      <option key={r} value={r}>{r}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={invSort}
+                    onChange={(e) => setInvSort(e.target.value as typeof invSort)}
+                    className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-sm text-white"
+                  >
+                    <option value="power">Sort: power</option>
+                    <option value="ilvl">Sort: item level</option>
+                    <option value="rarity">Sort: rarity</option>
+                    <option value="name">Sort: name</option>
+                  </select>
+                  <label className="flex items-center gap-1 text-xs text-gray-300">
+                    <input
+                      type="checkbox"
+                      checked={invSetOnly}
+                      onChange={(e) => setInvSetOnly(e.target.checked)}
+                    />
+                    Set pieces only
+                  </label>
+                </div>
                 <div className="flex items-center justify-between mb-3">
                   <h4 className="text-lg font-semibold text-blue-400">
-                  ⚔️ Gear & Loot ({regularItems.length})
+                  ⚔️ Gear & Loot ({regularItems.length}{regularItems.length !== regularItemsBase.length ? ` / ${regularItemsBase.length}` : ''})
                 </h4>
                   <div className="flex gap-2">
                     <button
@@ -1058,6 +1151,9 @@ export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, 
                 <div 
                   className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4"
                 >
+                  {regularItems.length === 0 && (
+                    <p className="text-gray-400 text-sm col-span-full">No gear matches your filters.</p>
+                  )}
                   {regularItems.map((item, idx) => (
                     <div
                       key={item.id || idx}
@@ -1111,6 +1207,9 @@ export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, 
                           <div className="hover:bg-gray-600/30 rounded p-1 -m-1 transition-colors pointer-events-auto flex-grow">
                             <div className={`font-semibold mb-1 text-xs ${getRarityColor(item.rarity)} flex items-center gap-1 leading-tight`}>
                               {(item as any).locked && <span className="text-yellow-400 flex-shrink-0" title="Locked">🔒</span>}
+                            {item.slot && isItemBetter(item, hero.equipment[item.slot as keyof typeof hero.equipment] as Item | null, hero.role) && (
+                              <span className="text-lime-400 flex-shrink-0" title="Upgrade vs equipped">▲</span>
+                            )}
                             <span className="truncate">{item.name}</span>
                             {(item as any).upgradeLevel && (item as any).upgradeLevel > 0 && (
                               <span className="text-amber-400 font-semibold text-[10px] flex-shrink-0">+{(item as any).upgradeLevel}</span>

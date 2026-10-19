@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "sets": [
+    {
+      "id": "guardians_bulwark",
+      "name": "Guardian's Bulwark",
+      "category": "tank",
+      "pieces": ["weapon", "armor", "shield", "helm", "boots"],
+      "bonuses": {
+        "2": { "defense": 30, "hp": 100, "description": "+30 DEF, +100 HP" },
+        "3": { "defense": 50, "hp": 200, "damageReduction": 0.05, "description": "+50 DEF, +200 HP, +5% DR" },
+        "4": { "defense": 80, "hp": 300, "damageReduction": 0.1, "hpRegen": 5, "description": "+80 DEF, +300 HP, +10% DR, +5 HP/s" },
+        "5": { "defense": 120, "hp": 500, "damageReduction": 0.15, "hpRegen": 10, "description": "+120 DEF, +500 HP, +15% DR, +10 HP/s" }
+      }
+    },
+    {
+      "id": "wardens_fortress",
+      "name": "Warden's Fortress",
+      "category": "tank",
+      "pieces": ["armor", "shield", "cloak", "gloves", "ring1"],
+      "bonuses": {
+        "2": { "stamina": 15, "hp": 150, "description": "+15 Stamina, +150 HP" },
+        "3": { "stamina": 25, "hp": 250, "hpRegen": 8, "description": "+25 Stamina, +250 HP, +8 HP/s" },
+        "4": { "stamina": 40, "hp": 400, "hpRegen": 12, "damageReduction": 0.08, "description": "+40 Stamina, +400 HP, +12 HP/s, +8% DR" },
+        "5": { "stamina": 60, "hp": 600, "hpRegen": 20, "damageReduction": 0.12, "description": "+60 Stamina, +600 HP, +20 HP/s, +12% DR" }
+      }
+    },
+    {
+      "id": "lifebinders_grace",
+      "name": "Lifebinder's Grace",
+      "category": "healer",
+      "pieces": ["weapon", "armor", "accessory", "cloak", "ring1"],
+      "bonuses": {
+        "2": { "intellect": 20, "healingPower": 15, "description": "+20 Intellect, +15 Healing Power" },
+        "3": { "intellect": 35, "healingPower": 30, "hpRegen": 10, "description": "+35 Intellect, +30 Healing Power, +10 HP/s" },
+        "4": { "intellect": 55, "healingPower": 50, "hpRegen": 15, "spellDamage": 0.1, "description": "+55 Intellect, +50 Healing Power, +15 HP/s, +10% Spell Damage" },
+        "5": { "intellect": 80, "healingPower": 75, "hpRegen": 25, "spellDamage": 0.15, "description": "+80 Intellect, +75 Healing Power, +25 HP/s, +15% Spell Damage" }
+      }
+    }
+  ]
+}

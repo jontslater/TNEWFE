@@ -15,7 +15,6 @@ import { showScrollingCombatText } from '../utils/combatText';
 import { TestHero, TestEnemy, TestBuff, TestDebuff } from './AnimationTestPage';
 import { calculateSkillBonuses } from '../utils/skillSystem';
 import BuffDebuffIndicator, { BuffDebuffData } from '../components/BuffDebuffIndicator';
-import { generateLoot, isItemBetter } from '../utils/lootGeneration';
 import { calculateRaidRewards } from '../utils/raidSystem';
 import { QuestTracker, isBossEnemy, CompletedQuest } from '../utils/questTracking';
 import { questAPI } from '../api/client';
@@ -1203,81 +1202,14 @@ export default function RaidBrowserSourcePage({ instanceId: propInstanceId }: Ra
         xp: (hero.xp || 0) + rewards.experience
       })));
       
-      // Generate guaranteed loot (2-4 pieces based on difficulty)
-      for (let i = 0; i < rewards.lootCount; i++) {
-        heroes.forEach(hero => {
-          if (hero.hp <= 0) return; // Dead heroes don't get loot
-          
-          const loot = generateLoot(hero.role, {
-            enemyLevel: raidDataRef.current.boss.level,
-            waveCount: raidDataRef.current.waves,
-            isBoss: true,
-            forceSetPiece: Math.random() < 0.6 // 60% chance for set piece from raid boss
-          });
-          
-          if (loot) {
-            const currentItem = hero.equipment?.[loot.slot];
-            if (isItemBetter(loot, currentItem)) {
-              setHeroes(prev => prev.map(h => {
-                if (h.id !== hero.id) return h;
-                const newEquipment = { ...(h.equipment || {}), [loot.slot]: loot };
-                showStaggeredLootSCT(hero.id, loot.name);
-                return { ...h, equipment: newEquipment };
-              }));
-            }
-          }
-        });
-      }
+      // Loot is server-rolled (GEAR_PLAN); raid browser source does not client-generate drops.
+      console.log(`[Loot] Raid complete — ${rewards.lootCount} server loot slots (no client roll)`);
       
       console.log(`🎉 Raid completed! Rewards: ${rewards.gold}g, ${rewards.tokens}t, ${rewards.experience}xp`);
     } else if (isBoss) {
-      // Regular boss loot (not raid boss)
-      console.log(`🎁 [Loot] Generating loot for ${enemy.name} (BOSS)`);
-      heroes.forEach(hero => {
-        if (hero.hp <= 0) return;
-        
-        const loot = generateLoot(hero.role, {
-          enemyLevel: enemy.level || 1,
-          waveCount: 0,
-          isBoss: true,
-          forceSetPiece: Math.random() < 0.25 // 25% chance for set piece from regular boss
-        });
-        
-        if (loot) {
-          const currentItem = hero.equipment?.[loot.slot];
-          if (isItemBetter(loot, currentItem)) {
-            setHeroes(prev => prev.map(h => {
-              if (h.id !== hero.id) return h;
-              const newEquipment = { ...(h.equipment || {}), [loot.slot]: loot };
-              showScrollingCombatText(`battle-hero-${hero.id}`, loot.name, 'loot', true);
-              return { ...h, equipment: newEquipment };
-            }));
-          }
-        }
-      });
+      console.log(`[Loot] Boss kill — server loot only (no client roll): ${enemy.name}`);
     } else {
-      // Regular enemy loot
-      heroes.forEach(hero => {
-        if (hero.hp <= 0) return;
-        
-        const loot = generateLoot(hero.role, {
-          enemyLevel: enemy.level || 1,
-          waveCount: 0,
-          isBoss: false
-        });
-        
-        if (loot) {
-          const currentItem = hero.equipment?.[loot.slot];
-          if (isItemBetter(loot, currentItem)) {
-            setHeroes(prev => prev.map(h => {
-              if (h.id !== hero.id) return h;
-              const newEquipment = { ...(h.equipment || {}), [loot.slot]: loot };
-              showScrollingCombatText(`battle-hero-${hero.id}`, loot.name, 'loot', true);
-              return { ...h, equipment: newEquipment };
-            }));
-          }
-        }
-      });
+      // Normal kills: server roll via main overlay sync / loot API
     }
     
     // Remove enemy from state

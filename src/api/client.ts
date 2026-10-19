@@ -1471,6 +1471,25 @@ export const skillsAPI = {
   }
 };
 
+export const gearAPI = {
+  async getCatalog() {
+    const response = await apiClient.get('/api/gear/catalog');
+    return response.data;
+  },
+  async getSets() {
+    const response = await apiClient.get('/api/gear/sets');
+    return response.data;
+  },
+  async equipItem(heroId: string, itemId: string, slot: string) {
+    const response = await apiClient.post(`/api/heroes/${heroId}/equip`, { itemId, slot });
+    return response.data;
+  },
+  async unequipItem(heroId: string, slot: string) {
+    const response = await apiClient.post(`/api/heroes/${heroId}/unequip`, { slot });
+    return response.data;
+  },
+};
+
 export const balanceAPI = {
   async getBalance() {
     const response = await apiClient.get('/api/balance');
@@ -3105,18 +3124,28 @@ export const overlayAPI = {
       xpGained: number;
       goldGained: number;
       timestamp?: number;
-    }>
+    }>,
+    options?: {
+      kills?: Array<{
+        enemyLevel: number;
+        kind: 'normal' | 'elite' | 'boss';
+        contentId?: string;
+        difficulty?: string;
+      }>;
+    }
   ): Promise<{
     success: boolean;
     alreadyProcessed?: boolean;
     deltasApplied?: number;
     deltasFailed?: number;
     results?: unknown[];
+    drops?: Array<{ heroId: string; item: Record<string, unknown> }>;
   }> {
     const response = await overlayClient.post('/api/overlay/sync', {
       streamerId,
       batchId,
       deltas,
+      kills: options?.kills,
     });
     return response.data;
   },
