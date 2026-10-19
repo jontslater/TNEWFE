@@ -7,15 +7,16 @@ export function mergeHeroesAfterRoleActive<T extends {
   cooldowns?: Record<string, number | undefined>;
   activeBuffs?: Record<string, unknown>;
   tauntExpiry?: number;
-}>(prev: T[], outcome: T[]): T[] {
+}>(prev: T[], outcome: T[], liveSnapshot?: T[]): T[] {
   return prev.map((h) => {
     const from = outcome.find((o) => o.id === h.id);
+    const live = liveSnapshot?.find((l) => l.id === h.id);
     if (!from) return h;
     return {
       ...h,
       hp: from.hp ?? h.hp,
       isDead: from.isDead ?? h.isDead,
-      stats: h.stats,
+      stats: live?.stats ?? h.stats,
       cooldowns: from.cooldowns ?? h.cooldowns,
       activeBuffs: { ...h.activeBuffs, ...from.activeBuffs },
       tauntExpiry: from.tauntExpiry ?? h.tauntExpiry,

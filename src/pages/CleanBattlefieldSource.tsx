@@ -17,7 +17,15 @@ import { generateEnemiesForCombat } from '../utils/enemyGeneration';
 import { generateDungeonEnemies } from '../utils/dungeonEnemyGeneration';
 import HeroSpriteJS from '../components/HeroSpriteJS';
 import EnemySpriteJS from '../components/EnemySpriteJS';
-import { battlefieldAPI, heroAPI, questAPI, overlayClient, balanceAPI, gearAPI, dungeonAPI, raidAPI } from '../api/client';
+import {
+  battlefieldAPI,
+  heroAPI,
+  questAPI,
+  overlayClient,
+  overlayAPI,
+  balanceAPI,
+  gearAPI,
+} from '../api/client';
 import { fetchBalance } from '../combat/balanceLoader';
 import { useAuth } from '../hooks/useAuth';
 import { useActiveInstanceListener } from '../hooks/useActiveInstanceListener';
@@ -1618,6 +1626,7 @@ export default function CleanBattlefieldSource() {
   // CRITICAL: Refs to prevent duplicate intervals from React Strict Mode
   const syncManagerRef = useRef<SyncManager | null>(null);
   const syncIntervalInitializedRef = useRef(false);
+  const syncIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const buffCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const regenIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const resIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -2249,6 +2258,7 @@ export default function CleanBattlefieldSource() {
         hp: newHp,
         isDead: died || target.isDead,
         lootCreditHeroId: died ? casterId : target.lootCreditHeroId,
+        killedByAbility: died ? true : target.killedByAbility,
       };
       enemiesRef.current = updated;
       const casterHeroForHooks = heroesRef.current.find((h) => h.id === casterId);
@@ -2390,7 +2400,11 @@ export default function CleanBattlefieldSource() {
       }
       if (outcome.changed) {
         setHeroes((prev) => {
-          const merged = mergeHeroesAfterRoleActive(prev, outcome.heroes as Hero[]);
+          const merged = mergeHeroesAfterRoleActive(
+            prev,
+            outcome.heroes as Hero[],
+            heroesRef.current as Hero[]
+          );
           heroesRef.current = merged as Hero[];
           return merged as Hero[];
         });
@@ -5837,8 +5851,8 @@ export default function CleanBattlefieldSource() {
                 // Update instance data in Firebase to trigger room change
                 if (instanceData.id) {
                   const nextRoom = currentRoom + 1;
-                  dungeonAPI
-                    .updateInstanceProgress(instanceData.id, { room: nextRoom })
+                  overlayAPI
+                    .updateDungeonInstanceProgress(instanceData.id, { room: nextRoom })
                     .then(() => {
                       console.log(`[Dungeon] ✅ Advanced to room index ${nextRoom} via API`);
                       setInstanceData((prev: any) =>
@@ -5876,8 +5890,8 @@ export default function CleanBattlefieldSource() {
             // Mark dungeon as complete in Firebase (this will trigger listener to return to idle)
             // Backend will reset party status to 'forming' when instance completes
             if (instanceData.id) {
-              dungeonAPI
-                .completeInstance(instanceData.id, { success: true })
+              overlayAPI
+                .completeDungeonInstance(instanceData.id, { success: true })
                 .then(() => console.log(`[Dungeon] ✅ Marked dungeon complete via API`))
                 .catch((err) => console.error('[Dungeon] Failed to mark complete:', err));
             } else {
@@ -5921,8 +5935,8 @@ export default function CleanBattlefieldSource() {
                 role: h.role,
                 hp: h.hp,
               }));
-              raidAPI
-                .completeRaid(instanceData.id, true, participants, [])
+              overlayAPI
+                .completeRaidInstance(instanceData.id, true, participants, [])
                 .then(() => console.log(`[Raid] ✅ Marked raid as complete via API`))
                 .catch((err) => {
                   console.error('[Raid] Failed to mark complete:', err);
@@ -5975,8 +5989,8 @@ export default function CleanBattlefieldSource() {
                 hp: h.hp,
               }));
               console.log(`[Raid] 🔧 Advancing wave via API: ${currentWave} -> ${nextWave}`);
-              raidAPI
-                .updateRaidProgress(instanceId, nextWave, participants, [])
+              overlayAPI
+                .updateRaidInstanceProgress(instanceId, nextWave, participants, [])
                 .then(() => {
                   console.log(`[Raid] ✅ Advanced to wave ${nextWave + 1}`);
                   setInstanceData((prev: { id?: string; currentWave?: number } | null) =>
@@ -6439,8 +6453,8 @@ export default function CleanBattlefieldSource() {
               hp: h.hp,
             }));
             const markFailed = gameMode === 'raid'
-              ? raidAPI.completeRaid(instanceId, false, participants, [])
-              : dungeonAPI.completeInstance(instanceId, { success: false, participants });
+              ? overlayAPI.completeRaidInstance(instanceId, false, participants, [])
+              : overlayAPI.completeDungeonInstance(instanceId, { success: false, participants });
             markFailed
               .then(() =>
                 console.log(`[${gameMode === 'raid' ? 'Raid' : 'Dungeon'}] ✅ Marked as failed via API`)
@@ -7987,12 +8001,14 @@ export default function CleanBattlefieldSource() {
                 </span>
               </div>
 
-              <SkillChargeBar
-                heroRole={hero.role}
-                cooldowns={hero.cooldowns}
-                skills={hero.skills}
-                chargeBarVariant={getHeroChargeBarVariant(hero)}
-              />
+              <OverlayHeroCardErrorBoundary heroId={hero.id}>
+                <SkillChargeBar
+                  heroRole={hero.role}
+                  cooldowns={hero.cooldowns}
+                  skills={hero.skills}
+                  chargeBarVariant={getHeroChargeBarVariant(hero)}
+                />
+              </OverlayHeroCardErrorBoundary>
               {/* HP Bar - Smaller for OBS */}
               <div style={{
                 width: '120px',
@@ -8443,12 +8459,14 @@ export default function CleanBattlefieldSource() {
                 {hero.isDead && ' 💀'}
               </div>
               
-              <SkillChargeBar
-                heroRole={hero.role}
-                cooldowns={hero.cooldowns}
-                skills={hero.skills}
-                chargeBarVariant={getHeroChargeBarVariant(hero)}
-              />
+              <OverlayHeroCardErrorBoundary heroId={hero.id}>
+                <SkillChargeBar
+                  heroRole={hero.role}
+                  cooldowns={hero.cooldowns}
+                  skills={hero.skills}
+                  chargeBarVariant={getHeroChargeBarVariant(hero)}
+                />
+              </OverlayHeroCardErrorBoundary>
               {/* HP Bar - Smaller for OBS */}
               <div style={{
                 width: '120px',

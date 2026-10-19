@@ -123,11 +123,11 @@ export function tryFireRoleActiveAbility(
           ? 1 + mods.healingMultiplier / 100
           : 1;
       const healMult = 1 + setHooks.groupHealBonusFraction;
-      const perAlly = Math.floor(hero.maxHp * frac * mult * healMult);
       const heals: Record<string, number> = {};
-      allies.forEach((h) => {
-        if (!h || h.isDead || h.hp <= 0) return;
-        heals[h.id] = perAlly;
+      allies.forEach((ally) => {
+        if (!ally || ally.isDead || ally.hp <= 0) return;
+        const allyMax = ally.maxHp || 1;
+        heals[ally.id] = Math.floor(allyMax * frac * mult * healMult);
       });
       return { ...base, healsByHeroId: heals };
     }

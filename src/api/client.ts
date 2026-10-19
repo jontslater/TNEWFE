@@ -4,6 +4,7 @@ import { FEATURES } from '../config/features';
 import { Guild } from '../types/Guild';
 import { Raid, WorldBoss } from '../types/Raid';
 import { mockHero, mockGuild, mockRaids, mockWorldBoss } from './mock-data';
+import { isOverlayBrowserRoute } from '../utils/overlayRoutes';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true'; // Default to backend API
@@ -35,7 +36,11 @@ apiClient.interceptors.response.use(
       localStorage.removeItem('auth_token');
       // Only redirect if not already on auth callback or home page
       const currentPath = window.location.pathname;
-      if (currentPath !== '/' && !currentPath.includes('/auth/callback')) {
+      if (
+        !isOverlayBrowserRoute(currentPath) &&
+        currentPath !== '/' &&
+        !currentPath.includes('/auth/callback')
+      ) {
         console.warn('Authentication token expired or invalid. Redirecting to home...');
         // Use setTimeout to avoid navigation during render
         setTimeout(() => {
@@ -85,26 +90,11 @@ overlayClient.interceptors.response.use(
 
 // Hero API
 export const heroAPI = {
-  /** Admin portal: GET /api/heroes/admin/all (X-Admin-Key), with internal-key fallback. */
+  /** Admin portal: GET /api/admin/heroes (JWT; server enforces admin). */
   async getAdminAllHeroes(): Promise<Hero[]> {
-    const adminKey = import.meta.env.VITE_ADMIN_KEY as string | undefined;
-    const internalKey = import.meta.env.VITE_INTERNAL_API_KEY as string | undefined;
-    try {
-      const response = await apiClient.get('/api/heroes/admin/all', {
-        headers: adminKey ? { 'X-Admin-Key': adminKey } : {},
-      });
-      const data = response.data;
-      return Array.isArray(data) ? data : data?.heroes ?? [];
-    } catch (err: unknown) {
-      const status = (err as { response?: { status?: number } })?.response?.status;
-      if (status === 404 && internalKey) {
-        const response = await apiClient.get('/api/heroes', {
-          headers: { 'X-Internal-Key': internalKey },
-        });
-        return response.data;
-      }
-      throw err;
-    }
+    const response = await apiClient.get('/api/admin/heroes');
+    const data = response.data;
+    return Array.isArray(data) ? data : data?.heroes ?? [];
   },
 
   async getAllHeroes(): Promise<Hero[]> {
@@ -3171,6 +3161,8 @@ export const overlayAPI = {
         contentId?: string;
         difficulty?: string;
         contentType?: string;
+        instanceId?: string;
+        fromAbility?: boolean;
       }>;
     }
   ): Promise<{
@@ -3201,6 +3193,10 @@ export const overlayAPI = {
       enemyLevel: number;
       kind: string;
       contentType?: string;
+      contentId?: string;
+      difficulty?: string;
+      instanceId?: string;
+      fromAbility?: boolean;
     }>
   ): Promise<{
     success: boolean;
@@ -3234,6 +3230,50 @@ export const overlayAPI = {
    * Get current chat activity metrics for a streamer
    * Requires X-Streamer-Key header or ownership via JWT
    */
+  async updateDungeonInstanceProgress(
+    instanceId: string,
+    body: { room?: number; participants?: unknown[]; combatLogEntries?: unknown[] }
+  ) {
+    const response = await overlayClient.post(`/api/dungeon/instance/${instanceId}/progress`, body);
+    return response.data;
+  },
+
+  async completeDungeonInstance(
+    instanceId: string,
+    body: { success?: boolean; finalParticipants?: unknown[]; participants?: unknown[] }
+  ) {
+    const response = await overlayClient.post(`/api/dungeon/instance/${instanceId}/complete`, body);
+    return response.data;
+  },
+
+  async updateRaidInstanceProgress(
+    instanceId: string,
+    wave: number,
+    participants: unknown[],
+    combatLogEntries: unknown[] = []
+  ) {
+    const response = await overlayClient.post(`/api/raids/instance/${instanceId}/progress`, {
+      wave,
+      participants,
+      combatLogEntries,
+    });
+    return response.data;
+  },
+
+  async completeRaidInstance(
+    instanceId: string,
+    success: boolean,
+    finalParticipants: unknown[],
+    finalCombatLog: unknown[] = []
+  ) {
+    const response = await overlayClient.post(`/api/raids/instance/${instanceId}/complete`, {
+      success,
+      finalParticipants,
+      finalCombatLog,
+    });
+    return response.data;
+  },
+
   async getChatActivity(streamerId: string): Promise<{
     streamerId: string;
     activeUsers: number;

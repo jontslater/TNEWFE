@@ -128,6 +128,8 @@ export interface OverlayEnemy {
   isDead?: boolean;
   /** Hero id credited for loot roll when this enemy was killed. */
   lootCreditHeroId?: string;
+  killedByAbility?: boolean;
+  isElite?: boolean;
   abilities?: Record<string, any>;
 }
 

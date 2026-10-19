@@ -1,5 +1,6 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, type ReactNode } from 'react';
+import { OverlayRouteErrorBoundary } from './overlay/OverlayRouteErrorBoundary';
 
 // Critical routes - loaded immediately (landing, auth)
 import LandingPage from './pages/LandingPage';
@@ -47,6 +48,10 @@ const PrivacyPage = lazy(() => import('./pages/legal/PrivacyPage'));
 const RefundPage = lazy(() => import('./pages/legal/RefundPage'));
 
 // Loading component for Suspense
+function OverlayRoute({ children }: { children: ReactNode }) {
+  return <OverlayRouteErrorBoundary>{children}</OverlayRouteErrorBoundary>;
+}
+
 function PageLoader() {
   return (
     <div style={{
@@ -94,11 +99,11 @@ function App() {
         )}
         <Route path="/skills" element={<SkillsPage />} />
         <Route path="/auction" element={<AuctionHousePage />} />
-        <Route path="/browser-source" element={<BrowserSourcePage />} />
-        <Route path="/browser-source-unified" element={<UnifiedBrowserSource />} />
-        <Route path="/clean-battlefield" element={<CleanBattlefieldSource />} />
-        <Route path="/unified" element={<UnifiedBrowserSource />} />
-        <Route path="/browser-source/config" element={<BrowserSourceConfigPage />} />
+        <Route path="/browser-source" element={<OverlayRoute><BrowserSourcePage /></OverlayRoute>} />
+        <Route path="/browser-source-unified" element={<OverlayRoute><UnifiedBrowserSource /></OverlayRoute>} />
+        <Route path="/clean-battlefield" element={<OverlayRoute><CleanBattlefieldSource /></OverlayRoute>} />
+        <Route path="/unified" element={<OverlayRoute><UnifiedBrowserSource /></OverlayRoute>} />
+        <Route path="/browser-source/config" element={<OverlayRoute><BrowserSourceConfigPage /></OverlayRoute>} />
         <Route path="/achievements" element={<AchievementsPage />} />
         <Route path="/leaderboards" element={<LeaderboardsPage />} />
         <Route path="/guild" element={<GuildManagementPage />} />
@@ -107,7 +112,7 @@ function App() {
         <Route path="/raids/guild-signup/:raidId" element={<GuildRaidSignupPage />} />
         <Route path="/raid-viewer/:instanceId" element={<InteractiveRaidViewer />} />
         <Route path="/instance/view" element={<InstanceViewerPage />} />
-        <Route path="/browser-source/raid/:instanceId" element={<RaidBrowserSourcePage />} />
+        <Route path="/browser-source/raid/:instanceId" element={<OverlayRoute><RaidBrowserSourcePage /></OverlayRoute>} />
         <Route path="/founders-pack" element={<FoundersPackPage />} />
         <Route path="/founders-hall" element={<FoundersHallPage />} />
         <Route path="/mail" element={<MailPage />} />

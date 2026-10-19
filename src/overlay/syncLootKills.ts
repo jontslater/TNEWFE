@@ -7,6 +7,8 @@ export type OverlaySyncKill = {
   contentId?: string;
   difficulty?: string;
   contentType?: string;
+  instanceId?: string;
+  fromAbility?: boolean;
 };
 
 const BLOCKED_LOOT_ROLL_KINDS = new Set(['boss', 'raidBoss', 'dungeonBoss', 'worldboss']);
@@ -29,15 +31,17 @@ export function assignHeroIdsToKills(
     isElite?: boolean;
     name?: string;
     lootCreditHeroId?: string;
+    killedByAbility?: boolean;
   }>,
   heroIds: string[],
   gameMode?: string,
-  instance?: { dungeonId?: string; raidId?: string; difficulty?: string }
+  instance?: { id?: string; dungeonId?: string; raidId?: string; difficulty?: string }
 ): OverlaySyncKill[] {
   if (!heroIds.length) return [];
   const contentId = instance?.dungeonId || instance?.raidId;
   const contentType =
     gameMode === 'dungeon' ? 'dungeon' : gameMode === 'raid' ? 'raid' : undefined;
+  const instanceId = instance?.id;
   return enemies.map((enemy, i) => ({
     heroId: enemy.lootCreditHeroId || heroIds[i % heroIds.length],
     enemyLevel: enemy.level || 1,
@@ -45,6 +49,8 @@ export function assignHeroIdsToKills(
     contentId,
     difficulty: instance?.difficulty,
     contentType,
+    instanceId,
+    fromAbility: Boolean(enemy.killedByAbility),
   }));
 }
 
@@ -53,6 +59,10 @@ export function killsForBattlefieldLootRoll(kills: OverlaySyncKill[]): Array<{
   enemyLevel: number;
   kind: string;
   contentType?: string;
+  contentId?: string;
+  difficulty?: string;
+  instanceId?: string;
+  fromAbility?: boolean;
 }> {
   return kills
     .filter((k) => k.heroId && !BLOCKED_LOOT_ROLL_KINDS.has(k.kind))
@@ -60,5 +70,10 @@ export function killsForBattlefieldLootRoll(kills: OverlaySyncKill[]): Array<{
       heroId: k.heroId,
       enemyLevel: k.enemyLevel,
       kind: k.kind,
+      contentType: k.contentType,
+      contentId: k.contentId,
+      difficulty: k.difficulty,
+      instanceId: k.instanceId,
+      fromAbility: k.fromAbility,
     }));
 }
