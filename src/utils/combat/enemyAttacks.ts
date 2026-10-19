@@ -20,6 +20,7 @@ import { applyDebuff } from './buffsDebuffs';
 import { absorbShieldDamage } from './healing';
 import { hasEmergencyAbility } from './emergencyAbilities';
 import { testLog } from '../testLogging';
+import { computeDamageTaken, getBalancePayload } from '../../combat/balance';
 
 /**
  * DEBUG MODE: Disable hero damage during enemy animation testing
@@ -758,7 +759,8 @@ function applyEnemyDamageToHero(
   const { ironSkinActive, lastStandActive, shieldWallActive, isCrit, isBloodlust, now } = options;
   const category = ROLE_CONFIG[target.hero.role]?.category || 'dps';
 
-  let actualDamage = Math.max(1, enemyDamage - effectiveDefense);
+  const attackerLevel = (enemy as { level?: number }).level || 1;
+  let actualDamage = computeDamageTaken(enemyDamage, effectiveDefense, attackerLevel);
   actualDamage = Math.floor(actualDamage * damageMultiplier);
 
   // Apply skill defense multipliers (additional damage reduction)
@@ -855,9 +857,12 @@ function applyEnemyDamageToHero(
   }
 
   if (shieldWallActive) {
+    const sw = getBalancePayload().roleAbilities.shieldWall;
+    const isTank = category === 'tank';
+    const dr = isTank ? sw.tankDamageReduction : sw.partyDamageReduction;
     const damageBefore = actualDamage;
-    actualDamage = Math.floor(actualDamage * 0.7);
-    blockedByAbilities += (damageBefore - actualDamage);
+    actualDamage = Math.floor(actualDamage * (1 - dr));
+    blockedByAbilities += damageBefore - actualDamage;
   }
   
   // Initialize stats if needed
@@ -884,14 +889,6 @@ function applyEnemyDamageToHero(
   // Track big hits for Shield Guardian
   if (target.hero.role === 'guardian' && actualDamage >= target.hero.maxHp * 0.4) {
     target.hero.lastBigHit = now;
-  }
-
-  actualDamage = Math.max(3, actualDamage);
-
-  // Damage cap
-  const maxDamagePerHit = Math.floor(target.hero.maxHp * 0.35);
-  if (actualDamage > maxDamagePerHit) {
-    actualDamage = maxDamagePerHit;
   }
 
   // Apply inverse difficulty scaling to hero damage taken

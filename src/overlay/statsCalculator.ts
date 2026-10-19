@@ -4,6 +4,7 @@
  */
 
 import type { OverlayHero } from '../types/overlay';
+import { xpToNextLevel } from '../combat/balance';
 
 export const getThreatWeight = (hero: OverlayHero): number => {
   const roleWeights: Record<string, number> = {
@@ -51,10 +52,7 @@ export const calculateAverageGearScore = (heroes: OverlayHero[]): number => {
   return Math.floor(total / heroes.length);
 };
 
-export const calculateMaxXp = (level: number): number => {
-  const baseXp = 100;
-  return Math.floor(baseXp * Math.pow(level, 1.5));
-};
+export const calculateMaxXp = (level: number): number => xpToNextLevel(level);
 
 export const calculateItemPower = (item: any): number => {
   if (!item) return 0;

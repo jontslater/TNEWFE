@@ -7,7 +7,7 @@
  */
 
 import { Hero, Enemy } from './combat/types';
-import { BALANCE } from '../config/balanceConfig';
+import { buildNormalEnemies, waveTierMultiplier } from '../combat/balance';
 
 /**
  * DEBUG MODE: Enable only ONE enemy at a time for testing
@@ -401,7 +401,7 @@ export function generateEnemiesForCombat(
   
   if (availableEnemies.length === 0) {
     // Fallback to first enemy if none available
-    return [generateSingleEnemy(ENEMY_TEMPLATES[0], scaling, 1.0, 0)];
+    return [generateSingleEnemy(ENEMY_TEMPLATES[0], scaling, 1.0, 0, 1)];
   }
   
   // Pack scaling: reduce per-enemy stats for packs
@@ -424,7 +424,7 @@ export function generateEnemiesForCombat(
       enemyTemplate = availableEnemies[Math.floor(Math.random() * availableEnemies.length)];
     }
     
-    const enemy = generateSingleEnemy(enemyTemplate, scaling, packScaling, i);
+    const enemy = generateSingleEnemy(enemyTemplate, scaling, packScaling, i, packSize);
     enemies.push(enemy);
   }
   
@@ -437,9 +437,10 @@ export function generateEnemiesForCombat(
  */
 function generateSingleEnemy(
   template: typeof ENEMY_TEMPLATES[0],
-  scaling: { avgLevel: number; multiplier: number },
+  scaling: { avgLevel: number; multiplier: number; waveCount?: number },
   packScaling: number,
-  slotIndex: number
+  slotIndex: number,
+  packSize: number = 1
 ): Enemy {
   // FIXED: hpMultiplier should be based on scaling.multiplier, but NOT multiplied by it again
   // The hpMultiplier already accounts for difficulty scaling
@@ -461,17 +462,18 @@ function generateSingleEnemy(
   
   const enemyId = `enemy-${Date.now()}-${slotIndex}`;
   
-  // NEW BALANCE: Use linear scaling formulas from balanceConfig
-  // Difficulty factor: 1.0 = normal, 1.5 = elite, 2.0 = boss
-  const difficulty = template.isBoss ? 2.0 : 1.0;
   const level = Math.max(1, Math.floor(scaling.avgLevel));
-  
-  // Apply balance formulas (linear, not quadratic)
-  const finalHp = BALANCE.enemy.hpScaling(level, difficulty * packScaling);
-  const finalAttack = BALANCE.enemy.attackScaling(level, difficulty * packScaling * attackMultiplier);
-  const finalDefense = BALANCE.enemy.defenseScaling(level, difficulty * packScaling * defenseMultiplier);
-  const finalXp = BALANCE.enemy.xpScaling(level, difficulty);
-  const finalGold = BALANCE.enemy.goldScaling(level, difficulty);
+  const waveMult =
+    waveTierMultiplier(scaling.waveCount || 1) * (scaling.multiplier || 1) * (template.isBoss ? 1.2 : 1);
+  const ps = (packSize === 2 || packSize === 3 ? packSize : 1) as 1 | 2 | 3;
+  const balancePack = buildNormalEnemies(level, ps, waveMult)[Math.min(slotIndex, ps - 1)] ||
+    buildNormalEnemies(level, ps, waveMult)[0];
+  const bossScale = template.isBoss ? 3 : 1;
+  const finalHp = Math.floor(balancePack.hp * bossScale);
+  const finalAttack = Math.floor(balancePack.attack * bossScale * attackMultiplier);
+  const finalDefense = Math.floor(balancePack.armor * (template.isBoss ? 1.2 : 1) * defenseMultiplier);
+  const finalXp = balancePack.xp * (template.isBoss ? 10 : 1);
+  const finalGold = balancePack.gold * (template.isBoss ? 2 : 1);
   
   return {
     id: enemyId,

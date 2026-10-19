@@ -6,15 +6,17 @@
 import { Hero, Enemy, ROLE_CONFIG, EQUIPMENT_SLOTS, TANK_EQUIPMENT_SLOTS } from './fullCombatEngine';
 import { calculateSetBonuses } from './setBonuses';
 import { computeSkillModifiers, toLegacySkillBonuses } from '../game/skills/computeSkillModifiers';
+import { chatDamageHealMultiplier, computeHeroBalanceStats, capCritChance } from '../combat/balance';
 
 /**
  * Get viewer bonuses based on viewer count
  */
 export function getViewerBonuses(viewerCount: number = 0) {
+  const chat = chatDamageHealMultiplier(viewerCount);
   return {
-    damageMultiplier: 1 + (viewerCount * 0.01),  // 1% per viewer
-    healingMultiplier: 1 + (viewerCount * 0.01), // 1% per viewer
-    defenseMultiplier: 1 + (viewerCount * 0.005), // 0.5% per viewer
+    damageMultiplier: chat,
+    healingMultiplier: chat,
+    defenseMultiplier: 1,
   };
 }
 
@@ -323,26 +325,18 @@ export function getCharacterStats(hero: Hero) {
   }
 
   const skillMods = computeSkillModifiers(hero);
-  stats.attack = Math.floor(stats.attack * (1 + skillMods.statAttackPercent / 100));
-  stats.defense = Math.floor(stats.defense * (1 + skillMods.statDefensePercent / 100));
-  stats.maxHp = Math.floor(stats.maxHp * (1 + skillMods.statHpPercent / 100));
-  stats.critChance = Math.min(
-    0.75,
-    (stats.critChance || 0) + skillBonuses.critChance / 100
-  );
-
-  // Apply stamina to HP (1 stamina = 10 HP)
-  stats.maxHp += (stats.stamina || 0) * 10;
-
-  // Apply prestige stat boosts (flat values, additive)
-  if (hero.prestigeBoosts && hero.prestigeBoosts.statBoost) {
-    stats.attack += hero.prestigeBoosts.statBoost.attack || 0;
-    stats.defense += hero.prestigeBoosts.statBoost.defense || 0;
-    stats.maxHp += hero.prestigeBoosts.statBoost.hp || 0;
-  }
 
   // Store skill bonuses for use in combat
   stats.skillBonuses = skillBonuses;
+
+  const bal = computeHeroBalanceStats(hero);
+  stats.attack = Math.floor(bal.attack * (1 + skillMods.statAttackPercent / 100));
+  stats.defense = Math.floor(bal.armor * (1 + skillMods.statDefensePercent / 100));
+  stats.armor = stats.defense;
+  stats.maxHp = Math.floor(bal.maxHp * (1 + skillMods.statHpPercent / 100));
+  stats.spellPower = bal.spellPower;
+  stats.hpRegen = 0;
+  stats.critChance = capCritChance(bal.critChance + skillBonuses.critChance / 100);
 
   return stats;
 }

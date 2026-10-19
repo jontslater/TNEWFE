@@ -1447,6 +1447,13 @@ export const skillsAPI = {
   }
 };
 
+export const balanceAPI = {
+  async getBalance() {
+    const response = await apiClient.get('/api/balance');
+    return response.data;
+  },
+};
+
 // Auction House API
 export const auctionAPI = {
   async getListings(filters?: any) {

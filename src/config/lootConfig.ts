@@ -188,6 +188,27 @@ export const EXPECTED_KILLS_PER_HOUR = {
  * @param hours - Hours of play
  * @returns Expected drop counts by rarity
  */
+/** Roll one rarity from a DROP_RATES table (weights normalized). */
+export function rollLootRarity(
+  table: Record<string, number>,
+  weightBonus = 0
+): keyof typeof DROP_RATES.trash {
+  const adjusted: Record<string, number> = { ...table };
+  if (weightBonus > 0) {
+    adjusted.rare = (adjusted.rare || 0) + weightBonus;
+    adjusted.uncommon = (adjusted.uncommon || 0) + weightBonus * 0.5;
+    adjusted.common = Math.max(0, (adjusted.common || 0) - weightBonus * 1.5);
+  }
+  const total = Object.values(adjusted).reduce((a, b) => a + b, 0);
+  if (total <= 0) return 'common';
+  let roll = Math.random() * total;
+  for (const [rarity, weight] of Object.entries(adjusted)) {
+    roll -= weight;
+    if (roll <= 0) return rarity as keyof typeof DROP_RATES.trash;
+  }
+  return 'common';
+}
+
 export function calculateExpectedDrops(
   contentType: keyof typeof EXPECTED_KILLS_PER_HOUR,
   difficulty: string | null,

@@ -17,7 +17,8 @@ import { generateEnemiesForCombat } from '../utils/enemyGeneration';
 import { generateDungeonEnemies } from '../utils/dungeonEnemyGeneration';
 import HeroSpriteJS from '../components/HeroSpriteJS';
 import EnemySpriteJS from '../components/EnemySpriteJS';
-import { battlefieldAPI, heroAPI, questAPI, overlayClient } from '../api/client';
+import { battlefieldAPI, heroAPI, questAPI, overlayClient, balanceAPI } from '../api/client';
+import { fetchBalance } from '../combat/balanceLoader';
 import { useAuth } from '../hooks/useAuth';
 import { useActiveInstanceListener } from '../hooks/useActiveInstanceListener';
 import { useWebSocket } from '../hooks/useWebSocket';
@@ -29,6 +30,21 @@ import { getFounderTitleColor, getFounderTitleDisplay, getFounderTierFromTitle }
 import { getAuraFilter } from '../utils/auraEffects';
 import { createProjectile } from '../utils/projectiles';
 import { BALANCE } from '../config/balanceConfig';
+import {
+  applyXpWithLevelUps,
+  chatDamageHealMultiplier,
+  chatLootWeightBonus,
+  computeHeroBalanceStats,
+  capCritChance,
+  damageReduction,
+  getSwingIntervalMs,
+  getTrashDropChance,
+  xpToNextLevel,
+  computeDamageTaken,
+  getBalancePayload,
+  raidBossEnrageMultiplier,
+  buildRaidBoss,
+} from '../combat/balance';
 import { createLootDropAnnouncement, getRarityStyle } from '../utils/rarityDisplay';
 import { createExhaustEffect, shouldShowExhaustEffect } from '../utils/exhaustEffects';
 import { createMusicalNoteEffect } from '../utils/musicalNoteEffects';
@@ -325,7 +341,11 @@ export default function CleanBattlefieldSource() {
   const [isTraveling, setIsTraveling] = useState(false);
   const [viewerCount, setViewerCount] = useState(0);
   const [activeChatterCount, setActiveChatterCount] = useState(0); // Active chatters in last hour
-  
+
+  useEffect(() => {
+    fetchBalance(() => balanceAPI.getBalance());
+  }, []);
+
   // Rested XP tracking
   const heroBattlefieldJoinTime = useRef<Map<string, number>>(new Map());
   const lastChatTime = useRef<Map<string, number>>(new Map());
@@ -1010,12 +1030,18 @@ export default function CleanBattlefieldSource() {
     else if (instanceData.boss && instanceData.boss.hp > 0) {
       console.log(`[Raid Waves] Wave ${currentWave + 1} (FINAL): BOSS - ${instanceData.boss.name}`);
       
-      // Apply party size scaling to boss stats
-      const bossHp = Math.floor(instanceData.boss.hp * raidPartySizeMultiplier);
-      const bossMaxHp = Math.floor((instanceData.boss.maxHp || instanceData.boss.hp) * raidPartySizeMultiplier);
-      const bossAttack = Math.floor((instanceData.boss.attack || 100) * raidPartySizeMultiplier);
-      const bossDefense = Math.floor((instanceData.boss.defense || 50) * raidPartySizeMultiplier);
-      const bossXp = Math.floor((instanceData.boss.xp || 1000) * raidPartySizeMultiplier);
+      const avgRaidLevel = Math.max(
+        1,
+        Math.floor(
+          raidHeroes.reduce((s, h) => s + (h.level || 1), 0) / Math.max(1, raidHeroes.length)
+        )
+      );
+      const bossTpl = buildRaidBoss(avgRaidLevel, raidPartySize, 1);
+      const bossHp = bossTpl.hp;
+      const bossMaxHp = bossTpl.maxHp;
+      const bossAttack = bossTpl.attack;
+      const bossDefense = bossTpl.armor;
+      const bossXp = bossTpl.xp;
       
       console.log(`[Raid Boss] Scaling boss stats: HP ${instanceData.boss.hp}→${bossHp}, ATK ${instanceData.boss.attack || 100}→${bossAttack} (${(raidPartySizeMultiplier * 100).toFixed(0)}% difficulty)`);
       
@@ -1033,8 +1059,9 @@ export default function CleanBattlefieldSource() {
         xp: bossXp,
         isBoss: true,
         isDead: false,
-        shield: 0
-      });
+        shield: 0,
+        fightStartMs: Date.now(),
+      } as Enemy & { fightStartMs?: number });
     }
     // BOSS DEFEATED - Grant loot
     else if (instanceData.boss && instanceData.boss.hp <= 0) {
@@ -3061,19 +3088,23 @@ export default function CleanBattlefieldSource() {
         const cooldown = guardian.cooldowns?.shieldWall || 0;
         
         if (now >= cooldown) {
-          console.log(`[Shield Wall] 🛡️ ${guardian.name} activates SHIELD WALL! (30% DR for all for 10s)`);
+          const swCfg = getBalancePayload().roleAbilities.shieldWall;
+          console.log(`[Shield Wall] 🛡️ ${guardian.name} activates SHIELD WALL! (party −${swCfg.partyDamageReduction * 100}% for ${swCfg.durationSec}s)`);
           
-          // Apply Shield Wall buff to all heroes (handled in damage calculation)
           setHeroes(current => {
             const updated = current.map(h => {
+              const buffs = {
+                ...h.activeBuffs,
+                shieldWall: { active: true, expiresAt: now + swCfg.durationSec * 1000 },
+              };
               if (h.id === guardian.id) {
                 return {
                   ...h,
-                  activeBuffs: { ...h.activeBuffs, shieldWall: { active: true, expiresAt: now + 10000 } },
-                  cooldowns: { ...h.cooldowns, shieldWall: now + 45000 } // 45s cooldown
+                  activeBuffs: buffs,
+                  cooldowns: { ...h.cooldowns, shieldWall: now + swCfg.cooldownSec * 1000 },
                 };
               }
-              return h;
+              return { ...h, activeBuffs: buffs };
             });
             heroesRef.current = updated;
             return updated;
@@ -3511,9 +3542,14 @@ export default function CleanBattlefieldSource() {
         return;
       }
 
-      // Execute actions SEQUENTIALLY - wait for animations to complete
-      let delay = 0;
+      const swingMs = getSwingIntervalMs();
+      const actorNextDelay = new Map<string, number>();
+      let maxDelay = swingMs;
       actions.forEach((action, index) => {
+        const actorKey = String(action.actorId);
+        const delay = actorNextDelay.get(actorKey) ?? Math.floor(Math.random() * swingMs * 0.4);
+        actorNextDelay.set(actorKey, delay + swingMs);
+        maxDelay = Math.max(maxDelay, delay + swingMs);
         setTimeout(() => {
           console.log(`[Combat] Executing ${index + 1}/${actions.length}: ${action.actorName} → ${action.targetName}`);
           if (action.type === 'heal') {
@@ -3526,12 +3562,9 @@ export default function CleanBattlefieldSource() {
             executeEnemyAttack(action);
           }
         }, delay);
-        delay += 2500; // 2.5s between actions (ensures animations complete)
-        // Timing: Attack (1000ms) + Hurt (500ms) + Buffer (1000ms) = 2500ms
       });
 
-      // Check victory after all actions complete
-      const totalDelay = actions.length * 2500 + 1000; // 2.5s per action + 1s buffer
+      const totalDelay = maxDelay + 500;
       console.log(`[Combat] Will check victory in ${totalDelay}ms`);
       combatRoundTimeoutRef.current = setTimeout(() => {
         checkCombatVictory().catch(err => console.error('[Combat] Error in checkCombatVictory:', err));
@@ -4031,49 +4064,9 @@ export default function CleanBattlefieldSource() {
         console.log(`[Whirlwind] AoE damage: 70% of normal`);
       }
       
-      // Check for Critical Strike proc (30% chance for guaranteed crit on next attack)
-      let criticalStrikeActive = false;
-      if (hero.activeBuffs?.criticalStrike?.active) {
-        criticalStrikeActive = true;
-        console.log(`[Critical Strike] 💥 ${hero.name} uses saved crit!`);
-        
-        // Consume the buff
-        setHeroes(current => {
-          const updated = current.map(h => 
-            h.id === hero.id 
-              ? { ...h, activeBuffs: { ...h.activeBuffs, criticalStrike: { active: false } } }
-              : h
-          );
-          heroesRef.current = updated;
-          return updated;
-        });
-      } else if (Math.random() < 0.30) {
-        // Proc Critical Strike for NEXT attack
-        console.log(`[Critical Strike] 💥 ${hero.name} procs CRITICAL STRIKE! (next attack guaranteed crit)`);
-        
-        // SHOW SCT FOR CRITICAL STRIKE PROC
-        const heroElement = document.querySelector(`[data-hero-id="${hero.id}"]`);
-        if (heroElement) {
-          const rect = heroElement.getBoundingClientRect();
-          addSCT('+Critical Strike', rect.left + rect.width / 2, rect.top + 20, 'loot'); // Gold for buffs
-        }
-        
-        setHeroes(current => {
-          const updated = current.map(h => 
-            h.id === hero.id 
-              ? { ...h, activeBuffs: { ...h.activeBuffs, criticalStrike: { active: true } } }
-              : h
-          );
-          heroesRef.current = updated;
-          return updated;
-        });
-      }
-      
-      // Roll for critical hit (base 5% + gear + Critical Strike buff)
-      const baseCritChance = 0.05; // 5% base crit chance
-      const critChance = criticalStrikeActive ? 1.0 : (baseCritChance + (hero.critChance || 0));
       const skillMods = computeSkillModifiers(hero);
-      const isCrit = Math.random() < Math.min(0.75, critChance + skillMods.critChance / 100);
+      const critChance = capCritChance((hero.critChance || 0) + skillMods.critChance / 100);
+      const isCrit = Math.random() < critChance;
       if (isCrit) {
         damage = Math.round(damage * critDamageMultiplier(skillMods.critDamage));
         console.log(`[Combat] ⚡ CRITICAL HIT! ${hero.name} crits for ${damage}!`);
@@ -4180,8 +4173,9 @@ export default function CleanBattlefieldSource() {
         const target = currentEnemies[targetIndex];
         const updatedEnemies = [...currentEnemies];
 
-        // Apply damage (already calculated above, outside setState)
-        let remainingDamage = Math.round(damage);
+        const enemyArmor = target.defense || 0;
+        const dr = damageReduction(enemyArmor, hero.level || 1);
+        let remainingDamage = Math.max(1, Math.round(damage * (1 - dr)));
         let newShield = Math.round(target.shield || 0);
         let newHp = Math.round(target.hp);
 
@@ -4723,16 +4717,7 @@ export default function CleanBattlefieldSource() {
               defense = Math.floor(defense * 1.10);
             }
             
-            const isTank = isTankRole(hero.role);
-            
-            // Improved defense scaling: Tanks get better mitigation (1/200 divisor instead of 1/250)
-            const defenseDivisor = isTank ? 200 : 250;
-            const damageAfterDefense = baseDamage / (1 + defense / defenseDivisor);
-            
-            // Reduced minimum damage: 10% for tanks, 15% for others (was 25% for all)
-            const minDamagePercent = isTank ? 0.10 : 0.15;
-            const minDamage = Math.max(1, baseDamage * minDamagePercent);
-            let actualDamage = Math.max(minDamage, Math.floor(damageAfterDefense));
+            let actualDamage = computeDamageTaken(baseDamage, defense, enemy.level || 1);
             
             // Check for VULNERABLE debuff (+40% damage taken)
             if (hero.activeDebuffs?.vulnerable) {
@@ -4858,7 +4843,13 @@ export default function CleanBattlefieldSource() {
       }
 
       // Calculate damage ONCE
-      const enemyBaseAttack = enemy.attack || enemy.level * 8;
+      let enemyBaseAttack = enemy.attack || enemy.level * 8;
+      const fightStartMs = (enemy as { fightStartMs?: number }).fightStartMs;
+      if (fightStartMs && enemy.isBoss) {
+        enemyBaseAttack = Math.floor(
+          enemyBaseAttack * raidBossEnrageMultiplier(fightStartMs, Date.now())
+        );
+      }
       const variance = enemyBaseAttack * 0.2;
       let baseDamage = Math.floor(enemyBaseAttack + (Math.random() * variance * 2) - variance);
       
@@ -5192,17 +5183,8 @@ export default function CleanBattlefieldSource() {
         console.log(`[Defense Buff] ⚡ ${targetHeroRef.name} gets +10% defense from buff!`);
       }
       
-      const isTank = isTankRole(targetHeroRef.role);
-      
-      // Improved defense scaling: Tanks get better mitigation (1/200 divisor instead of 1/250)
-      // This means tanks reach 50% DR at 200 defense vs 250 for others
-      const defenseDivisor = isTank ? 200 : 250;
-      const damageAfterDefense = baseDamage / (1 + defense / defenseDivisor);
-      
-      // Reduced minimum damage: 10% for tanks, 15% for others (was 25% for all)
-      const minDamagePercent = isTank ? 0.10 : 0.15; // Tanks take less minimum damage
-      const minDamage = Math.max(1, baseDamage * minDamagePercent);
-      let actualDamage = Math.max(minDamage, Math.floor(damageAfterDefense));
+      const attackerLevel = enemy.level || 1;
+      let actualDamage = computeDamageTaken(baseDamage, defense, attackerLevel);
       
       // Check for VULNERABLE debuff (+40% damage taken)
       if (targetHeroRef.activeDebuffs?.vulnerable) {
@@ -5267,26 +5249,24 @@ export default function CleanBattlefieldSource() {
         console.log(`[Iron Skin] Damage reduced by 50%: ${Math.floor(actualDamage / 0.5)} → ${actualDamage}`);
       }
       
-      // Check for Shield Wall (Guardian ability - 30% DR for all allies)
-      const allCurrentHeroes = testHealer ? [...heroesRef.current, testHealer] : heroesRef.current;
       const nowShield = Date.now();
+      const swBuff = (targetHeroRef.activeBuffs as { shieldWall?: { active?: boolean; expiresAt?: number } })
+        ?.shieldWall;
+      if (swBuff?.active && (swBuff.expiresAt ?? 0) > nowShield) {
+        const swCfg = getBalancePayload().roleAbilities.shieldWall;
+        const dr = isTankRole(targetHeroRef.role)
+          ? swCfg.tankDamageReduction
+          : swCfg.partyDamageReduction;
+        const damageBefore = actualDamage;
+        actualDamage = Math.floor(actualDamage * (1 - dr));
+        blockedByAbilities += damageBefore - actualDamage;
+      }
       const targetRoleShield = (targetHeroRef.activeBuffs as any)?.roleActiveShield;
-      if (
-        targetRoleShield?.active &&
-        targetRoleShield.expiresAt > nowShield
-      ) {
+      if (targetRoleShield?.active && targetRoleShield.expiresAt > nowShield) {
         const dr = targetRoleShield.drFraction ?? 0.5;
         const damageBefore = actualDamage;
         actualDamage = Math.floor(actualDamage * (1 - dr));
         blockedByAbilities += damageBefore - actualDamage;
-        console.log(`[Shield Wall] 🛡️ Self DR ${Math.round(dr * 100)}%`);
-      }
-      
-      // SANITY CAP
-      const maxReasonableDamage = targetHeroRef.maxHp * 3;
-      if (actualDamage > maxReasonableDamage) {
-        console.warn(`[Combat] 🚨 DAMAGE CAPPED! ${actualDamage} → ${maxReasonableDamage}`);
-        actualDamage = maxReasonableDamage;
       }
 
       console.log(`[Combat] ${action.actorName} attacks ${targetHeroRef.name} for ${actualDamage}`);
@@ -5908,7 +5888,7 @@ export default function CleanBattlefieldSource() {
           // Clean victory! Increase difficulty
           setConsecutiveWins(prev => prev + 1);
           setDifficultyModifier(prev => {
-            const newDifficulty = Math.min(1.5, prev + 0.05); // +5% per win, max 150%
+            const newDifficulty = Math.min(1.25, prev + 0.05); // +5% per win, max 125%
             if (newDifficulty !== prev) {
               const percent = (newDifficulty * 100).toFixed(0);
               if (newDifficulty >= 1.0) {
@@ -5960,7 +5940,7 @@ export default function CleanBattlefieldSource() {
             }
             
             const newXP = (hero.xp || 0) + xpToGrant;
-            const maxXP = hero.maxXp || (100 + hero.level * 10);
+            const maxXP = hero.maxXp || xpToNextLevel(hero.level || 1);
             
             const goldToGrant = Math.floor(totalBaseGold);
             
@@ -5972,7 +5952,12 @@ export default function CleanBattlefieldSource() {
             
             // Apply gold to hero
             const newGold = (hero.gold || 0) + goldToGrant;
-            let newHero = { ...hero, xp: newXP, gold: newGold };
+            let newHero = {
+              ...hero,
+              xp: newXP,
+              gold: newGold,
+              maxXp: xpToNextLevel(hero.level || 1),
+            };
             
             // Track XP and gold changes for sync
             trackHeroStatChange(hero.id, {
@@ -5989,35 +5974,22 @@ export default function CleanBattlefieldSource() {
               isDead: hero.isDead || hero.hp <= 0
             };
             
-            // Check for level up (CRITICAL: Cap at level 100)
-            const MAX_LEVEL = 100;
-            const currentLevel = hero.level || 1;
-            if (newXP >= maxXP && currentLevel < MAX_LEVEL) {
-              const newLevel = Math.min(currentLevel + 1, MAX_LEVEL);
-              // Use polynomial formula for maxXP (matching backend)
-              const calculateMaxXp = (level: number): number => {
-                if (level <= 1) return 100;
-                return Math.floor(40 * level * level + 300 * level - 240);
-              };
-              const newMaxXP = calculateMaxXp(newLevel);
-              
+            const levelUp = applyXpWithLevelUps(hero.level || 1, newXP, 100);
+            if (levelUp.levelsGained > 0) {
               result.leveledUp = true;
               result.oldLevel = hero.level;
-              result.newLevel = newLevel;
-              
-              // IMPORTANT: Recalculate ALL stats from new level + equipment (keeps it consistent!)
+              result.newLevel = levelUp.level;
+
               const leveledHero = {
                 ...hero,
-                level: newLevel,
-                xp: newXP - maxXP, // Carry over excess XP
-                maxXp: newMaxXP
+                level: levelUp.level,
+                xp: levelUp.xp,
+                maxXp: levelUp.maxXp,
               };
-              
-              // Recalculate stats (includes level-based stats + gear)
+
               newHero = calculateHeroStats(leveledHero);
-              
-              // Preserve current HP ratio (don't full heal on level up)
-              const hpRatio = hero.hp / hero.maxHp;
+
+              const hpRatio = hero.maxHp > 0 ? hero.hp / hero.maxHp : 1;
               newHero.hp = Math.floor(newHero.maxHp * hpRatio);
               newHero.xp = leveledHero.xp;
               newHero.maxXp = leveledHero.maxXp;
@@ -6026,7 +5998,7 @@ export default function CleanBattlefieldSource() {
               // When leveling up, XP should be set to absolute value (excess XP), not a delta
               // This prevents sync conflicts where delta calculation causes incorrect XP values
               trackHeroStatChange(hero.id, {
-                level: newLevel,
+                level: levelUp.level,
                 maxHp: newHero.maxHp,
                 attack: newHero.attack,
                 defense: newHero.defense,
@@ -6328,7 +6300,7 @@ export default function CleanBattlefieldSource() {
             guaranteedSlotsDropped.clear();
             
             // Loot chance: 100% for bosses, 30% for regular enemies
-            const lootChance = enemy.isBoss ? 1.0 : 0.3;
+            const lootChance = enemy.isBoss ? 1.0 : getTrashDropChance();
             const shouldDropLoot = Math.random() <= lootChance;
             
             if (!shouldDropLoot && (!enemy.isBoss || !allowedSlots || allowedSlots.length === 0)) {
@@ -7356,8 +7328,10 @@ export default function CleanBattlefieldSource() {
 
     console.log('[HP Regen] Setting up regen interval');
     const regenInterval = setInterval(() => {
-      
-      // Regenerate HP for real heroes with hpRegen > 0
+      if (inCombat || combatInProgress.current) {
+        return;
+      }
+
       setHeroes(currentHeroes => {
         let anyRegen = false;
         const updated = currentHeroes.map(hero => {
@@ -7520,11 +7494,12 @@ export default function CleanBattlefieldSource() {
   // Calculate viewer bonuses based on active chatters
   const calculateViewerBonuses = () => {
     const chatters = activeChatterCount;
+    const combat = chatDamageHealMultiplier(chatters);
     return {
-      damage: 1 + (chatters * 0.01),      // +1% per chatter
-      healing: 1 + (chatters * 0.01),     // +1% per chatter
-      defense: 1 + (chatters * 0.005),    // +0.5% per chatter
-      loot: Math.min(chatters * 0.002, 0.3) // +0.2% per chatter, max 30%
+      damage: combat,
+      healing: combat,
+      defense: 1,
+      loot: chatLootWeightBonus(chatters),
     };
   };
 
@@ -7962,7 +7937,14 @@ export default function CleanBattlefieldSource() {
     // Apply stamina → HP conversion (1 stamina = 10 HP)
     stats.maxHp += stats.stamina * 10;
 
-    stats.critChance = Math.min(stats.critChance, 0.75);
+    const bal = computeHeroBalanceStats(hero);
+    const skillModsOverlay = computeSkillModifiers(hero);
+    stats.attack = Math.floor(bal.attack * (1 + skillModsOverlay.statAttackPercent / 100));
+    stats.defense = Math.floor(bal.armor * (1 + skillModsOverlay.statDefensePercent / 100));
+    stats.maxHp = Math.floor(bal.maxHp * (1 + skillModsOverlay.statHpPercent / 100));
+    stats.spellPower = bal.spellPower;
+    stats.hpRegen = 0;
+    stats.critChance = capCritChance(bal.critChance + skillBonuses.critChance / 100);
 
     // Debug: Log ALL equipment slots and their stats
     const equipmentSlots = ['weapon', 'armor', 'accessory', 'shield', 'helm', 'cloak', 'gloves', 'ring1', 'ring2', 'boots'];

@@ -7,7 +7,8 @@
  */
 
 import { Item } from '../types/Hero';
-import { BALANCE } from '../config/balanceConfig';
+import { DROP_RATES, rollLootRarity } from '../config/lootConfig';
+import { chatLootWeightBonus } from '../combat/balance';
 
 // Loot rarity drop chances
 const LOOT_RARITIES = {
@@ -122,7 +123,7 @@ function getHeroCategory(role: string): 'tank' | 'healer' | 'meleeDps' | 'caster
   const roleLower = role.toLowerCase();
   
   // Tank roles
-  const tankRoles = ['guardian', 'paladin', 'warden', 'bloodknight', 'vanguard', 'brewmaster', 'crusader', 'knight'];
+  const tankRoles = ['guardian', 'paladin', 'warden', 'bloodknight', 'vanguard', 'brewmaster', 'knight'];
   if (tankRoles.includes(roleLower)) return 'tank';
   
   // Healer roles
@@ -158,48 +159,17 @@ export function generateLoot(
   // Get category (tank, healer, meleeDps, casterDps)
   const category = getHeroCategory(role);
   
-  // Determine rarity
-  const rand = Math.random();
+  const lootWeightBonus =
+    viewerLootBonus > 0 && viewerLootBonus <= 1
+      ? viewerLootBonus
+      : chatLootWeightBonus(Math.max(0, Math.round(viewerLootBonus)));
   let rarity: keyof typeof LOOT_RARITIES = 'common';
-  let cumulativeChance = 0;
-  
-  // Boss bonus: +20% better loot quality
-  const bossBonus = isBoss ? 0.2 : 0;
-  const waveBoost = Math.min(0.3, waveCount / 100); // Up to 30% boost
-  // Viewer bonus: +0.2% per chatter, max 30% (from viewer bonus calculation)
-  const viewerBonus = Math.min(0.3, viewerLootBonus || 0);
-  const totalBonus = bossBonus + waveBoost + viewerBonus;
-  
-  // Adjust rarity chances with bonuses
-  const adjustedRarities: Record<string, number> = {};
-  for (const [rarityName, rarityData] of Object.entries(LOOT_RARITIES)) {
-    adjustedRarities[rarityName] = rarityData.dropChance;
-  }
-  
-  if (totalBonus > 0) {
-    // Mythic can drop from raids/dungeons with high bonuses
-    adjustedRarities.mythic += totalBonus * 0.05; // Small chance for mythic
-    adjustedRarities.legendary += totalBonus * 0.25;
-    adjustedRarities.epic += totalBonus * 0.3;
-    adjustedRarities.rare += totalBonus * 0.2;
-    adjustedRarities.uncommon += totalBonus * 0.1;
-    adjustedRarities.common -= totalBonus * 0.9;
-    adjustedRarities.common = Math.max(0.1, adjustedRarities.common);
-  }
-  
-  // Normalize probabilities
-  const total = Object.values(adjustedRarities).reduce((a, b) => a + b, 0);
-  for (const key in adjustedRarities) {
-    adjustedRarities[key] /= total;
-  }
-  
-  // Select rarity
-  for (const [rarityName, dropChance] of Object.entries(adjustedRarities)) {
-    cumulativeChance += dropChance;
-    if (rand <= cumulativeChance) {
-      rarity = rarityName as keyof typeof LOOT_RARITIES;
-      break;
-    }
+  if (isRaidOrDungeon && isBoss) {
+    rarity = rollLootRarity(DROP_RATES.dungeon.normal, lootWeightBonus) as keyof typeof LOOT_RARITIES;
+  } else if (isBoss) {
+    rarity = rollLootRarity(DROP_RATES.elite, lootWeightBonus) as keyof typeof LOOT_RARITIES;
+  } else {
+    rarity = rollLootRarity(DROP_RATES.trash, lootWeightBonus) as keyof typeof LOOT_RARITIES;
   }
   
   // Force rare+ for set pieces
@@ -288,7 +258,6 @@ export function generateLoot(
     const secondaryBase = rarityData.statMultiplier * Math.min(totalMultiplier, 3);
     
     if (category === 'tank') {
-      item.secondaryStats.hpRegen = Math.min(Math.floor(2 + (secondaryBase * 1.5)), 20);
       if (rarity === 'epic' || rarity === 'legendary') {
         item.secondaryStats.damageReduction = Math.min(0.02 + (secondaryBase * 0.01), 0.15);
       }
@@ -297,9 +266,6 @@ export function generateLoot(
       // Healers also benefit from spell damage (for their offensive spells)
       if (rarity === 'epic' || rarity === 'legendary' || rarity === 'mythic') {
         item.secondaryStats.spellDamage = Math.min(Math.floor(2 + (secondaryBase * 1.5)) / 100, 0.20);
-      }
-      if (rarity === 'epic' || rarity === 'legendary') {
-        item.secondaryStats.hpRegen = Math.min(Math.floor(2 + secondaryBase), 15);
       }
     } else if (category === 'meleeDps') {
       item.secondaryStats.meleeDamage = Math.min(Math.floor(3 + (secondaryBase * 2)), 30);

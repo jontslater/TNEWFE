@@ -5,6 +5,8 @@
  * All progression curves, scaling, and rewards are defined here.
  */
 
+import { balanceEnemyApi, xpToNextLevel } from '../combat/balance';
+
 export interface BalanceConfig {
   enemy: {
     // Base stats for level 1 enemies
@@ -101,60 +103,30 @@ const OLD_BALANCE = {
 };
 
 /**
- * NEW BALANCE (Linear, sane progression)
+ * NEW BALANCE — delegates to src/combat/balance.ts (shared plan).
  */
 export const BALANCE: BalanceConfig = {
   enemy: {
-    baseAttack: 50,
-    baseDefense: 20,
-    baseHp: 100,
-    baseXp: 10,
+    baseAttack: 40,
+    baseDefense: 150,
+    baseHp: 900,
+    baseXp: 12,
     baseGold: 5,
-    
-    // LINEAR scaling - prevents damage spikes
-    attackScaling: (level: number, difficulty: number = 1.0) => {
-      // Attack scales linearly with level
-      // Difficulty multiplier: 1.0 = normal, 1.5 = elite, 2.0 = boss
-      const levelFactor = 1 + (level - 1) * 0.15; // 15% per level
-      return Math.floor(BALANCE.enemy.baseAttack * levelFactor * difficulty);
-    },
-    
-    defenseScaling: (level: number, difficulty: number = 1.0) => {
-      const levelFactor = 1 + (level - 1) * 0.12; // 12% per level
-      return Math.floor(BALANCE.enemy.baseDefense * levelFactor * difficulty);
-    },
-    
-    hpScaling: (level: number, difficulty: number = 1.0) => {
-      const levelFactor = 1 + (level - 1) * 0.2; // 20% per level
-      return Math.floor(BALANCE.enemy.baseHp * levelFactor * difficulty);
-    },
-    
-    // XP scales with level^1.5 to match hero leveling curve
-    xpScaling: (level: number, difficulty: number = 1.0) => {
-      const xp = BALANCE.enemy.baseXp * Math.pow(level, 1.5) * difficulty;
-      return Math.floor(xp);
-    },
-    
-    // Gold scales linearly with level
-    goldScaling: (level: number, difficulty: number = 1.0) => {
-      const gold = BALANCE.enemy.baseGold * level * difficulty;
-      return Math.floor(gold);
-    },
+    attackScaling: balanceEnemyApi.attackScaling,
+    defenseScaling: balanceEnemyApi.defenseScaling,
+    hpScaling: balanceEnemyApi.hpScaling,
+    xpScaling: balanceEnemyApi.xpScaling,
+    goldScaling: balanceEnemyApi.goldScaling,
   },
-  
+
   hero: {
-    baseHp: 500,
-    baseAttack: 50,
-    baseDefense: 30,
-    
-    hpPerLevel: 50,
-    attackPerLevel: 5,
-    defensePerLevel: 3,
-    
-    // XP curve: exponential growth
-    xpCurve: (level: number) => {
-      return Math.floor(100 * Math.pow(level, 1.8));
-    },
+    baseHp: 400,
+    baseAttack: 20,
+    baseDefense: 100,
+    hpPerLevel: 0,
+    attackPerLevel: 0,
+    defensePerLevel: 0,
+    xpCurve: xpToNextLevel,
   },
   
   loot: {

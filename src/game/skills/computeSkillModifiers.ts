@@ -1,9 +1,5 @@
-import {
-  COOLDOWN_REDUCTION_CAP,
-  CRIT_CHANCE_CAP,
-  DAMAGE_REDUCTION_CAP,
-  MAX_SKILL_RANK,
-} from './caps';
+import { COOLDOWN_REDUCTION_CAP, CRIT_CHANCE_CAP, DAMAGE_REDUCTION_CAP, MAX_SKILL_RANK } from './caps';
+import { critDamageMultiplier as balanceCritMult } from '../../combat/balance';
 import { getCanonicalSkillById, parseSkillId } from './definitions';
 import type {
   ComputedSkillModifiers,
@@ -23,7 +19,7 @@ export function applyCooldownReduction(baseMs: number, cooldownReductionPercent:
 }
 
 export function critDamageMultiplier(critDamagePercent: number): number {
-  return 2 + Math.max(0, critDamagePercent) / 100;
+  return balanceCritMult(critDamagePercent);
 }
 
 /** Matches overlay swift proc: 10% base chance, scales with speed_boost skill, capped at 50%. */

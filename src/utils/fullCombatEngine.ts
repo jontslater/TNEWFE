@@ -11,7 +11,8 @@ import { resolveCombat as resolveCombatSimple, startCombat as startCombatSimple 
 import { AdventureEngine } from './adventureEngine';
 import { getHeroSpriteType, getEnemySpriteType, getAnimationDuration } from './animationDurations';
 import { generateEnemiesForCombat } from './enemyGeneration';
-import { getCharacterStats, calculateSkillBonuses } from './combatUtils';
+import { getCharacterStats, calculateSkillBonuses, getViewerBonuses as sharedViewerBonuses } from './combatUtils';
+import { computeDamageTaken, damageReduction, getBalancePayload, xpToNextLevel } from '../combat/balance';
 import { processDebuffs, processHpRegeneration } from './combat/buffsDebuffs';
 import { ENEMY_SPRITES } from './enemySpriteConfig';
 import { createProjectile } from './projectiles';
@@ -870,11 +871,9 @@ export class FullCombatEngine {
     );
     
     // Process HP Regeneration (from regeneration_armor enchantment)
-    processHpRegeneration(
-      this.state.heroes,
-      now,
-      callbacks
-    );
+    if (!this.state.currentEnemies?.length) {
+      processHpRegeneration(this.state.heroes, now, callbacks);
+    }
   }
   
   /**
@@ -1340,18 +1339,15 @@ export class FullCombatEngine {
    * Calculate maxXp for a given level (matches backend polynomial formula)
    */
   private calculateMaxXp(level: number): number {
-    if (level <= 1) return 100;
-    // Polynomial growth: 40 * level² + 300 * level - 240 (matches backend)
-    return Math.floor(40 * level * level + 300 * level - 240);
+    return xpToNextLevel(level);
   }
 
   private levelUpHero(hero: Hero) {
-    // Cap at level 100
     if ((hero.level || 1) >= 100) {
       hero.xp = hero.maxXp || this.calculateMaxXp(100);
       return;
     }
-    
+
     hero.level = (hero.level || 1) + 1;
     hero.xp = 0;
     hero.maxXp = this.calculateMaxXp(hero.level);
@@ -1695,12 +1691,7 @@ export class FullCombatEngine {
    * Get viewer bonuses (damage/healing/defense multipliers based on viewer count)
    */
   private getViewerBonuses() {
-    const viewerCount = this.state.viewerCount || 0;
-    return {
-      damageMultiplier: 1 + (viewerCount * 0.01),  // 1% per viewer
-      healingMultiplier: 1 + (viewerCount * 0.01), // 1% per viewer
-      defenseMultiplier: 1 + (viewerCount * 0.005), // 0.5% per viewer
-    };
+    return sharedViewerBonuses(this.state.viewerCount || 0);
   }
 
   /**
@@ -1891,13 +1882,10 @@ export class FullCombatEngine {
       return { died: false, actualDamage: 0 };
     }
     
-    // Percentage-based damage reduction with minimum damage guarantee
     const enemyDefense = enemy.defense || 0;
-    // Formula: damage / (1 + defense / 250)
-    // Minimum 25% of original damage always gets through
-    const damageAfterDefense = damage / (1 + enemyDefense / 250);
-    const minDamage = Math.max(1, damage * 0.25);
-    const actualDamage = Math.max(minDamage, Math.floor(damageAfterDefense));
+    const attackerLevel = (enemy as { level?: number }).level || 1;
+    const dr = damageReduction(enemyDefense, attackerLevel);
+    const actualDamage = Math.max(0, Math.floor(damage * (1 - dr)));
     
     enemy.hp -= actualDamage;
     
@@ -2723,11 +2711,9 @@ export class FullCombatEngine {
     const { ironSkinActive, lastStandActive, shieldWallActive, isCrit, isBloodlust, now } = options;
     const category = ROLE_CONFIG[target.hero.role]?.category || 'dps';
     
-    let actualDamage = Math.max(1, enemyDamage - effectiveDefense);
+    const attackerLevel = (enemy as { level?: number }).level || 1;
+    let actualDamage = computeDamageTaken(enemyDamage, effectiveDefense, attackerLevel);
     actualDamage = Math.floor(actualDamage * damageMultiplier);
-    
-    // Apply skill defense multipliers (additional damage reduction)
-    // Skill DR already applied via effectiveDefense — do not double-apply.
     
     // Apply armor enchantment thorns effects BEFORE damage reductions
     // Collect all enchantment effects first to stack them properly
@@ -2821,9 +2807,11 @@ export class FullCombatEngine {
     }
     
     if (shieldWallActive) {
+      const sw = getBalancePayload().roleAbilities.shieldWall;
+      const dr = category === 'tank' ? sw.tankDamageReduction : sw.partyDamageReduction;
       const damageBefore = actualDamage;
-      actualDamage = Math.floor(actualDamage * 0.7);
-      blockedByAbilities += (damageBefore - actualDamage);
+      actualDamage = Math.floor(actualDamage * (1 - dr));
+      blockedByAbilities += damageBefore - actualDamage;
     }
     
     // Initialize stats if needed
@@ -2850,14 +2838,6 @@ export class FullCombatEngine {
     // Track big hits for Shield Guardian
     if (target.hero.role === 'guardian' && actualDamage >= target.hero.maxHp * 0.4) {
       target.hero.lastBigHit = now;
-    }
-    
-    actualDamage = Math.max(3, actualDamage);
-    
-    // Damage cap
-    const maxDamagePerHit = Math.floor(target.hero.maxHp * 0.35);
-    if (actualDamage > maxDamagePerHit) {
-      actualDamage = maxDamagePerHit;
     }
     
     // Shield absorption
@@ -2958,13 +2938,8 @@ export class FullCombatEngine {
           bloodlustDamage *= 1.4;
         }
         
-        let bloodlustActualDamage = Math.max(1, bloodlustDamage - effectiveDefense);
+        let bloodlustActualDamage = computeDamageTaken(bloodlustDamage, effectiveDefense, attackerLevel);
         bloodlustActualDamage = Math.floor(bloodlustActualDamage * damageMultiplier);
-        
-        const maxDamagePerHit = Math.floor(target.hero.maxHp * 0.35);
-        if (bloodlustActualDamage > maxDamagePerHit) {
-          bloodlustActualDamage = maxDamagePerHit;
-        }
         
         if (lastStandActive) {
           bloodlustActualDamage = Math.floor(bloodlustActualDamage * 0.25);
@@ -2972,7 +2947,9 @@ export class FullCombatEngine {
           bloodlustActualDamage = Math.floor(bloodlustActualDamage * 0.5);
         }
         if (shieldWallActive) {
-          bloodlustActualDamage = Math.floor(bloodlustActualDamage * 0.7);
+          const sw = getBalancePayload().roleAbilities.shieldWall;
+          const dr = category === 'tank' ? sw.tankDamageReduction : sw.partyDamageReduction;
+          bloodlustActualDamage = Math.floor(bloodlustActualDamage * (1 - dr));
         }
         
         // Shield absorption for bloodlust
