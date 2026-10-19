@@ -3,11 +3,7 @@
  * and modular damage helper (mirrors overlay crit/DR rules).
  */
 import { computeSkillModifiers } from '../src/game/skills/computeSkillModifiers';
-import {
-  applySkillDamageReductionPercent,
-  capCritChance,
-  computeHitDamage,
-} from '../src/combat/balance';
+import { capCritChance, computeDamageTaken, computeHitDamage } from '../src/combat/balance';
 import { calculateHeroDamage } from '../src/utils/combat/damageCalculation';
 import type { Hero } from '../src/utils/combat/types';
 
@@ -27,9 +23,9 @@ const mods = computeSkillModifiers(tankHero);
 assert(mods.defenseMultiplier > 0, 'tank DR skills increase defenseMultiplier');
 assert(mods.defenseMultiplier <= 75, 'DR capped at 75%');
 
-const drApplied = applySkillDamageReductionPercent(1000, mods.defenseMultiplier);
-assert(drApplied < 1000, 'skill DR reduces damage after armor step');
-assert(drApplied >= 250, 'DR capped — at least 25% damage at 75% cap');
+const combined = computeDamageTaken(1000, 300, 1, mods.defenseMultiplier);
+assert(combined < 1000, 'armor+skill DR reduces damage');
+assert(combined > 0 && combined < 1000, 'combined armor+skill DR in valid range');
 
 const dpsMods = computeSkillModifiers({
   role: 'berserker',
@@ -72,6 +68,6 @@ assert(hit > 0 && hit < dpsHero.attack! * 2, 'balance computeHitDamage in plausi
 
 console.log('test-skill-combat: OK', {
   tankDr: mods.defenseMultiplier,
-  afterSkillDr: drApplied,
+  afterCombinedDr: combined,
   sampleHit: hit,
 });

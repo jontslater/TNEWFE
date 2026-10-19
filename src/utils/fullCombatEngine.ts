@@ -2713,16 +2713,24 @@ export class FullCombatEngine {
   ) {
     const { ironSkinActive, lastStandActive, shieldWallActive, isCrit, isBloodlust, now } = options;
     const category = ROLE_CONFIG[target.hero.role]?.category || 'dps';
-    
-    const attackerLevel = (enemy as { level?: number }).level || 1;
-    let actualDamage = computeDamageTaken(enemyDamage, effectiveDefense, attackerLevel);
-    actualDamage = applySkillDamageReductionPercent(actualDamage, skillBonuses.defenseMultiplier);
-    actualDamage = Math.floor(actualDamage * damageMultiplier);
-    
+    const skillBonuses = this.calculateSkillBonuses(target.hero);
+
     const roleShield = (target.hero.activeBuffs as Record<string, { active?: boolean; expiresAt?: number; drFraction?: number }>)
       ?.roleActiveShield;
-    if (roleShield?.active && (roleShield.expiresAt ?? 0) > now) {
-      const dr = roleShield.drFraction ?? 0.5;
+    const roleActiveShieldActive =
+      roleShield?.active && (roleShield.expiresAt ?? 0) > now;
+    
+    const attackerLevel = (enemy as { level?: number }).level || 1;
+    let actualDamage = computeDamageTaken(
+      enemyDamage,
+      effectiveDefense,
+      attackerLevel,
+      skillBonuses.defenseMultiplier
+    );
+    actualDamage = Math.floor(actualDamage * damageMultiplier);
+
+    if (roleActiveShieldActive) {
+      const dr = roleShield?.drFraction ?? 0.5;
       actualDamage = Math.floor(actualDamage * (1 - dr));
     }
     

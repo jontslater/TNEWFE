@@ -846,24 +846,13 @@ export default function InventoryManager({ hero, onEquipChange, onApplyUpgrade, 
                                 onConfirm: async () => {
                                   setConfirmDialog(null);
                                   try {
-                                    // Remove all items of this type from inventory
-                                    const updatedInventory = (hero.inventory || []).filter(
-                                      invItem => {
-                                        const invKey = (invItem as any).itemKey || invItem.name || invItem.id;
-                                        return invKey !== key;
-                                      }
-                                    );
-                                    
-                                    const goldGain = sellValue * totalQuantity;
-                                    
-                                    if (hero.id) {
-                                      const result = await heroAPI.sellInventoryByKey(hero.id, {
-                                        itemKey: key,
-                                        quantity: totalQuantity,
-                                      });
+                                    const itemIds = items.map((it) => it.id).filter(Boolean);
+                                    if (hero.id && itemIds.length > 0) {
+                                      const result = await heroAPI.sellInventoryItems(hero.id, itemIds);
                                       if (!result?.success) {
                                         throw new Error('Sell failed on server');
                                       }
+                                      const goldGain = result.goldGained ?? sellValue * totalQuantity;
                                       setMessageAlert({
                                         message: `✅ Sold ${totalQuantity}x ${itemName} for ${goldGain}g!`,
                                       });

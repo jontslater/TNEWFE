@@ -3,7 +3,9 @@
  */
 import { ROLE_CONFIG } from '../utils/fullCombatEngine';
 import { getClassCategory } from '../game/skills/classRegistry';
+import { calculateSetBonuses } from '../utils/setBonuses';
 import { getBalancePayload } from './balanceLoader';
+import type { Equipment } from '../types/Hero';
 
 export { getBalancePayload } from './balanceLoader';
 
@@ -106,16 +108,24 @@ export function computeHealAmount(spellPower: number, chatMult = 1, isCrit = fal
   return Math.floor(amt);
 }
 
-export function computeDamageTaken(rawDamage: number, heroArmor: number, attackerLevel: number): number {
-  const dr = damageReduction(heroArmor, attackerLevel);
-  return Math.max(0, Math.floor(rawDamage * (1 - dr) * rollVariance()));
+export function computeDamageTaken(
+  rawDamage: number,
+  heroArmor: number,
+  attackerLevel: number,
+  skillDefenseMultiplierPercent = 0
+): number {
+  const armorDr = damageReduction(heroArmor, attackerLevel);
+  const skillDr = Math.max(0, skillDefenseMultiplierPercent) / 100;
+  const totalDr = Math.min(cfg().combat.damageReductionCap, armorDr + skillDr);
+  return Math.max(0, Math.floor(rawDamage * (1 - totalDr) * rollVariance()));
 }
 
-/** Extra damage reduction from tank DR skills (percent), capped at balance DR cap (75%). */
+/** @deprecated Use computeDamageTaken with skillDefenseMultiplierPercent (combined DR cap). */
 export function applySkillDamageReductionPercent(
   damageAfterArmor: number,
   skillDefenseMultiplierPercent = 0
 ): number {
+  if (skillDefenseMultiplierPercent <= 0) return damageAfterArmor;
   const cap = cfg().combat.damageReductionCap;
   const extra = Math.min(cap, Math.max(0, skillDefenseMultiplierPercent) / 100);
   return Math.max(0, Math.floor(damageAfterArmor * (1 - extra)));
@@ -144,6 +154,69 @@ function classRatioMultipliers(className: string): { hp: number; atk: number; ar
 function rarityIndex(r: string): number {
   const i = RARITY_ORDER.indexOf(r.toLowerCase() as ItemRarity);
   return i >= 0 ? i : 0;
+}
+
+type GearItem = {
+  attack?: number;
+  defense?: number;
+  hp?: number;
+  rarity?: string;
+  itemLevel?: number;
+  level?: number;
+  upgradeLevel?: number;
+  secondaryStats?: Record<string, number>;
+  sockets?: Array<{ gem?: { attack?: number; defense?: number; hp?: number } }>;
+};
+
+function perItemBudgetChunk(
+  category: RoleCategory,
+  item: GearItem,
+  heroLevel: number
+): { attack: number; armor: number; hp: number } {
+  const ilvl = item.itemLevel ?? item.level ?? heroLevel;
+  const rarityKey = RARITY_ORDER[rarityIndex(item.rarity || 'common')];
+  const R = cfg().gear.R[rarityKey] ?? 1;
+  const f = cfg().gear.setFraction;
+  const base = cfg().heroRoles[category];
+  const gI = gLevel(ilvl);
+  return {
+    attack: Math.floor(f * R * base.atk * gI),
+    armor: Math.floor(f * R * base.armor * gI),
+    hp: Math.floor(f * R * base.hp * gI),
+  };
+}
+
+function sumItemPrimaryStats(item: GearItem, heroLevel: number, category: RoleCategory) {
+  const upgradeMult = 1 + Math.min(10, item.upgradeLevel || 0) * 0.1;
+  let attack = Math.floor((item.attack || 0) * upgradeMult);
+  let armor = Math.floor((item.defense || 0) * upgradeMult);
+  let hp = Math.floor((item.hp || 0) * upgradeMult);
+
+  if (attack + armor + hp === 0) {
+    const budget = perItemBudgetChunk(category, item, heroLevel);
+    attack = budget.attack;
+    armor = budget.armor;
+    hp = budget.hp;
+  }
+
+  if (item.sockets) {
+    for (const socket of item.sockets) {
+      const gem = socket.gem;
+      if (!gem) continue;
+      attack += gem.attack || 0;
+      armor += gem.defense || 0;
+      hp += gem.hp || 0;
+    }
+  }
+
+  const sec = item.secondaryStats;
+  if (sec) {
+    attack += sec.attack || 0;
+    armor += sec.defense || 0;
+    hp += sec.hp || 0;
+  }
+
+  return { attack, armor, hp };
 }
 
 export function inferGearRarityAndIlvl(hero: {
@@ -190,24 +263,49 @@ export function computeHeroBalanceStats(hero: {
   const category = getClassCategory(hero.role) as RoleCategory;
   const base = cfg().heroRoles[category];
   const ratios = classRatioMultipliers(hero.role);
-  const { rarity, ilvl } = inferGearRarityAndIlvl({
-    level,
-    equipment: hero.equipment as Record<string, { rarity?: string; itemLevel?: number; level?: number } | null>,
-  });
-  const R = cfg().gear.R[rarity] ?? 1;
-  const f = cfg().gear.setFraction;
   const gL = gLevel(level);
-  const gI = gLevel(ilvl);
+  const equipment = (hero.equipment || {}) as unknown as Equipment;
 
-  const hp = Math.floor((base.hp * gL + f * R * base.hp * gI) * ratios.hp);
-  const atk = Math.floor((base.atk * gL + f * R * base.atk * gI) * ratios.atk);
-  const armor = Math.floor((base.armor * gL + f * R * base.armor * gI) * ratios.armor);
+  let gearAtk = 0;
+  let gearArmor = 0;
+  let gearHp = 0;
+  let maxRarityIdx = 0;
+
+  for (const item of Object.values(equipment)) {
+    if (!item) continue;
+    const summed = sumItemPrimaryStats(item as GearItem, level, category);
+    gearAtk += summed.attack;
+    gearArmor += summed.armor;
+    gearHp += summed.hp;
+    maxRarityIdx = Math.max(maxRarityIdx, rarityIndex(item.rarity || 'common'));
+  }
+
+  const setBonuses = calculateSetBonuses(equipment, hero.role);
+  gearAtk += setBonuses.attack;
+  gearArmor += setBonuses.defense;
+  gearHp += setBonuses.hp;
+
+  const nakedHp = Math.floor(base.hp * gL * ratios.hp);
+  const nakedAtk = Math.floor(base.atk * gL * ratios.atk);
+  const nakedArmor = Math.floor(base.armor * gL * ratios.armor);
+
+  const hp = nakedHp + Math.floor(gearHp * ratios.hp) + Math.floor((setBonuses.stamina || 0) * 10);
+  const atk = nakedAtk + Math.floor(gearAtk * ratios.atk);
+  const armor = nakedArmor + Math.floor(gearArmor * ratios.armor);
+
   const spellPower =
     category === 'healer'
-      ? Math.floor((base.spellPower * gL + f * R * base.spellPower * gI) * ratios.atk)
+      ? Math.floor(
+          (base.spellPower * gL + gearAtk * 0.15) * ratios.atk +
+            (setBonuses.spellDamage || 0) * 100
+        )
       : 0;
+
+  const rarity = RARITY_ORDER[Math.min(RARITY_ORDER.length - 1, maxRarityIdx)];
   const gearCrit = cfg().gear.critBonusFullSet[rarity] ?? 0;
-  const critChance = capCritChance(base.crit + gearCrit);
+  const critChance = capCritChance(
+    base.crit + gearCrit + (setBonuses.critChance || 0)
+  );
 
   return {
     attack: atk,

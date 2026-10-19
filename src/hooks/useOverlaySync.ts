@@ -27,6 +27,7 @@ interface HeroStatChanges {
 interface UseOverlaySyncOptions {
   syncIntervalMs?: number;
   enabled?: boolean;
+  streamerId?: string | null;
 }
 
 interface Hero {
@@ -98,6 +99,7 @@ export function useOverlaySync(
   const {
     syncIntervalMs = 60000, // Default 60 seconds (reduced from 5 minutes)
     enabled = true,
+    streamerId = null,
   } = options;
 
   // Pending delta managers
@@ -138,127 +140,44 @@ export function useOverlaySync(
   }, []);
 
   /**
-   * Sync all pending changes using new batch overlay sync endpoint
-   * Uses overlayAPI.syncBatch() which sends X-Streamer-Key or JWT
+   * Sync pending XP/gold via POST /api/overlay/sync (streamer key).
    */
   const syncAllPending = useCallback(async () => {
     const now = Date.now();
-    const batchId = `batch-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    
-    // Collect all pending changes into batch format
-    const batchUpdates: Array<{ heroId: string; stats?: any; equipment?: any; inventory?: any }> = [];
-    
-    // Collect stat changes
+    if (!streamerId) return;
+
+    const deltas: Array<{
+      heroId: string;
+      xpGained: number;
+      goldGained: number;
+      timestamp: number;
+    }> = [];
+
     heroStatChanges.current.getAll().forEach((changes, heroId) => {
-      const hero = heroes.find(h => h.id === heroId);
-      if (!hero) return;
-
-      const statsUpdate: any = {};
-
-      // Level sync protection
-      if (changes.level !== undefined) {
-        statsUpdate.xp = hero.xp !== undefined ? Math.max(0, hero.xp) : 0;
-        if (hero.maxXp !== undefined) {
-          statsUpdate.maxXp = hero.maxXp;
-        }
-        
-        const MAX_LEVEL = 100;
-        let newLevel = changes.level;
-        
-        if (newLevel > MAX_LEVEL) {
-          console.warn(`[OverlaySync] Capping level ${newLevel} at ${MAX_LEVEL} for hero ${hero.name}`);
-          newLevel = MAX_LEVEL;
-        }
-        
-        if (newLevel >= 1 && newLevel <= MAX_LEVEL) {
-          statsUpdate.level = newLevel;
-        }
-      } else {
-        // Apply XP delta
-        if (changes.xp !== undefined && changes.xp !== 0) {
-          const currentXP = hero.xp || 0;
-          statsUpdate.xp = Math.max(0, currentXP + changes.xp);
-        }
-      }
-
-      // Apply gold delta
-      if (changes.gold !== undefined && changes.gold !== 0) {
-        const currentGold = hero.gold || 0;
-        statsUpdate.gold = Math.max(0, currentGold + changes.gold);
-      }
-
-      // Other stat changes
-      if (changes.hp !== undefined) statsUpdate.hp = changes.hp;
-      if (changes.maxHp !== undefined) statsUpdate.maxHp = changes.maxHp;
-      if (changes.attack !== undefined) statsUpdate.attack = changes.attack;
-      if (changes.defense !== undefined) statsUpdate.defense = changes.defense;
-
-      // Stats
-      if (changes.stats) {
-        const currentStats = (hero as any).stats || {};
-        statsUpdate.stats = {
-          totalDamage: (currentStats.totalDamage || 0) + (changes.stats.totalDamage || 0),
-          totalHealing: (currentStats.totalHealing || 0) + (changes.stats.totalHealing || 0),
-          damageBlocked: (currentStats.damageBlocked || 0) + (changes.stats.damageBlocked || 0),
-        };
-      }
-
-      if (Object.keys(statsUpdate).length > 0) {
-        batchUpdates.push({ heroId, stats: statsUpdate });
-      }
+      const xpGained = Math.max(0, Math.floor(changes.xp || 0));
+      const goldGained = Math.max(0, Math.floor(changes.gold || 0));
+      if (xpGained === 0 && goldGained === 0) return;
+      deltas.push({ heroId, xpGained, goldGained, timestamp: now });
     });
 
-    // Collect equipment changes
-    equipmentChanges.current.getAll().forEach((equipment, heroId) => {
-      const existing = batchUpdates.find(u => u.heroId === heroId);
-      if (existing) {
-        existing.equipment = equipment;
-      } else {
-        batchUpdates.push({ heroId, equipment });
-      }
-    });
+    if (deltas.length === 0) {
+      lastStatSyncTime.current = now;
+      return;
+    }
 
-    // Collect inventory changes
-    inventoryChanges.current.getAll().forEach((inventory, heroId) => {
-      const existing = batchUpdates.find(u => u.heroId === heroId);
-      if (existing) {
-        existing.inventory = inventory;
-      } else {
-        batchUpdates.push({ heroId, inventory });
-      }
-    });
-
-    // Send batch sync if there are updates
-    if (batchUpdates.length > 0) {
-      try {
-        const { overlayAPI } = await import('../api/client');
-        const result = await overlayAPI.syncBatch(batchId, batchUpdates);
-        
-        if (result.duplicate) {
-          console.log(`[OverlaySync] Batch ${batchId} already processed (idempotent)`);
-        } else {
-          console.log(`[OverlaySync] ✅ Batch synced: ${result.syncedCount} heroes, ${result.skippedCount} skipped`);
-        }
-        
-        // Mark all as synced on success
-        batchUpdates.forEach(({ heroId }) => {
-          heroStatChanges.current.markSynced(heroId);
-          equipmentChanges.current.markSynced(heroId);
-          inventoryChanges.current.markSynced(heroId);
-        });
-      } catch (err) {
-        console.error(`[OverlaySync] ❌ Batch sync failed:`, err);
-        // Mark all as failed for retry
-        batchUpdates.forEach(({ heroId }) => {
-          heroStatChanges.current.markFailed(heroId);
-          equipmentChanges.current.markFailed(heroId);
-          inventoryChanges.current.markFailed(heroId);
-        });
-      }
+    const batchId = `hook-${streamerId}-${now}`;
+    try {
+      const { overlayAPI } = await import('../api/client');
+      await overlayAPI.syncDeltas(streamerId, batchId, deltas);
+      deltas.forEach(({ heroId }) => heroStatChanges.current.markSynced(heroId));
+      console.log(`[OverlaySync] ✅ Synced ${deltas.length} hero deltas`);
+    } catch (err) {
+      console.error(`[OverlaySync] ❌ Delta sync failed:`, err);
+      deltas.forEach(({ heroId }) => heroStatChanges.current.markFailed(heroId));
     }
 
     lastStatSyncTime.current = now;
-  }, [heroes]);
+  }, [heroes, streamerId]);
 
   /**
    * Sync equipment changes with retry logic

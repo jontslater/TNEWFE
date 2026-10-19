@@ -2308,12 +2308,20 @@ export default function CleanBattlefieldSource() {
         window.setTimeout(() => setAbilityAnnouncement(null), 2500);
       }
       if (outcome.changed) {
-        heroesRef.current = outcome.heroes as Hero[];
-        setHeroes(outcome.heroes as Hero[]);
-        if (outcome.enemies !== enemiesRef.current) {
-          enemiesRef.current = outcome.enemies as Enemy[];
-          setEnemies(outcome.enemies as Enemy[]);
-        }
+        const merged = heroesRef.current.map((h) => {
+          const from = outcome.heroes.find((o) => o.id === h.id);
+          if (!from) return h;
+          return {
+            ...h,
+            hp: h.hp,
+            stats: h.stats,
+            cooldowns: from.cooldowns ?? h.cooldowns,
+            activeBuffs: { ...h.activeBuffs, ...from.activeBuffs },
+            tauntExpiry: (from as { tauntExpiry?: number }).tauntExpiry ?? (h as { tauntExpiry?: number }).tauntExpiry,
+          };
+        });
+        heroesRef.current = merged as Hero[];
+        setHeroes(merged as Hero[]);
       }
     }, 500);
     return () => clearInterval(id);
@@ -5282,12 +5290,6 @@ export default function CleanBattlefieldSource() {
       
       let defense = targetHeroRef.defense || 0;
       
-      // Apply ACTIVE CHATTER BONUS (+0.5% defense per active chatter)
-      if (activeChatterCount > 0) {
-        const bonuses = calculateViewerBonuses();
-        defense = Math.floor(defense * bonuses.defense);
-      }
-      
       // Apply Defense Buff (+10% DEF)
       if (targetHeroRef.shopBuffs?.defenseBuff && targetHeroRef.shopBuffs.defenseBuff.remainingDuration > 0) {
         defense = Math.floor(defense * 1.10);
@@ -5295,11 +5297,8 @@ export default function CleanBattlefieldSource() {
       }
       
       const attackerLevel = enemy.level || 1;
-      let actualDamage = computeDamageTaken(baseDamage, defense, attackerLevel);
-      actualDamage = applySkillDamageReductionPercent(
-        actualDamage,
-        targetHeroRef.defenseMultiplier || 0
-      );
+      const skillDr = computeSkillModifiers(targetHeroRef).defenseMultiplier;
+      let actualDamage = computeDamageTaken(baseDamage, defense, attackerLevel, skillDr);
       
       // Check for VULNERABLE debuff (+40% damage taken)
       if (targetHeroRef.activeDebuffs?.vulnerable) {
@@ -6880,137 +6879,43 @@ export default function CleanBattlefieldSource() {
         
         // HERO STAT BATCH SYNC: Sync accumulated hero stat changes to backend
         const timeSinceLastHeroStatSync = now - lastHeroStatSyncRef.current;
-        if (heroStatChangesRef.current.size > 0 && timeSinceLastHeroStatSync >= 300000) { // Increased to 5 minutes
-          console.log('[Hero Stat Sync] ✅ Syncing hero stat changes for', heroStatChangesRef.current.size, 'heroes...');
-          
-          // Process each hero's stat changes
-          const statSyncPromises: Promise<void>[] = [];
-          
-          heroStatChangesRef.current.forEach((changes, heroId) => {
-            const hero = currentHeroes.find(h => h.id === heroId);
-            if (!hero) return;
-            
-            // Build update object with current hero state + accumulated changes
-            const updateData: Partial<Hero> = {};
-            
-            // CRITICAL: Level sync protection for prestiged heroes and level cap
-            // If level is changing, use absolute XP and maxXp from local state (excess after level up)
-            if (changes.level !== undefined) {
-              // When level changes, sync absolute XP value from local state to avoid delta calculation issues
-              // The local state already has the correct excess XP after level up
-              updateData.xp = hero.xp !== undefined ? Math.max(0, hero.xp) : 0;
-              // Also sync maxXp when level changes (it's already set correctly in local state)
-              if (hero.maxXp !== undefined) {
-                updateData.maxXp = hero.maxXp;
-              }
-              const prestigeLevel = (hero as any).prestigeLevel || 0;
-              const MAX_LEVEL = 100;
-              let newLevel = changes.level;
-              
-              // Always cap at MAX_LEVEL
-              if (newLevel > MAX_LEVEL) {
-                console.warn(`[Hero Stat Sync] ⚠️ Attempted to sync level ${newLevel} for hero ${hero.name}, capping at ${MAX_LEVEL}`);
-                newLevel = MAX_LEVEL;
-              }
-              
-              // CRITICAL: If hero has prestiged, NEVER sync a level > 100
-              // Prestiged heroes should always be between 1-100
-              if (prestigeLevel > 0 && newLevel > MAX_LEVEL) {
-                console.error(`[Hero Stat Sync] 🚨 BLOCKED: Prestiged hero ${hero.name} (P${prestigeLevel}) attempted to sync level ${newLevel}. Forcing level 1.`);
-                newLevel = 1;
-                // Also reset XP to 0 for prestiged heroes that somehow got > 100
-                updateData.xp = 0;
-                updateData.maxXp = 100; // Initial level 1 maxXp
-              }
-              
-              // Only sync level if it's valid
-              if (newLevel >= 1 && newLevel <= MAX_LEVEL) {
-                updateData.level = newLevel;
-              } else {
-                console.error(`[Hero Stat Sync] 🚨 Invalid level ${newLevel} for hero ${hero.name}, skipping level sync`);
-              }
-            } else {
-              // Apply XP delta (add to current XP) - only when level is NOT changing
-              if (changes.xp !== undefined && changes.xp !== 0) {
-                const currentXP = hero.xp || 0;
-                let newXP = Math.max(0, currentXP + changes.xp);
-                
-                // CRITICAL: Cap XP at maxXp for level 100
-                const MAX_LEVEL = 100;
-                if ((hero.level || 1) >= MAX_LEVEL) {
-                  const maxXpForLevel100 = hero.maxXp || 100000; // Fallback
-                  newXP = Math.min(newXP, maxXpForLevel100);
-                }
-                
-                updateData.xp = newXP;
-              }
-            }
-            
-            // Apply gold delta (add to current gold)
-            if (changes.gold !== undefined && changes.gold !== 0) {
-              const currentGold = hero.gold || 0;
-              updateData.gold = Math.max(0, currentGold + changes.gold);
-            }
-            if (changes.hp !== undefined) {
-              updateData.hp = changes.hp;
-            }
-            if (changes.maxHp !== undefined) {
-              updateData.maxHp = changes.maxHp;
-            }
-            if (changes.attack !== undefined) {
-              updateData.attack = changes.attack;
-            }
-            if (changes.defense !== undefined) {
-              updateData.defense = changes.defense;
-            }
-            
-            // Apply stats deltas
-            if (changes.stats) {
-              const currentStats = (hero as any).stats || { totalDamage: 0, totalHealing: 0, damageBlocked: 0 };
-              (updateData as any).stats = {
-                totalDamage: currentStats.totalDamage || 0,
-                totalHealing: currentStats.totalHealing || 0,
-                damageBlocked: (currentStats.damageBlocked || 0) + (changes.stats.damageBlocked || 0)
-              };
-              if (changes.stats.totalDamage !== undefined) {
-                (updateData as any).stats.totalDamage = (currentStats.totalDamage || 0) + changes.stats.totalDamage;
-              }
-              if (changes.stats.totalHealing !== undefined) {
-                (updateData as any).stats.totalHealing = (currentStats.totalHealing || 0) + changes.stats.totalHealing;
-              }
-            }
-            
-            // Only sync if there are actual changes
-            if (Object.keys(updateData).length > 0) {
-              statSyncPromises.push(
-                heroAPI.updateHeroById(heroId, updateData)
-                  .then(() => {
-                    console.log(`[Hero Stat Sync] ✅ Synced stats for ${hero.name} (${Object.keys(updateData).join(', ')})`);
-                  })
-                  .catch(err => {
-                    console.error(`[Hero Stat Sync] ❌ Failed to sync stats for ${hero.name}:`, err);
-                  })
-              );
-            }
-          });
-          
-          // Wait for all stat syncs to complete
-          if (statSyncPromises.length > 0) {
-            Promise.all(statSyncPromises).then(async () => {
-              console.log('[Hero Stat Sync] ✅ All hero stat changes synced');
-              
-              // Clear stat changes after successful sync
-              heroStatChangesRef.current.clear();
-              lastHeroStatSyncRef.current = now;
-            }).catch(err => {
-              console.error('[Hero Stat Sync] ❌ Some hero stat syncs failed:', err);
-              // Still clear to prevent accumulation, but log error
-              heroStatChangesRef.current.clear();
-              lastHeroStatSyncRef.current = now;
+        if (heroStatChangesRef.current.size > 0 && timeSinceLastHeroStatSync >= 300000) {
+          const streamerId = twitchId || user?.twitchId || null;
+          if (streamerId) {
+            const deltas: Array<{
+              heroId: string;
+              xpGained: number;
+              goldGained: number;
+              timestamp: number;
+            }> = [];
+
+            heroStatChangesRef.current.forEach((changes, heroId) => {
+              const xpGained = Math.max(0, Math.floor(changes.xp || 0));
+              const goldGained = Math.max(0, Math.floor(changes.gold || 0));
+              if (xpGained === 0 && goldGained === 0) return;
+              deltas.push({
+                heroId,
+                xpGained,
+                goldGained,
+                timestamp: now,
+              });
             });
-          } else {
-            // No changes to sync, but still update timestamp
-            lastHeroStatSyncRef.current = now;
+
+            if (deltas.length > 0) {
+              const batchId = `cbs-${streamerId}-${now}`;
+              import('../api/client')
+                .then(({ overlayAPI }) => overlayAPI.syncDeltas(streamerId, batchId, deltas))
+                .then(() => {
+                  console.log('[Hero Stat Sync] ✅ Overlay deltas synced for', deltas.length, 'heroes');
+                  heroStatChangesRef.current.clear();
+                  lastHeroStatSyncRef.current = now;
+                })
+                .catch((err) => {
+                  console.error('[Hero Stat Sync] ❌ Overlay sync failed:', err);
+                });
+            } else {
+              lastHeroStatSyncRef.current = now;
+            }
           }
         }
         
@@ -8010,13 +7915,7 @@ export default function CleanBattlefieldSource() {
     });
 
     const skillBonuses = calculateSkillBonuses(hero);
-    const skillMods = computeSkillModifiers(hero);
-    stats.attack = Math.floor(stats.attack * (1 + skillMods.statAttackPercent / 100));
-    stats.defense = Math.floor(stats.defense * (1 + skillMods.statDefensePercent / 100));
-    stats.maxHp = Math.floor(stats.maxHp * (1 + skillMods.statHpPercent / 100));
-    stats.damageMultiplier = skillModsOverlay.damageMultiplier;
-    stats.healingMultiplier = skillModsOverlay.healingMultiplier;
-    stats.defenseMultiplier = skillModsOverlay.defenseMultiplier;
+    const skillModsOverlay = computeSkillModifiers(hero);
     
     // Calculate and apply SET BONUSES (Guardian's Bulwark, Berserker's Wrath, etc.)
     const setBonuses = calculateSetBonuses(hero.equipment, hero.role);
@@ -8057,7 +7956,9 @@ export default function CleanBattlefieldSource() {
     stats.maxHp += stats.stamina * 10;
 
     const bal = computeHeroBalanceStats(hero);
-    const skillModsOverlay = computeSkillModifiers(hero);
+    stats.damageMultiplier = skillModsOverlay.damageMultiplier;
+    stats.healingMultiplier = skillModsOverlay.healingMultiplier;
+    stats.defenseMultiplier = skillModsOverlay.defenseMultiplier;
     stats.attack = Math.floor(bal.attack * (1 + skillModsOverlay.statAttackPercent / 100));
     stats.defense = Math.floor(bal.armor * (1 + skillModsOverlay.statDefensePercent / 100));
     stats.maxHp = Math.floor(bal.maxHp * (1 + skillModsOverlay.statHpPercent / 100));

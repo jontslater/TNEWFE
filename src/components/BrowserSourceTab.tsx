@@ -391,19 +391,19 @@ export default function BrowserSourceTab({ userId: propUserId, token: propToken 
   }, [user?.twitchId]);
 
   const handleCopy = async () => {
-    if (!browserSourceUrl) {
+    if (!cleanBattlefieldUrl) {
       alert('Unable to generate browser source URL. Please ensure you are logged in.');
       return;
     }
 
     try {
-      await navigator.clipboard.writeText(browserSourceUrl);
+      await navigator.clipboard.writeText(cleanBattlefieldUrl);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
       // Fallback
       const textArea = document.createElement('textarea');
-      textArea.value = browserSourceUrl;
+      textArea.value = cleanBattlefieldUrl;
       textArea.style.position = 'fixed';
       textArea.style.opacity = '0';
       document.body.appendChild(textArea);

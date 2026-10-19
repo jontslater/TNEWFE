@@ -92,6 +92,25 @@ export function processOverlayRoleActiveCharges<H extends MinimalCombatHero, E e
       };
     }
 
+    if (result.partyShieldWallUntil) {
+      const partyDr = result.partyShieldWallFraction ?? 0.2;
+      nextHeroes = nextHeroes.map((ally, allyIdx) => {
+        if (allyIdx === idx) return updated;
+        if (ally.isDead || ally.hp <= 0) return ally;
+        return {
+          ...ally,
+          activeBuffs: {
+            ...ally.activeBuffs,
+            shieldWall: {
+              active: true,
+              expiresAt: result.partyShieldWallUntil,
+              drFraction: partyDr,
+            },
+          },
+        };
+      });
+    }
+
     if (result.healsByHeroId) {
       const casterMods = computeSkillModifiers(hero);
       const heals: Record<string, number> = {};

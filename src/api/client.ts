@@ -221,11 +221,27 @@ export const heroAPI = {
     return response.data;
   },
 
-  async sellInventoryByKey(
+  async sellInventoryItems(
     heroId: string,
-    payload: { itemKey: string; quantity: number }
-  ): Promise<{ success: boolean; gold?: number; inventory?: unknown[] }> {
-    const response = await apiClient.post(`/api/heroes/${heroId}/inventory/sell`, payload);
+    itemIds: string[]
+  ): Promise<{ success: boolean; goldGained?: number; newGold?: number; sold?: unknown[] }> {
+    const response = await apiClient.post(`/api/heroes/${heroId}/inventory/sell`, { itemIds });
+    return response.data;
+  },
+
+  /** Adventure/wave progress only (JWT). XP/gold use overlayAPI.syncDeltas. */
+  async syncAdventureProgress(
+    heroId: string,
+    payload: {
+      currentWave?: number;
+      highestWave?: number;
+      winStreak?: number;
+      difficultyPercent?: number;
+      lastAdventureSyncAt?: number;
+      adventureState?: Record<string, unknown>;
+    }
+  ) {
+    const response = await apiClient.post(`/api/heroes/${heroId}/progress-sync`, payload);
     return response.data;
   },
 
@@ -3078,42 +3094,29 @@ export const streamSettingsAPI = {
 // Overlay API (uses streamer keys or JWT)
 export const overlayAPI = {
   /**
-   * Sync hero stats/equipment/inventory in batch (idempotent with batchId)
-   * Requires X-Streamer-Key header or ownership via JWT
+   * Idempotent XP/gold batch sync for browser sources.
+   * POST /api/overlay/sync — requires X-Streamer-Key (or streamer JWT).
    */
-  /**
-   * Persist overlay combat progress (xp/level/gold/hp) — server-validated, not hero PUT.
-   */
-  async syncHeroProgress(
-    heroId: string,
-    payload: {
-      xp?: number;
-      level?: number;
-      maxXp?: number;
-      gold?: number;
-      hp?: number;
-      maxHp?: number;
-      stats?: Record<string, number>;
-    }
-  ): Promise<{ success: boolean; rejected?: string[] }> {
-    const response = await overlayClient.post(`/api/overlay/heroes/${heroId}/progress`, payload);
-    return response.data;
-  },
-
-  async syncBatch(batchId: string, updates: Array<{
-    heroId: string;
-    stats?: Record<string, any>;
-    equipment?: Record<string, any>;
-    inventory?: any[];
-  }>): Promise<{
+  async syncDeltas(
+    streamerId: string,
+    batchId: string,
+    deltas: Array<{
+      heroId: string;
+      xpGained: number;
+      goldGained: number;
+      timestamp?: number;
+    }>
+  ): Promise<{
     success: boolean;
-    syncedCount: number;
-    skippedCount: number;
-    duplicate?: boolean;
+    alreadyProcessed?: boolean;
+    deltasApplied?: number;
+    deltasFailed?: number;
+    results?: unknown[];
   }> {
     const response = await overlayClient.post('/api/overlay/sync', {
+      streamerId,
       batchId,
-      updates
+      deltas,
     });
     return response.data;
   },

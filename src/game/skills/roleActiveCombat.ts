@@ -36,6 +36,8 @@ export interface RoleActiveFireResult {
   whirlwind?: boolean;
   selfDamageReductionUntil?: number;
   selfDamageReductionFraction?: number;
+  partyShieldWallUntil?: number;
+  partyShieldWallFraction?: number;
   tauntUntil?: number;
 }
 
@@ -71,12 +73,17 @@ export function tryFireRoleActiveAbility(
           roleActiveDurationMs: nextCooldowns.roleActiveDurationMs!,
         },
       };
-      const drPct = Number(effect.damageReductionPercent ?? 50);
-      const dur = Number(effect.durationMs ?? 6000);
+      const tankDrPct = Number(
+        effect.tankDamageReductionPercent ?? effect.damageReductionPercent ?? 50
+      );
+      const partyDrPct = Number(effect.partyDamageReductionPercent ?? 20);
+      const dur = Number(effect.durationMs ?? 8000);
       return {
         ...base,
         selfDamageReductionUntil: now + dur,
-        selfDamageReductionFraction: drPct / 100,
+        selfDamageReductionFraction: tankDrPct / 100,
+        partyShieldWallUntil: now + dur,
+        partyShieldWallFraction: partyDrPct / 100,
         tauntUntil: effect.taunt ? now + 5000 : undefined,
       };
     }

@@ -452,7 +452,10 @@ export default function UnifiedBrowserSource() {
 
   // Track pending sync operations to prevent duplicate calls
   const pendingSyncs = useRef<Map<string, NodeJS.Timeout>>(new Map());
-  
+  const lastProgressSnapshot = useRef<
+    Map<string, { xp: number; gold: number; level: number; maxXp: number }>
+  >(new Map());
+
   // Sync hero progress to backend/Firebase with debouncing
   const syncHeroToBackend = useCallback(async (hero: Hero) => {
     try {
@@ -473,40 +476,49 @@ export default function UnifiedBrowserSource() {
       // Schedule sync with 5 second debounce - batches multiple rapid changes and prevents spam
       const timeoutId = setTimeout(async () => {
         try {
-          // Sync hero progress: XP, level, gold, HP, stats, equipment, etc.
+          const streamerId =
+            streamerTwitchId || battlefieldId?.replace(/^twitch:/, '') || null;
+          if (!streamerId) return;
+
+          const snap = lastProgressSnapshot.current.get(heroId) || {
+            xp: hero.xp || 0,
+            gold: hero.gold || 0,
+            level: hero.level || 1,
+            maxXp: hero.maxXp || 100,
+          };
+
+          let xpGained = 0;
+          const curXp = hero.xp || 0;
+          const curGold = hero.gold || 0;
+          const curLevel = hero.level || 1;
+          if (curLevel > snap.level) {
+            xpGained = Math.max(0, snap.maxXp - snap.xp + curXp);
+          } else {
+            xpGained = Math.max(0, curXp - snap.xp);
+          }
+          const goldGained = Math.max(0, curGold - snap.gold);
+
+          if (xpGained === 0 && goldGained === 0) return;
+
           const { overlayAPI } = await import('../api/client');
-          await overlayAPI.syncHeroProgress(heroId, {
-            xp: hero.xp,
-            level: hero.level,
-            maxXp: hero.maxXp,
-            gold: hero.gold,
-            hp: hero.hp,
-            maxHp: hero.maxHp,
-            stats: hero.stats as Record<string, number> | undefined,
+          const batchId = `ubs-${heroId}-${Date.now()}`;
+          await overlayAPI.syncDeltas(streamerId, batchId, [
+            {
+              heroId,
+              xpGained,
+              goldGained,
+              timestamp: Date.now(),
+            },
+          ]);
+
+          lastProgressSnapshot.current.set(heroId, {
+            xp: curXp,
+            gold: curGold,
+            level: curLevel,
+            maxXp: hero.maxXp || snap.maxXp,
           });
         } catch (error: any) {
-          // Log 404 errors (hero doesn't exist in database) - helps identify stale battlefield data
-          if (error?.response?.status === 404) {
-            console.warn(`⚠️ [Sync] Hero ${heroId} (${hero.username || hero.name}) not found in database - may be deleted. Removing from combat engine.`);
-            
-            // CRITICAL: Remove this hero from combat engine to stop 404 spam
-            // This hero was deleted or never existed, no point trying to sync it again
-            if (combatEngineRef.current) {
-              const engine = combatEngineRef.current;
-              
-              // Remove from combat engine's hero map
-              if (engine.state.heroes.has(heroId)) {
-                engine.state.heroes.delete(heroId);
-                console.log(`✅ [Sync] Removed hero ${heroId} from combat engine`);
-              }
-              
-              // Also update React state to remove from display
-              setHeroes(prev => prev.filter(h => h.id !== heroId));
-            }
-          } else {
-            // Log other errors for debugging
-            console.error(`❌ [Sync] Failed to sync hero ${heroId}:`, error?.message || error);
-          }
+          console.error(`❌ [Sync] Failed to sync hero ${heroId}:`, error?.message || error);
         } finally {
           // Clean up pending sync tracking
           pendingSyncs.current.delete(heroId);
@@ -518,7 +530,7 @@ export default function UnifiedBrowserSource() {
     } catch (error) {
       // Silently fail
     }
-  }, []);
+  }, [battlefieldId, streamerTwitchId]);
 
   // Clean up temporary states when Firebase updates
   // Firebase is the source of truth - client states only override stale Firebase data

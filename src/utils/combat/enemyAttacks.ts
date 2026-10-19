@@ -29,7 +29,7 @@ import { applySkillDamageReductionPercent, computeDamageTaken, getBalancePayload
  */
 function getDebugDisableHeroDamage(): boolean {
   // CRITICAL: Ignore debug flags in production
-  if (import.meta.env.MODE === 'production') {
+  if (typeof import.meta !== 'undefined' && import.meta.env?.MODE === 'production') {
     return false; // Always enable damage in production
   }
   
@@ -726,7 +726,7 @@ export function processEnemyAttack(
 /**
  * Apply enemy damage to hero (helper function)
  */
-function applyEnemyDamageToHero(
+export function applyEnemyDamageToHero(
   target: {username: string; hero: Hero},
   enemy: Enemy,
   enemyDamage: number,
@@ -761,10 +761,20 @@ function applyEnemyDamageToHero(
   
   const { ironSkinActive, lastStandActive, shieldWallActive, isCrit, isBloodlust, now } = options;
   const category = ROLE_CONFIG[target.hero.role]?.category || 'dps';
+  const skillBonuses = calculateSkillBonuses(target.hero);
+
+  const roleShield = (target.hero.activeBuffs as Record<string, { active?: boolean; expiresAt?: number; drFraction?: number }>)
+    ?.roleActiveShield;
+  const roleActiveShieldActive =
+    roleShield?.active && (roleShield.expiresAt ?? 0) > now;
 
   const attackerLevel = (enemy as { level?: number }).level || 1;
-  let actualDamage = computeDamageTaken(enemyDamage, effectiveDefense, attackerLevel);
-  actualDamage = applySkillDamageReductionPercent(actualDamage, skillBonuses.defenseMultiplier);
+  let actualDamage = computeDamageTaken(
+    enemyDamage,
+    effectiveDefense,
+    attackerLevel,
+    skillBonuses.defenseMultiplier
+  );
   actualDamage = Math.floor(actualDamage * damageMultiplier);
 
   // Apply skill defense multipliers (additional damage reduction)
