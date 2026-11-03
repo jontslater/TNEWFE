@@ -3,6 +3,7 @@
  * Keeps normal mobs at ~3–6 effective hits per on-level hero; bosses take much longer.
  */
 
+import { averageCombatGearScore, computeCombatGearScore } from '../economy/gearScore';
 import { computeHeroStats } from './computeHeroStats';
 import type { HeroStatInput } from './types';
 
@@ -66,57 +67,16 @@ export interface EnemyScaleOptions {
   tierMultiplier?: number;
 }
 
-const EQUIPMENT_SLOTS = [
-  'weapon',
-  'armor',
-  'accessory',
-  'shield',
-  'helm',
-  'cloak',
-  'gloves',
-  'ring1',
-  'ring2',
-  'boots',
-] as const;
-
-function calculateGearScore(hero: HeroStatInput): number {
-  if (!hero.equipment) return 0;
-  let gearScore = 0;
-  for (const slot of EQUIPMENT_SLOTS) {
-    const item = hero.equipment[slot] as Record<string, unknown> | undefined;
-    if (!item) continue;
-    gearScore += (Number(item.attack) || 0) + (Number(item.defense) || 0) + (Number(item.hp) || 0);
-    gearScore += (Number(item.intellect) || 0) * 3;
-    gearScore += (Number(item.strength) || 0) * 3;
-    gearScore += (Number(item.dexterity) || 0) * 1.5;
-    gearScore += (Number(item.wisdom) || 0) * 1.5;
-    gearScore += (Number(item.stamina) || 0);
-    const secondary = item.secondaryStats as Record<string, number> | undefined;
-    if (secondary) {
-      gearScore += (secondary.healingPower || 0) * 5;
-      gearScore += (secondary.spellDamage || 0) * 5;
-      gearScore += (secondary.meleeDamage || 0) * 5;
-      gearScore += (secondary.hpRegen || 0) * 10;
-      gearScore += (secondary.damageReduction || 0) * 10;
-      gearScore += (secondary.critChance || 0) * 15;
-    }
-    if (item.specialModifier || item.rarity === 'legendary') {
-      gearScore += 200;
-    }
-  }
-  return gearScore;
-}
-
 export function calculateAveragePartyLevel(heroes: Array<{ level: number }>): number {
   if (heroes.length === 0) return 1;
   return heroes.reduce((sum, h) => sum + h.level, 0) / heroes.length;
 }
 
 export function calculateAverageGearScore(heroes: HeroStatInput[]): number {
-  if (heroes.length === 0) return 0;
-  const total = heroes.reduce((sum, h) => sum + calculateGearScore(h), 0);
-  return total / heroes.length;
+  return averageCombatGearScore(heroes);
 }
+
+export { computeCombatGearScore as calculateCombatGearScore };
 
 export function calculateEnemyScaling(factors: ScalingFactors): ScalingResult {
   const {

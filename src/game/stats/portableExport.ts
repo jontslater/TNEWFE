@@ -12,5 +12,6 @@ export {
   computeHeroStats,
   getCharacterStats,
   getCritDamageMultiplier,
+  applyDefenseMitigation,
 } from './index';
 export type { ComputedHeroStats, HeroStatInput, RewardStatBonuses, SkillStatBonuses } from './types';

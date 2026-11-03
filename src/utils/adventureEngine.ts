@@ -6,6 +6,8 @@
 
 import { CombatState, Hero, Enemy } from './combat/types';
 import { ROLE_CONFIG, SHOP_ITEMS, HERB_GATHER_CHANCES } from './fullCombatEngine';
+import { calculateMaxXp } from '../game/economy/progression';
+import { TRAVEL_XP_PER_TICK } from '../game/economy/rewards';
 import { generateEnemiesForCombat } from './enemyGeneration';
 import { getCharacterStats } from './combatUtils';
 
@@ -344,13 +346,7 @@ export class AdventureEngine {
       }
 
       // Grant travel XP (matches Electron app line 8928)
-      hero.xp = (hero.xp || 0) + 3;
-      // Calculate maxXp using polynomial formula (matches backend)
-      // Formula: 40 * level² + 300 * level - 240
-      const calculateMaxXp = (level: number): number => {
-        if (level <= 1) return 100;
-        return Math.floor(40 * level * level + 300 * level - 240);
-      };
+      hero.xp = (hero.xp || 0) + TRAVEL_XP_PER_TICK;
       hero.maxXp = hero.maxXp || calculateMaxXp(hero.level || 1);
 
       // Handle level ups (cap at level 100)

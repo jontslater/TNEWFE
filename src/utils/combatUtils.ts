@@ -5,6 +5,8 @@
 
 import { Hero, Enemy } from './fullCombatEngine';
 
+import { computeHeroDebuffResistance } from '../game/economy/gearScore';
+
 export { calculateSkillBonuses, computeHeroStats, getCharacterStats } from '../game/stats';
 
 /**
@@ -23,20 +25,7 @@ export function getViewerBonuses(viewerCount: number = 0) {
  */
 export function getDebuffResistance(target: Hero | Enemy): number {
   if ((target as Hero).role) {
-    const hero = target as Hero;
-    const defenseResist = Math.min(0.3, (hero.defense || 0) / 500);
-    const levelResist = Math.min(0.25, (hero.level || 0) / 200);
-    let gearScore = 0;
-    if (hero.equipment) {
-      Object.values(hero.equipment).forEach((item: any) => {
-        if (item) {
-          gearScore += (item.attack || 0) + (item.defense || 0) + (item.hp || 0);
-        }
-      });
-    }
-    const gearResist = Math.min(0.2, gearScore / 5000);
-
-    return Math.min(0.7, defenseResist + levelResist + gearResist);
+    return computeHeroDebuffResistance(target as Hero);
   }
 
   const enemy = target as Enemy;
