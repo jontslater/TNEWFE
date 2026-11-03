@@ -15,6 +15,7 @@ import {
 } from "../utils/spriteFacing";
 import { getHeroFacesLeft } from "../utils/spriteFacingConfig";
 import { computeHeroSpriteFrameLayout } from "../utils/spriteHeroFrameLayout";
+import type { SpriteRuntimeOverride } from "../utils/spriteRuntimeOverrides";
 
 export interface HeroSpriteJSHandle {
   playAnimation: (animation: string) => void;
@@ -35,6 +36,8 @@ interface HeroSpriteJSProps {
   freezeIdleFrame?: boolean;
   style?: CSSProperties;
   scale?: number;
+  /** Global/runtime overrides from config/spriteOverrides */
+  runtimeOverride?: SpriteRuntimeOverride;
   shield?: number;
   enrageActive?: boolean;
   abilityEffect?: 'backstab' | 'deathStrike' | 'holyStrike' | null; // Temporary ability visual effect
@@ -53,6 +56,7 @@ const HeroSpriteJS = forwardRef<HeroSpriteJSHandle, HeroSpriteJSProps>(
       freezeIdleFrame = false,
       style,
       scale = SPRITE_DISPLAY_SCALE,
+      runtimeOverride,
       shield = 0,
       enrageActive = false,
       abilityEffect = null,
@@ -195,8 +199,9 @@ const HeroSpriteJS = forwardRef<HeroSpriteJSHandle, HeroSpriteJSProps>(
       // Clip to frame dimensions so filter only affects visible sprite, not full sheet width
       if (glowWrapperRef.current) {
         const glowWrapper = glowWrapperRef.current;
+        const layoutNudge = runtimeOverride?.offsetY ?? 0;
         glowWrapper.style.left = `${offsetX}px`;
-        glowWrapper.style.top = `${offsetY}px`;
+        glowWrapper.style.top = `${offsetY + layoutNudge}px`;
         glowWrapper.style.width = `${scaledFrameWidth}px`;
         glowWrapper.style.height = `${scaledFrameHeight}px`;
         // Clip wrapper to frame so filter only affects visible area
@@ -307,7 +312,7 @@ const HeroSpriteJS = forwardRef<HeroSpriteJSHandle, HeroSpriteJSProps>(
       return () => {
         if (rafRef.current) cancelAnimationFrame(rafRef.current);
       };
-    }, [currentAnimation, onComplete, freezeIdleFrame, role]);
+    }, [currentAnimation, onComplete, freezeIdleFrame, role, runtimeOverride?.offsetY]);
 
     // Calculate final scale with animated enrage multiplier
     const finalScale = scale * enrageScale;
@@ -347,7 +352,11 @@ const HeroSpriteJS = forwardRef<HeroSpriteJSHandle, HeroSpriteJSProps>(
           transform: getSpriteContainerTransform(
             finalScale,
             facing,
-            nativeFacesLeft
+            nativeFacesLeft,
+            {
+              flip: runtimeOverride?.flip,
+              scaleMultiplier: runtimeOverride?.scaleMultiplier,
+            }
           ),
           transformOrigin: "bottom center",
           imageRendering: "pixelated",

@@ -38,11 +38,24 @@ Manual overrides for enemies are documented in `spriteFacingConfig.ts` (historic
 - `/enemy-animation-test` — all standard enemies cycling animations
 - `/dragon-test` — four dragons using battlefield enemy facing
 
-Regenerate hero feet / height metrics:
+## Global runtime overrides (editor)
 
-```bash
-node scripts/generate-hero-sprite-layout.mjs
-```
+Firestore document: **`config/spriteOverrides`** (via backend).
+
+| Method | Path | Auth |
+|--------|------|------|
+| GET | `/api/config/sprite-overrides` | Public |
+| PUT | `/api/config/sprite-overrides` | JWT + admin (`theneverendingwar`, `tehchno`, or `SPRITE_OVERRIDE_ADMIN_LOGINS`) |
+
+Each entry (hero role or enemy type key):
+
+- `flip?: boolean` — XOR mirror on top of `facesLeft` + battlefield facing
+- `scaleMultiplier?: number` — multiply display scale (0.25–3)
+- `offsetY?: number` — nudge feet in logical px (−48…48)
+
+Editor: **`/battlefield-facing`** (Save / Export JSON). Live **`CleanBattlefieldSource`** polls overrides ~every 90s.
+
+Regenerate hero feet metrics: `node scripts/generate-hero-sprite-layout.mjs`
 
 Capture QA screenshots:
 

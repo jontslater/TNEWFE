@@ -20,6 +20,7 @@ import EnemySpriteJS from '../components/EnemySpriteJS';
 import { battlefieldAPI, heroAPI, questAPI } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import { useActiveInstanceListener } from '../hooks/useActiveInstanceListener';
+import { useSpriteRuntimeOverrides } from '../hooks/useSpriteRuntimeOverrides';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { DEBUFFS, SHOP_ITEMS } from '../utils/fullCombatEngine';
 import { generateLoot, isItemBetter, calculateItemPower } from '../utils/lootGeneration';
@@ -196,6 +197,7 @@ export default function CleanBattlefieldSource() {
   const darkMode = searchParams.get('darkMode') === 'true' || searchParams.get('dark') === '1';
   /** Static raid boss layout for PR screenshots (no Firebase instance). */
   const qaRaidLayout = searchParams.get('qaRaidLayout') === '1';
+  const { overrides: globalSpriteOverrides } = useSpriteRuntimeOverrides();
   
   // Inject CSS animation for SCT floating text
   useEffect(() => {
@@ -2301,6 +2303,19 @@ export default function CleanBattlefieldSource() {
     side: 'hero' | 'enemy'
   ): ScreenFacing => {
     return resolveBattlefieldFacing(side, facingPreferences[roleOrEnemyName]);
+  };
+
+  const runtimeHeroOverride = (role: string) =>
+    globalSpriteOverrides.heroes[role?.toLowerCase?.() ?? role];
+
+  const runtimeEnemyOverride = (enemyType?: string, enemyName?: string) => {
+    if (enemyType && globalSpriteOverrides.enemies[enemyType]) {
+      return globalSpriteOverrides.enemies[enemyType];
+    }
+    if (enemyName && globalSpriteOverrides.enemies[enemyName]) {
+      return globalSpriteOverrides.enemies[enemyName];
+    }
+    return undefined;
   };
 
   // Toggle test healer
@@ -8469,6 +8484,7 @@ export default function CleanBattlefieldSource() {
                   facing={getFacingDirection(hero.role, 'hero')}
                   scale={3.0}
                   shield={0}
+                  runtimeOverride={runtimeHeroOverride(hero.role)}
                 />
               </div>
             </div>
@@ -8569,6 +8585,7 @@ export default function CleanBattlefieldSource() {
                   enemyName={enemy.name}
                   facing={getFacingDirection(enemy.enemyType || enemy.name, 'enemy')}
                   scale={getBattlefieldSpriteScale({ isBoss: enemy.isBoss, enemyType: enemy.enemyType, enemyName: enemy.name })}
+                  runtimeOverride={runtimeEnemyOverride(enemy.enemyType, enemy.name)}
                 />
               </div>
             </div>
@@ -8930,6 +8947,7 @@ export default function CleanBattlefieldSource() {
                   scale={3.0} // Same scale as idle
                   shield={0}
                   auraEffect={hero.auraEffect as any}
+                  runtimeOverride={runtimeHeroOverride(hero.role)}
                 />
               </div>
             </div>
@@ -9040,6 +9058,7 @@ export default function CleanBattlefieldSource() {
                       enemyName={enemy.name}
                       facing={getFacingDirection(enemy.enemyType || mappedType, 'enemy')}
                       scale={finalScale}
+                      runtimeOverride={runtimeEnemyOverride(enemy.enemyType || mappedType, enemy.name)}
                     />
                   );
                 })()}
@@ -9430,6 +9449,7 @@ export default function CleanBattlefieldSource() {
                 facing={getFacingDirection(hero.role, 'hero')}
                 scale={3.0}
                 shield={0}
+                runtimeOverride={runtimeHeroOverride(hero.role)}
               />
             </div>
           </div>
@@ -9528,6 +9548,7 @@ export default function CleanBattlefieldSource() {
                     facing={getFacingDirection(enemy.enemyType || enemy.name, 'enemy')}
                     scale={finalScale}
                     isTransformed={enemy.isTransformed || false}
+                    runtimeOverride={runtimeEnemyOverride(enemy.enemyType, enemy.name)}
                   />
                 );
               })()}
