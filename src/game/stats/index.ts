@@ -12,3 +12,4 @@ export * from './applyHeroCombatStats';
 
 export { computeHeroStats as calculateHeroStats } from './computeHeroStats';
 export { calculateHeroBaseDamage } from './heroBaseDamage';
+export * from './enemyCombatScaling';

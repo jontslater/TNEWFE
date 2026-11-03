@@ -2710,17 +2710,16 @@ export default function CleanBattlefieldSource() {
       console.log(`[Adventure] Difficulty modifier: ${(difficultyModifier * 100).toFixed(0)}%`);
       
       // Generate enemies using existing logic
-      // CAP hero levels to prevent over-scaling (max level 30 for enemy generation)
-      const cappedHeroes = allHeroes.map(h => ({
-        level: Math.min(h.level, 30), // Cap at level 30 to prevent crazy scaling
-        role: h.role,
-        equipment: {} // Don't pass equipment to prevent gear stacking
+      // Level cap only — keep equipment so enemy HP tracks hero combat power
+      const scalingHeroes = allHeroes.map(h => ({
+        ...h,
+        level: Math.min(h.level, 30),
       }));
       
       console.log(`[Adventure] Hero levels: ${allHeroes.map(h => h.level).join(', ')} (capped to 30 for scaling)`);
       
       const newEnemies = generateEnemiesForCombat(
-        cappedHeroes,
+        scalingHeroes,
         waveCount,
         difficultyModifier
       );

@@ -5,6 +5,11 @@
  */
 
 import { Hero, Enemy } from './combat/types';
+import {
+  getDifficultyScalingFromHeroes,
+  scaleEnemyForCombat,
+} from '../game/stats/enemyCombatScaling';
+import type { HeroStatInput } from '../game/stats/types';
 
 /**
  * DEBUG MODE: Enable only ONE enemy at a time for testing
@@ -219,124 +224,13 @@ const ENEMY_TEMPLATES = [
   }
 ];
 
-/**
- * Calculate average party level
- * Extracted from IdleDnD/game.js:getAveragePartyLevel()
- */
-function getAveragePartyLevel(heroes: Hero[]): number {
-  if (!heroes || heroes.length === 0) return 1;
-  
-  const totalLevel = heroes.reduce((sum, hero) => sum + (hero.level || 1), 0);
-  return totalLevel / heroes.length;
-}
-
-/**
- * Calculate gear score for a hero
- * Extracted from IdleDnD/game.js:getAverageGearScore()
- */
-function calculateGearScore(hero: Hero): number {
-  let gearScore = 0;
-  
-  if (!hero.equipment) return gearScore;
-  
-  // Calculate gear score from all equipped items
-  Object.values(hero.equipment).forEach((item: any) => {
-    if (!item) return;
-    
-    // Base stats
-    gearScore += (item.attack || 0) + (item.defense || 0) + (item.hp || 0);
-    gearScore += (item.intellect || 0) * 3;  // 1 Int = 3 gear score
-    gearScore += (item.strength || 0) * 3;   // 1 Str = 3 gear score
-    gearScore += (item.dexterity || 0) * 1.5; // 1 Dex = 1.5 gear score
-    gearScore += (item.wisdom || 0) * 1.5;   // 1 Wis = 1.5 gear score
-    gearScore += (item.stamina || 0) * 1;    // 1 Stamina = 1 gear score
-    
-    // Secondary stats
-    if (item.secondaryStats) {
-      gearScore += (item.secondaryStats.healingPower || 0) * 5;
-      gearScore += (item.secondaryStats.spellDamage || 0) * 5;
-      gearScore += (item.secondaryStats.meleeDamage || 0) * 5;
-      gearScore += (item.secondaryStats.hpRegen || 0) * 10;
-      gearScore += (item.secondaryStats.damageReduction || 0) * 10;
-      gearScore += (item.secondaryStats.critChance || 0) * 15;
-    }
-    
-    // Legendary modifier
-    if (item.rarity === 'legendary') {
-      gearScore += 200;
-    }
-  });
-  
-  return gearScore;
-}
-
-/**
- * Get average gear score for party
- * Extracted from IdleDnD/game.js:getAverageGearScore()
- */
-function getAverageGearScore(heroes: Hero[]): number {
-  if (!heroes || heroes.length === 0) return 0;
-  
-  const totalGearScore = heroes.reduce((sum, hero) => sum + calculateGearScore(hero), 0);
-  return totalGearScore / heroes.length;
-}
-
-/**
- * Get difficulty scaling based on hero levels, party size, gear score
- * Extracted from IdleDnD/game.js:getDifficultyScaling() (lines 10310-10355)
- */
-function getDifficultyScaling(heroes: Hero[], waveCount: number = 1, difficultyModifier: number = 1.0): {
-  avgLevel: number;
-  multiplier: number;
-  partySize: number;
-  avgGearScore: number;
-  waveCount: number;
-  difficultyMod: number;
-} {
-  const avgLevel = getAveragePartyLevel(heroes);
-  const partySize = heroes.length;
-  const avgGearScore = getAverageGearScore(heroes);
-  
-  // Level multiplier: 1 + (avgLevel * 0.04)
-  // Reduced from 0.12 to 0.04 for better balance (67% reduction)
-  // This makes leveling slower and more of a grind, especially at higher levels
-  const levelMultiplier = 1 + (avgLevel * 0.04);
-  
-  // Party size multiplier: More aggressive scaling for large parties
-  // Matches Electron app (lines 10320-10330)
-  let partySizeMultiplier: number;
-  if (partySize <= 5) {
-    // Small parties: 8% per hero beyond first
-    partySizeMultiplier = 1 + ((partySize - 1) * 0.08);
-  } else if (partySize <= 10) {
-    // Medium parties: 12% per hero beyond first
-    // 5 heroes = 1.32x, then +12% each
-    partySizeMultiplier = 1 + (4 * 0.08) + ((partySize - 5) * 0.12);
-  } else {
-    // Large parties (10+): 15% per hero beyond first
-    partySizeMultiplier = 1 + (4 * 0.08) + (5 * 0.12) + ((partySize - 10) * 0.15);
-  }
-  
-  // Gear score multiplier: 1% per 10 gear score (1 + avgGearScore / 1000)
-  const gearMultiplier = 1 + (avgGearScore / 1000);
-  
-  // Wave multiplier: 1% per 10 waves (1 + waveCount / 100)
-  const waveMultiplier = 1 + (waveCount / 100);
-  
-  // Combined multiplier
-  let totalMultiplier = levelMultiplier * partySizeMultiplier * gearMultiplier * waveMultiplier;
-  
-  // Apply difficulty modifier
-  totalMultiplier *= difficultyModifier;
-  
-  return {
-    avgLevel,
-    multiplier: totalMultiplier,
-    partySize,
-    avgGearScore: Math.floor(avgGearScore),
-    waveCount,
-    difficultyMod: difficultyModifier
-  };
+function heroesAsStatInput(heroes: Hero[]): HeroStatInput[] {
+  return heroes.map((h) => ({
+    role: h.role || 'berserker',
+    level: h.level || 1,
+    equipment: h.equipment as HeroStatInput['equipment'],
+    skills: h.skills as HeroStatInput['skills'],
+  }));
 }
 
 /**
@@ -351,8 +245,9 @@ export function generateEnemiesForCombat(
   if (!heroes || heroes.length === 0) {
     return [];
   }
-  
-  const scaling = getDifficultyScaling(heroes, waveCount, difficultyModifier);
+
+  const statHeroes = heroesAsStatInput(heroes);
+  const scaling = getDifficultyScalingFromHeroes(statHeroes, waveCount, difficultyModifier);
   
   // Determine pack size based on wave
   let packSize = 1;
@@ -398,11 +293,21 @@ export function generateEnemiesForCombat(
   
   if (availableEnemies.length === 0) {
     // Fallback to first enemy if none available
-    return [generateSingleEnemy(ENEMY_TEMPLATES[0], scaling, 1.0, 0)];
+    return [
+      generateSingleEnemy(
+        ENEMY_TEMPLATES[0],
+        statHeroes,
+        waveCount,
+        difficultyModifier,
+        1,
+        0,
+        scaling.multiplier,
+        scaling.avgLevel
+      ),
+    ];
   }
   
-  // Pack scaling: reduce per-enemy stats for packs
-  const packScaling = packSize === 1 ? 1.0 : packSize === 2 ? 0.6 : 0.45;
+  // Pack scaling: reduce per-enemy stats for packs (handled inside scaleEnemyForCombat)
   
   const enemies: Enemy[] = [];
   
@@ -421,7 +326,16 @@ export function generateEnemiesForCombat(
       enemyTemplate = availableEnemies[Math.floor(Math.random() * availableEnemies.length)];
     }
     
-    const enemy = generateSingleEnemy(enemyTemplate, scaling, packScaling, i);
+    const enemy = generateSingleEnemy(
+      enemyTemplate,
+      statHeroes,
+      waveCount,
+      difficultyModifier,
+      packSize,
+      i,
+      scaling.multiplier,
+      scaling.avgLevel
+    );
     enemies.push(enemy);
   }
   
@@ -434,58 +348,46 @@ export function generateEnemiesForCombat(
  */
 function generateSingleEnemy(
   template: typeof ENEMY_TEMPLATES[0],
-  scaling: { avgLevel: number; multiplier: number },
-  packScaling: number,
-  slotIndex: number
+  referenceHeroes: HeroStatInput[],
+  waveCount: number,
+  difficultyModifier: number,
+  packSize: number,
+  slotIndex: number,
+  scalingMultiplier: number,
+  avgLevel: number
 ): Enemy {
-  // FIXED: hpMultiplier should be based on scaling.multiplier, but NOT multiplied by it again
-  // The hpMultiplier already accounts for difficulty scaling
-  // For HP: base * (1.2 * difficultyMultiplier) * packScaling
-  // For Attack/Defense: base * scaling.multiplier * (additional multipliers) * packScaling
-  
-  const difficultyMultiplier = scaling.multiplier > 1.0 
-    ? 1.0 + ((scaling.multiplier - 1.0) * 0.8)
-    : 1.0;
-  
-  // HP multiplier: 1.2x base, then scaled by difficulty (but NOT by scaling.multiplier again)
-  const hpMultiplier = 1.2 * difficultyMultiplier;
-  
-  // Attack multiplier: 1.1x base, then additional scaling based on difficulty
-  const attackMultiplier = 1.1 * (1.0 + ((scaling.multiplier - 1.0) * 0.4));
-  
-  // Defense multiplier: 0.9x base, then additional scaling based on difficulty
-  const defenseMultiplier = 0.9 + ((scaling.multiplier - 1.0) * 0.6);
-  
+  const scaled = scaleEnemyForCombat(
+    {
+      hp: template.baseHp,
+      attack: template.baseAttack,
+      defense: template.baseDefense || 0,
+    },
+    {
+      packSize,
+      isBoss: template.isBoss || false,
+      referenceHeroes,
+      waveCount,
+      difficultyModifier,
+      contentTier: 'idle',
+    }
+  );
+
   const enemyId = `enemy-${Date.now()}-${slotIndex}`;
-  
-  // FIXED: The original code was double-scaling HP because:
-  // - hpMultiplier = 1.2 * difficultyMultiplier
-  // - difficultyMultiplier = 1.0 + ((scaling.multiplier - 1.0) * 0.8)
-  // - So hp = baseHp * scaling.multiplier * hpMultiplier = baseHp * scaling.multiplier * 1.2 * (1.0 + ((scaling.multiplier - 1.0) * 0.8))
-  // This applies scaling.multiplier twice (once directly, once via difficultyMultiplier).
-  // 
-  // The fix: Keep scaling.multiplier for level/party/gear/wave scaling, but remove the double-scaling from difficultyMultiplier.
-  // Use a simpler HP multiplier: 1.2x base, scaled by scaling.multiplier.
-  const finalHp = Math.max(1, Math.floor(template.baseHp * scaling.multiplier * 1.2 * packScaling));
-  
+  const xpMultiplier = Math.min(scalingMultiplier * 0.2, 8);
+
   return {
     id: enemyId,
     name: template.name,
-    enemyType: template.type, // Set enemyType for sprite lookup (prevents Goblin Chief from appearing in idle)
-    level: Math.max(1, Math.floor(scaling.avgLevel)),
-    hp: finalHp,
-    maxHp: finalHp,
-    attack: Math.floor(template.baseAttack * scaling.multiplier * attackMultiplier * packScaling),
-    defense: Math.floor((template.baseDefense || 0) * scaling.multiplier * defenseMultiplier * packScaling),
+    enemyType: template.type,
+    level: Math.max(1, Math.floor(avgLevel)),
+    hp: scaled.hp,
+    maxHp: scaled.maxHp,
+    attack: scaled.attack,
+    defense: scaled.defense,
     isDead: false,
     isBoss: template.isBoss || false,
-    // XP calculation: Apply scaling multiplier with 0.2 coefficient and cap at 8x
-    // This makes leveling slower and more balanced (60% reduction from 0.5, plus cap)
-    xp: (() => {
-      const xpMultiplier = Math.min(scaling.multiplier * 0.2, 8);
-      return Math.floor(template.xp * Math.max(1, xpMultiplier));
-    })(),
+    xp: Math.floor(template.xp * Math.max(1, xpMultiplier)),
     activeDebuffs: {},
-    abilities: {}
+    abilities: {},
   };
 }
