@@ -25,9 +25,16 @@ type Props = {
   entry?: SpriteRuntimeOverride;
   disabled?: boolean;
   onChange: (next: SpriteRuntimeOverride | undefined) => void;
+  layout?: 'stack';
 };
 
-export function SpriteOverrideControls({ id, entry, disabled, onChange }: Props) {
+export function SpriteOverrideControls({
+  id,
+  entry,
+  disabled,
+  onChange,
+  layout,
+}: Props) {
   const flip = entry?.flip === true;
   const scale = entry?.scaleMultiplier ?? 1;
   const offsetY = entry?.offsetY ?? 0;
@@ -48,10 +55,16 @@ export function SpriteOverrideControls({ id, entry, disabled, onChange }: Props)
     onChange(hasKeys ? merged : undefined);
   };
 
+  const wrapperClass = layout === 'stack' ? 'bfe-controls' : undefined;
+
   return (
-    <div style={{ width: '100%', marginTop: 4 }} data-override-controls={id}>
-      <label style={controlLabel}>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+    <div
+      className={wrapperClass}
+      style={layout === 'stack' ? undefined : { width: '100%', marginTop: 4 }}
+      data-override-controls={id}
+    >
+      <label style={layout === 'stack' ? undefined : controlLabel}>
+        <span className={layout === 'stack' ? 'row' : undefined} style={layout === 'stack' ? undefined : { display: 'flex', alignItems: 'center', gap: 4 }}>
           <input
             type="checkbox"
             checked={flip}
@@ -61,7 +74,7 @@ export function SpriteOverrideControls({ id, entry, disabled, onChange }: Props)
           Flip
         </span>
       </label>
-      <label style={controlLabel}>
+      <label style={layout === 'stack' ? undefined : controlLabel}>
         Scale
         <input
           type="number"
@@ -70,11 +83,11 @@ export function SpriteOverrideControls({ id, entry, disabled, onChange }: Props)
           step={0.05}
           value={scale}
           disabled={disabled}
-          style={inputStyle}
+          style={layout === 'stack' ? undefined : inputStyle}
           onChange={(e) => patch({ scaleMultiplier: parseFloat(e.target.value) || 1 })}
         />
       </label>
-      <label style={controlLabel}>
+      <label style={layout === 'stack' ? undefined : controlLabel}>
         Y nudge
         <input
           type="number"
@@ -83,7 +96,7 @@ export function SpriteOverrideControls({ id, entry, disabled, onChange }: Props)
           step={1}
           value={offsetY}
           disabled={disabled}
-          style={inputStyle}
+          style={layout === 'stack' ? undefined : inputStyle}
           onChange={(e) => patch({ offsetY: parseInt(e.target.value, 10) || 0 })}
         />
       </label>

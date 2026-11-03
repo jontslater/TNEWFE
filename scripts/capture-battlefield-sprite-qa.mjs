@@ -21,7 +21,7 @@ await page.goto(`${baseUrl}/battlefield-facing`, {
   timeout: 120000,
 });
 await page.waitForSelector(
-  '#battlefield-hero-line, #battlefield-facing-preview, [data-side="hero"]',
+  '#battlefield-hero-line, #battlefield-layout-preview-strip, [data-sprite-card]',
   { timeout: 60000 }
 );
 await page.waitForTimeout(4000);

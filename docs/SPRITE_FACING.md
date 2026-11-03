@@ -33,7 +33,7 @@ Manual overrides for enemies are documented in `spriteFacingConfig.ts` (historic
 ## Preview routes
 
 - `/class-sprites` — all hero classes in a grid (facing right, idle frame 0)
-- `/battlefield-facing` — **full battlefield sprite gallery**: every playable class on a shared baseline (left) and all enemy types (right), plus Elder Dragon boss positioning
+- `/battlefield-facing` — **sprite override editor**: responsive card grid (Heroes / Enemies / Bosses) with preview box, Flip/Scale/Y controls, sticky Save/Export toolbar, and a **Battlefield preview** strip below for lineup QA
 - `/animation-test` — interactive combat sandbox (spawn heroes/enemies for manual QA)
 - `/enemy-animation-test` — all standard enemies cycling animations
 - `/dragon-test` — four dragons using battlefield enemy facing

@@ -1,21 +1,16 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { CSSProperties } from 'react';
 import HeroSpriteJS from '../components/HeroSpriteJS';
 import EnemySpriteJS from '../components/EnemySpriteJS';
-import { SpriteOverrideControls } from '../components/SpriteOverrideControls';
+import { BattlefieldLayoutPreviewStrip } from '../components/BattlefieldLayoutPreviewStrip';
+import { BattlefieldSpriteEditorCard } from '../components/BattlefieldSpriteEditorCard';
 import {
-  BATTLEFIELD_GALLERY_ENEMIES,
+  GALLERY_BOSS_ENEMIES,
+  GALLERY_STANDARD_ENEMIES,
   PLAYABLE_HERO_CLASSES,
 } from '../data/battlefieldSpriteGalleryData';
 import { useAuth } from '../hooks/useAuth';
 import { useSpriteRuntimeOverrides } from '../hooks/useSpriteRuntimeOverrides';
 import { spriteOverridesAPI } from '../api/client';
-import { getBattlefieldEnemyPosition } from '../utils/battlefieldEnemyPosition';
-import {
-  getBattlefieldSpriteScale,
-  SPRITE_DISPLAY_SCALE,
-} from '../utils/spriteDisplayScale';
-import { canEditSpriteOverrides } from '../utils/spriteOverrideAdmin';
 import {
   BATTLEFIELD_ENEMY_FACING,
   BATTLEFIELD_HERO_FACING,
@@ -24,6 +19,12 @@ import {
   buildExportPayload,
   type SpriteRuntimeOverride,
 } from '../utils/spriteRuntimeOverrides';
+import { canEditSpriteOverrides } from '../utils/spriteOverrideAdmin';
+import {
+  getEnemyEditorPreviewScale,
+  getHeroEditorPreviewScale,
+} from '../utils/editorPreviewScale';
+import './BattlefieldFacingEditor.css';
 
 export default function BattlefieldFacingPreviewPage() {
   const { user, isAuthenticated } = useAuth();
@@ -81,7 +82,7 @@ export default function BattlefieldFacingPreviewPage() {
       setStatus(
         err.response?.data?.message ||
           err.response?.data?.error ||
-          'Save failed — deploy backend PR with /api/config/sprite-overrides first.'
+          'Save failed — is /api/config/sprite-overrides deployed?'
       );
     } finally {
       setSaving(false);
@@ -98,51 +99,34 @@ export default function BattlefieldFacingPreviewPage() {
     }
   };
 
-  const elderEntry = BATTLEFIELD_GALLERY_ENEMIES.find(
-    (e) => e.enemyType === 'Elder Dragon'
-  )!;
-  const elderPos = getBattlefieldEnemyPosition(0, 1, true, elderEntry.enemyType, 'idle');
-  const elderScale = getBattlefieldSpriteScale({
-    enemyType: elderEntry.enemyType,
-    enemyName: elderEntry.enemyName,
-    isBoss: true,
-  });
-  const standardEnemies = BATTLEFIELD_GALLERY_ENEMIES.filter(
-    (e) => e.enemyType !== 'Elder Dragon'
-  );
-
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#0f172a', overflow: 'auto', paddingBottom: 48 }}>
-      <div style={toolbarWrap}>
+    <div className="bfe-page">
+      <header className="bfe-toolbar">
         <div>
-          <h1 style={{ color: '#f8fafc', fontSize: 20, fontWeight: 700, margin: 0 }}>
-            Battlefield sprite editor
-          </h1>
-          <p style={{ color: '#94a3b8', fontSize: 12, margin: '4px 0 0' }}>
-            `/battlefield-facing` · Flip / scale / Y nudge · Save → Firestore `config/spriteOverrides`
-          </p>
+          <h1>Battlefield sprite editor</h1>
+          <p>Flip · scale · Y nudge — Save updates live overrides for all players</p>
         </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div className="bfe-toolbar-actions">
           {!isAuthenticated && <span style={{ color: '#fbbf24', fontSize: 12 }}>Log in to save</span>}
           {isAuthenticated && !canSave && (
             <span style={{ color: '#94a3b8', fontSize: 12 }}>View only</span>
           )}
-          <button type="button" onClick={handleExport} style={toolbarBtn}>
+          <button type="button" className="bfe-btn" onClick={handleExport}>
             Export JSON
           </button>
           <button
             type="button"
+            className="bfe-btn bfe-btn--primary"
             onClick={handleSave}
             disabled={!canSave || saving}
-            style={{ ...toolbarBtn, background: canSave ? '#2563eb' : '#475569' }}
           >
             {saving ? 'Saving…' : dirty ? 'Save*' : 'Save'}
           </button>
         </div>
-      </div>
+      </header>
 
       {(status || loading) && (
-        <div style={{ padding: '8px 24px', color: '#cbd5e1', fontSize: 12 }}>
+        <div className="bfe-status">
           {loading ? 'Loading overrides…' : status}
           {remote.updatedBy && !loading && (
             <span style={{ marginLeft: 12, color: '#64748b' }}>Last: {remote.updatedBy}</span>
@@ -150,170 +134,104 @@ export default function BattlefieldFacingPreviewPage() {
         </div>
       )}
 
-      <div
-        id="battlefield-facing-preview"
-        style={{
-          width: '1920px',
-          maxWidth: '100%',
-          height: '1080px',
-          backgroundColor: '#1a1a2e',
-          position: 'relative',
-          overflow: 'hidden',
-          margin: '0 auto',
-        }}
-      >
-        <div id="battlefield-hero-line" style={heroLineStyle}>
-          {PLAYABLE_HERO_CLASSES.map((role) => (
-            <div key={role} data-class={role} data-side="hero" style={cellStyle}>
-              <HeroSpriteJS
-                heroId={`gallery-${role}`}
-                role={role}
-                facing={BATTLEFIELD_HERO_FACING}
-                scale={SPRITE_DISPLAY_SCALE}
-                freezeIdleFrame
-                runtimeOverride={localHeroes[role]}
-              />
-              <span style={labelStyle}>{role}</span>
-              <SpriteOverrideControls
+      <main className="bfe-main">
+        <section className="bfe-section" aria-labelledby="bfe-heroes-heading">
+          <h2 id="bfe-heroes-heading" className="bfe-section-title">
+            Heroes ({PLAYABLE_HERO_CLASSES.length})
+          </h2>
+          <div className="bfe-grid" id="battlefield-hero-line">
+            {PLAYABLE_HERO_CLASSES.map((role) => (
+              <BattlefieldSpriteEditorCard
+                key={role}
                 id={role}
-                entry={localHeroes[role]}
-                disabled={!canSave}
-                onChange={(next) => updateHero(role, next)}
+                name={role}
+                facingLabel="→"
+                preview={
+                  <HeroSpriteJS
+                    heroId={`card-hero-${role}`}
+                    role={role}
+                    facing={BATTLEFIELD_HERO_FACING}
+                    scale={getHeroEditorPreviewScale()}
+                    freezeIdleFrame
+                    runtimeOverride={localHeroes[role]}
+                  />
+                }
+                override={localHeroes[role]}
+                canEdit={canSave}
+                onOverrideChange={(next) => updateHero(role, next)}
               />
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        </section>
 
-        <div id="battlefield-enemy-grid" style={enemyGridStyle}>
-          {standardEnemies.map((e) => (
-            <div key={e.enemyType} data-side="enemy" style={{ ...cellStyle, width: 100 }}>
-              <EnemySpriteJS
-                enemyId={`gallery-${e.enemyType}`}
-                enemyType={e.enemyType}
-                enemyName={e.enemyName}
-                facing={BATTLEFIELD_ENEMY_FACING}
-                scale={getBattlefieldSpriteScale({
-                  isBoss: e.isBoss,
-                  enemyType: e.enemyType,
-                  enemyName: e.enemyName,
-                })}
-                runtimeOverride={localEnemies[e.enemyType]}
-              />
-              <span style={labelStyle}>{e.label}</span>
-              <SpriteOverrideControls
+        <section className="bfe-section" aria-labelledby="bfe-enemies-heading">
+          <h2 id="bfe-enemies-heading" className="bfe-section-title">
+            Enemies ({GALLERY_STANDARD_ENEMIES.length})
+          </h2>
+          <div className="bfe-grid" id="battlefield-enemy-grid">
+            {GALLERY_STANDARD_ENEMIES.map((e) => (
+              <BattlefieldSpriteEditorCard
+                key={e.enemyType}
                 id={e.enemyType}
-                entry={localEnemies[e.enemyType]}
-                disabled={!canSave}
-                onChange={(next) => updateEnemy(e.enemyType, next)}
+                name={e.label}
+                facingLabel="←"
+                preview={
+                  <EnemySpriteJS
+                    enemyId={`card-enemy-${e.enemyType}`}
+                    enemyType={e.enemyType}
+                    enemyName={e.enemyName}
+                    facing={BATTLEFIELD_ENEMY_FACING}
+                    scale={getEnemyEditorPreviewScale(e)}
+                    freezeIdleFrame
+                    forceViewportClip
+                    runtimeOverride={localEnemies[e.enemyType]}
+                  />
+                }
+                override={localEnemies[e.enemyType]}
+                canEdit={canSave}
+                onOverrideChange={(next) => updateEnemy(e.enemyType, next)}
               />
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        </section>
 
-        <div style={{ position: 'absolute', ...elderPos, ...elderWrap }}>
-          <EnemySpriteJS
-            enemyId="gallery-elder-dragon"
-            enemyType={elderEntry.enemyType}
-            enemyName={elderEntry.enemyName}
-            facing={BATTLEFIELD_ENEMY_FACING}
-            scale={elderScale}
-            runtimeOverride={localEnemies[elderEntry.enemyType]}
-          />
-          <span style={{ color: '#fbbf24', fontSize: 11 }}>{elderEntry.label}</span>
-          <SpriteOverrideControls
-            id={elderEntry.enemyType}
-            entry={localEnemies[elderEntry.enemyType]}
-            disabled={!canSave}
-            onChange={(next) => updateEnemy(elderEntry.enemyType, next)}
-          />
-        </div>
-      </div>
+        <section className="bfe-section" aria-labelledby="bfe-bosses-heading">
+          <h2 id="bfe-bosses-heading" className="bfe-section-title">
+            Bosses &amp; large ({GALLERY_BOSS_ENEMIES.length})
+          </h2>
+          <div className="bfe-grid bfe-grid--bosses">
+            {GALLERY_BOSS_ENEMIES.map((e) => (
+              <BattlefieldSpriteEditorCard
+                key={e.enemyType}
+                id={e.enemyType}
+                name={e.label}
+                facingLabel="←"
+                variant="boss"
+                preview={
+                  <EnemySpriteJS
+                    enemyId={`card-boss-${e.enemyType}`}
+                    enemyType={e.enemyType}
+                    enemyName={e.enemyName}
+                    facing={BATTLEFIELD_ENEMY_FACING}
+                    scale={getEnemyEditorPreviewScale(e)}
+                    freezeIdleFrame
+                    forceViewportClip
+                    runtimeOverride={localEnemies[e.enemyType]}
+                  />
+                }
+                override={localEnemies[e.enemyType]}
+                canEdit={canSave}
+                onOverrideChange={(next) => updateEnemy(e.enemyType, next)}
+              />
+            ))}
+          </div>
+        </section>
+
+        <BattlefieldLayoutPreviewStrip
+          heroOverrides={localHeroes}
+          enemyOverrides={localEnemies}
+        />
+      </main>
     </div>
   );
 }
-
-const toolbarWrap: CSSProperties = {
-  position: 'sticky',
-  top: 0,
-  zIndex: 50,
-  background: 'rgba(15, 23, 42, 0.95)',
-  borderBottom: '1px solid #334155',
-  padding: '12px 24px',
-  display: 'flex',
-  flexWrap: 'wrap',
-  gap: 12,
-  alignItems: 'center',
-  justifyContent: 'space-between',
-};
-
-const toolbarBtn: CSSProperties = {
-  padding: '8px 14px',
-  fontSize: 13,
-  fontWeight: 600,
-  borderRadius: 6,
-  border: '1px solid #475569',
-  background: '#334155',
-  color: '#f8fafc',
-  cursor: 'pointer',
-};
-
-const heroLineStyle: CSSProperties = {
-  position: 'absolute',
-  left: 32,
-  right: '42%',
-  bottom: 72,
-  display: 'flex',
-  flexDirection: 'row',
-  flexWrap: 'wrap',
-  alignItems: 'flex-end',
-  alignContent: 'flex-end',
-  justifyContent: 'flex-start',
-  gap: '8px 12px',
-  paddingRight: 16,
-  borderBottom: '2px solid rgba(59,130,246,0.45)',
-  minHeight: 200,
-  maxHeight: 480,
-  overflow: 'auto',
-};
-
-const enemyGridStyle: CSSProperties = {
-  position: 'absolute',
-  left: '58%',
-  right: 24,
-  bottom: 72,
-  display: 'flex',
-  flexDirection: 'row',
-  flexWrap: 'wrap',
-  alignItems: 'flex-end',
-  alignContent: 'flex-end',
-  justifyContent: 'flex-start',
-  gap: '12px 16px',
-  borderBottom: '2px solid rgba(239,68,68,0.45)',
-  minHeight: 200,
-  maxHeight: 480,
-  overflow: 'auto',
-  paddingBottom: 8,
-};
-
-const cellStyle: CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  alignItems: 'center',
-  gap: 2,
-  width: 88,
-  paddingBottom: 4,
-};
-
-const labelStyle: CSSProperties = {
-  color: '#94a3b8',
-  fontSize: 9,
-  textAlign: 'center',
-};
-
-const elderWrap: CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  alignItems: 'center',
-  zIndex: 10,
-  width: 320,
-};
