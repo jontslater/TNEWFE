@@ -5,18 +5,18 @@ export default function RaidsInfoPage() {
     <div className="min-h-screen bg-gradient-to-b from-gray-900 via-red-900 to-gray-900">
       <Navigation />
 
-      <div className="container mx-auto px-4 py-12">
+      <div className="container mx-auto px-4 py-8 sm:py-12">
         {/* Header */}
-        <div className="text-center mb-12">
-          <h1 className="text-5xl font-bold text-white mb-4">Epic Raids & World Bosses</h1>
-          <p className="text-xl text-gray-400">
+        <div className="text-center mb-8 sm:mb-12">
+          <h1 className="text-3xl sm:text-5xl font-bold text-white mb-3 sm:mb-4">Epic Raids & World Bosses</h1>
+          <p className="text-base sm:text-xl text-gray-400 px-1">
             Coordinate with your guild to tackle challenging encounters for legendary rewards
           </p>
         </div>
 
         {/* Raid System Overview */}
-        <div className="bg-gray-800 rounded-lg p-8 border border-gray-700 mb-12">
-          <h2 className="text-3xl font-bold text-white mb-6">Raid System</h2>
+        <div className="bg-gray-800 rounded-lg p-4 sm:p-8 border border-gray-700 mb-8 sm:mb-12">
+          <h2 className="text-2xl sm:text-3xl font-bold text-white mb-4 sm:mb-6">Raid System</h2>
           
           <div className="grid md:grid-cols-3 gap-6">
             {/* Daily Raids */}
@@ -62,9 +62,9 @@ export default function RaidsInfoPage() {
           <h2 className="text-3xl font-bold text-white mb-6">Difficulty Tiers</h2>
           
           <div className="space-y-4">
-            <div className="bg-green-900/30 border-2 border-green-600 rounded-lg p-6">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-2xl font-bold text-green-400">Normal</h3>
+            <div className="bg-green-900/30 border-2 border-green-600 rounded-lg p-4 sm:p-6">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between mb-3">
+                <h3 className="text-xl sm:text-2xl font-bold text-green-400">Normal</h3>
                 <span className="text-sm text-gray-400">Recommended Item Score: 50+</span>
               </div>
               <p className="text-gray-300">
@@ -73,9 +73,9 @@ export default function RaidsInfoPage() {
               </p>
             </div>
 
-            <div className="bg-blue-900/30 border-2 border-blue-600 rounded-lg p-6">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-2xl font-bold text-blue-400">Heroic</h3>
+            <div className="bg-blue-900/30 border-2 border-blue-600 rounded-lg p-4 sm:p-6">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between mb-3">
+                <h3 className="text-xl sm:text-2xl font-bold text-blue-400">Heroic</h3>
                 <span className="text-sm text-gray-400">Recommended Item Score: 150+</span>
               </div>
               <p className="text-gray-300">
@@ -84,9 +84,9 @@ export default function RaidsInfoPage() {
               </p>
             </div>
 
-            <div className="bg-purple-900/30 border-2 border-purple-600 rounded-lg p-6">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-2xl font-bold text-purple-400">Mythic</h3>
+            <div className="bg-purple-900/30 border-2 border-purple-600 rounded-lg p-4 sm:p-6">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between mb-3">
+                <h3 className="text-xl sm:text-2xl font-bold text-purple-400">Mythic</h3>
                 <span className="text-sm text-gray-400">Recommended Item Score: 250+</span>
               </div>
               <p className="text-gray-300">
@@ -98,9 +98,9 @@ export default function RaidsInfoPage() {
         </div>
 
         {/* World Boss */}
-        <div className="bg-gradient-to-br from-red-900 to-gray-800 rounded-lg p-8 border-2 border-red-600 mb-12">
-          <div className="flex items-center space-x-4 mb-6">
-            <span className="text-5xl">🌍</span>
+        <div className="bg-gradient-to-br from-red-900 to-gray-800 rounded-lg p-4 sm:p-8 border-2 border-red-600 mb-8 sm:mb-12">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:space-x-4 mb-4 sm:mb-6">
+            <span className="text-4xl sm:text-5xl">🌍</span>
             <div>
               <h2 className="text-3xl font-bold text-red-400">World Boss Events</h2>
               <p className="text-gray-300">Server-wide events with massive rewards</p>

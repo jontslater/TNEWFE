@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { questAPI } from '../api/client';
 import { QuestSet, QuestWithProgress, PlayerQuestProgress } from '../types/Quest';
+import Navigation from '../components/Navigation';
 
 interface QuestsPageProps {
   heroId?: string | null;
+  /** When true, renders inside Player Portal without site chrome */
+  embedded?: boolean;
 }
 
-const QuestsPage: React.FC<QuestsPageProps> = ({ heroId }) => {
+const QuestsPage: React.FC<QuestsPageProps> = ({ heroId, embedded = false }) => {
   const [activeTab, setActiveTab] = useState<'daily' | 'weekly' | 'monthly'>('daily');
   const [dailyQuests, setDailyQuests] = useState<QuestSet | null>(null);
   const [weeklyQuests, setWeeklyQuests] = useState<QuestSet | null>(null);
@@ -134,23 +137,30 @@ const QuestsPage: React.FC<QuestsPageProps> = ({ heroId }) => {
   const currentQuests = getCurrentQuests();
 
   if (loading) {
-    return (
+    const loadingEl = (
       <div className="text-center text-white py-12">Loading quests...</div>
+    );
+    if (embedded) return loadingEl;
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-gray-900 via-purple-900 to-gray-900">
+        <Navigation />
+        {loadingEl}
+      </div>
     );
   }
 
-  return (
-    <div className="w-full">
-      <div className="container mx-auto px-4 py-8">
-        <h1 className="text-5xl font-bold text-center mb-8 bg-gradient-to-r from-yellow-400 to-orange-500 bg-clip-text text-transparent">
+  const questContent = (
+    <div className="w-full min-w-0">
+      <div className={`mx-auto px-4 ${embedded ? 'py-2' : 'container py-6 sm:py-8'}`}>
+        <h1 className="text-3xl sm:text-5xl font-bold text-center mb-6 sm:mb-8 bg-gradient-to-r from-yellow-400 to-orange-500 bg-clip-text text-transparent">
           Quests
         </h1>
 
         {/* Tab Navigation */}
-        <div className="flex justify-center gap-4 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:justify-center sm:gap-3 mb-6 sm:mb-8 max-w-lg sm:max-w-none mx-auto">
           <button
             onClick={() => setActiveTab('daily')}
-            className={`px-6 py-3 rounded-lg font-bold transition ${
+            className={`min-h-[44px] px-4 py-3 rounded-lg font-bold transition text-sm sm:text-base ${
               activeTab === 'daily'
                 ? 'bg-blue-600 text-white'
                 : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
@@ -160,7 +170,7 @@ const QuestsPage: React.FC<QuestsPageProps> = ({ heroId }) => {
           </button>
           <button
             onClick={() => setActiveTab('weekly')}
-            className={`px-6 py-3 rounded-lg font-bold transition ${
+            className={`min-h-[44px] px-4 py-3 rounded-lg font-bold transition text-sm sm:text-base ${
               activeTab === 'weekly'
                 ? 'bg-purple-600 text-white'
                 : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
@@ -170,7 +180,7 @@ const QuestsPage: React.FC<QuestsPageProps> = ({ heroId }) => {
           </button>
           <button
             onClick={() => setActiveTab('monthly')}
-            className={`px-6 py-3 rounded-lg font-bold transition ${
+            className={`min-h-[44px] px-4 py-3 rounded-lg font-bold transition text-sm sm:text-base ${
               activeTab === 'monthly'
                 ? 'bg-orange-600 text-white'
                 : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
@@ -301,16 +311,16 @@ const QuestsPage: React.FC<QuestsPageProps> = ({ heroId }) => {
 
             {/* Completion Bonus */}
             {currentQuests && (
-              <div className="bg-gradient-to-r from-purple-900 to-pink-900 border-2 border-yellow-500 rounded-lg p-6 mt-8">
-                <div className="flex justify-between items-center">
-                  <div>
-                    <h3 className="text-2xl font-bold text-yellow-400 mb-2">
+              <div className="bg-gradient-to-r from-purple-900 to-pink-900 border-2 border-yellow-500 rounded-lg p-4 sm:p-6 mt-8">
+                <div className="flex flex-col gap-4 lg:flex-row lg:justify-between lg:items-center">
+                  <div className="min-w-0">
+                    <h3 className="text-xl sm:text-2xl font-bold text-yellow-400 mb-2">
                       🎖️ Completion Bonus
                     </h3>
                     <p className="text-gray-300 mb-3">
                       Complete all {currentQuests.quests.length} quests to claim!
                     </p>
-                    <div className="flex gap-3 text-sm">
+                    <div className="flex flex-wrap gap-2 sm:gap-3 text-sm">
                       <span className="text-yellow-400">💰 {currentQuests.completionBonus.gold}g</span>
                       <span className="text-blue-400">⭐ {Math.floor(currentQuests.completionBonus.xp)} XP</span>
                       <span className="text-purple-400">🎫 {currentQuests.completionBonus.tokens} tokens</span>
@@ -321,12 +331,12 @@ const QuestsPage: React.FC<QuestsPageProps> = ({ heroId }) => {
                       )}
                     </div>
                   </div>
-                  <div>
+                  <div className="shrink-0">
                     {canClaimBonus(currentQuests) ? (
                       <button
                         onClick={() => handleClaimBonus(activeTab)}
                         disabled={claiming === `${activeTab}-bonus`}
-                        className="bg-yellow-500 hover:bg-yellow-600 text-black px-6 py-3 rounded-lg font-bold text-lg disabled:opacity-50"
+                        className="w-full sm:w-auto min-h-[44px] bg-yellow-500 hover:bg-yellow-600 text-black px-6 py-3 rounded-lg font-bold text-base sm:text-lg disabled:opacity-50"
                       >
                         {claiming === `${activeTab}-bonus` ? 'Claiming...' : 'Claim Bonus!'}
                       </button>
@@ -351,6 +361,17 @@ const QuestsPage: React.FC<QuestsPageProps> = ({ heroId }) => {
           </div>
         )}
       </div>
+    </div>
+  );
+
+  if (embedded) {
+    return questContent;
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-gray-900 via-purple-900 to-gray-900">
+      <Navigation />
+      {questContent}
     </div>
   );
 };

@@ -17,6 +17,18 @@ html {
   background-color: #111827; /* gray-900 */
 }
 
+/* Prevent horizontal scroll on marketing / portal pages (not OBS browser sources) */
+html:not(:has(.clean-battlefield-page)):not(:has(.browser-source-page)),
+body:not(:has(.clean-battlefield-page)):not(:has(.browser-source-page)) {
+  overflow-x: clip;
+  max-width: 100%;
+}
+
+#root:not(:has(.clean-battlefield-page)):not(:has(.browser-source-page)) {
+  overflow-x: clip;
+  max-width: 100%;
+}
+
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;

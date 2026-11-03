@@ -155,10 +155,10 @@ export default function CreateHeroPage() {
     <div className="min-h-screen bg-gradient-to-b from-gray-900 via-purple-900 to-gray-900">
       <Navigation />
 
-      <div className="container mx-auto px-4 py-12">
-        <div className="text-center mb-12">
-          <h1 className="text-5xl font-bold text-white mb-4">Create Your Hero</h1>
-          <p className="text-xl text-gray-400 mb-2">
+      <div className="container mx-auto px-4 py-8 sm:py-12">
+        <div className="text-center mb-8 sm:mb-12">
+          <h1 className="text-3xl sm:text-5xl font-bold text-white mb-3 sm:mb-4">Create Your Hero</h1>
+          <p className="text-base sm:text-xl text-gray-400 mb-2 px-1">
             Choose your class to begin your adventure
           </p>
           
@@ -179,7 +179,7 @@ export default function CreateHeroPage() {
                   <div className="text-sm text-gray-300">
                     Cost for next hero (Hero #{costInfo.heroCount + 1}):
                   </div>
-                  <div className="flex items-center justify-center gap-4">
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-2 sm:gap-4">
                     <div className={`px-3 py-1 rounded ${costInfo.canAffordWithTokens ? 'bg-green-900 text-green-300' : 'bg-gray-700 text-gray-400'}`}>
                       💰 {costInfo.cost.tokens} Tokens
                     </div>
@@ -202,7 +202,7 @@ export default function CreateHeroPage() {
           {!loadingCostInfo && costInfo && costInfo.heroCount >= 10 && costInfo.canCreateMore && selectedClass && (
             <div className="mt-4 mb-6 p-4 bg-gray-800 rounded-lg border border-gray-700 max-w-md mx-auto">
               <div className="text-sm font-semibold text-white mb-3">Payment Method:</div>
-              <div className="flex gap-4 justify-center">
+              <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center">
                 <button
                   onClick={() => setPaymentMethod('tokens')}
                   disabled={!costInfo.canAffordWithTokens}
@@ -243,7 +243,7 @@ export default function CreateHeroPage() {
               <button
                 onClick={handleCreateHero}
                 disabled={creating || (costInfo && !costInfo.canCreateMore) || (costInfo && costInfo.heroCount >= 10 && !paymentMethod)}
-                className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white text-xl px-12 py-4 rounded-lg font-bold transition-all transform hover:scale-105 shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full sm:w-auto min-h-[48px] bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white text-lg sm:text-xl px-8 sm:px-12 py-3.5 sm:py-4 rounded-lg font-bold transition-all sm:transform sm:hover:scale-105 shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {creating ? 'Creating Hero...' : `Create ${CLASS_DATA.find(c => c.key === selectedClass)?.displayName}`}
               </button>
