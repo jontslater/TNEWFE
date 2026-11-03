@@ -9,6 +9,11 @@ import {
 import { useEnemyAnimator } from "../hooks/useEnemyAnimator";
 import { SPRITE_DISPLAY_SCALE, getEnemySpriteViewportPx } from "../utils/spriteDisplayScale";
 import { computeEnemySpriteFrameLayout } from "../utils/spriteEnemyFrameLayout";
+import {
+  getSpriteContainerTransform,
+  type ScreenFacing,
+} from "../utils/spriteFacing";
+import { getEnemyFacesLeft } from "../utils/spriteFacingConfig";
 
 export interface EnemySpriteJSHandle {
   playAnimation: (animation: string) => void;
@@ -21,7 +26,9 @@ interface EnemySpriteJSProps {
   enemyType: string;
   enemyName: string;
   className?: string;
-  facing?: "left" | "right";
+  facing?: ScreenFacing;
+  /** Override native sheet orientation (default: spriteFacingConfig) */
+  facesLeft?: boolean;
   style?: CSSProperties;
   scale?: number;
   isTransformed?: boolean; // For Werewolf: true if transformed to werewolf form
@@ -36,6 +43,7 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
       enemyName,
       className,
       facing = "left",
+      facesLeft: facesLeftProp,
       style,
       scale = SPRITE_DISPLAY_SCALE,
       isTransformed = false,
@@ -521,6 +529,9 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
       };
     }, [currentAnimation, onComplete]);
 
+    const nativeFacesLeft =
+      facesLeftProp ?? getEnemyFacesLeft(enemyType, enemyName);
+
     //
     // VIEWPORT — logical feet-anchor box (96px for raid dragons, 48px default)
     //
@@ -536,10 +547,7 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
           height: `${viewportPx}px`,
           overflow: isGoblin || isPaddedFrameDragon ? "visible" : "hidden",
           position: "relative",
-          transform:
-            facing === "left"
-              ? `scale(${scale}) scaleX(-1)`
-              : `scale(${scale})`,
+          transform: getSpriteContainerTransform(scale, facing, nativeFacesLeft),
           transformOrigin: "bottom center", // FEET anchor
           imageRendering: "pixelated",
         }}

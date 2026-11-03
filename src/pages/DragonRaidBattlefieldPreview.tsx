@@ -6,6 +6,7 @@ import React, { useEffect, useRef } from 'react';
 import EnemySpriteJS, { EnemySpriteJSHandle } from '../components/EnemySpriteJS';
 import { getBattlefieldEnemyPosition } from '../utils/battlefieldEnemyPosition';
 import { getBattlefieldSpriteScale } from '../utils/spriteDisplayScale';
+import { BATTLEFIELD_ENEMY_FACING } from '../utils/spriteFacing';
 
 const RAID_ENEMIES = [
   {
@@ -127,7 +128,7 @@ export default function DragonRaidBattlefieldPreview() {
                 enemyId={`raid-preview-${enemy.id}`}
                 enemyType={enemy.enemyType}
                 enemyName={enemy.name}
-                facing="left"
+                facing={BATTLEFIELD_ENEMY_FACING}
                 scale={scale}
               />
             </div>
@@ -163,7 +164,7 @@ export default function DragonRaidBattlefieldPreview() {
                 enemyId={`raid-preview-${enemy.id}`}
                 enemyType={enemy.enemyType}
                 enemyName={enemy.name}
-                facing="left"
+                facing={BATTLEFIELD_ENEMY_FACING}
                 scale={scale}
               />
             </div>

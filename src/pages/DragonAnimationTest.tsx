@@ -6,6 +6,7 @@
 import React, { useEffect, useRef } from 'react';
 import EnemySpriteJS, { EnemySpriteJSHandle } from '../components/EnemySpriteJS';
 import { getBattlefieldSpriteScale } from '../utils/spriteDisplayScale';
+import { BATTLEFIELD_ENEMY_FACING } from '../utils/spriteFacing';
 
 const DRAGONS: {
   id: string;
@@ -145,7 +146,7 @@ export default function DragonAnimationTest() {
                   enemyId={`dragon-test-${d.id}`}
                   enemyType={d.enemyType}
                   enemyName={d.enemyName}
-                  facing="left"
+                  facing={BATTLEFIELD_ENEMY_FACING}
                   scale={scale}
                 />
               </div>

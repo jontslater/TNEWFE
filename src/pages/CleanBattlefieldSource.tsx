@@ -33,6 +33,10 @@ import { createMusicalNoteEffect } from '../utils/musicalNoteEffects';
 import { getBattlefieldSpriteScale } from '../utils/spriteDisplayScale';
 import { getBattlefieldEnemyPosition } from '../utils/battlefieldEnemyPosition';
 import {
+  resolveBattlefieldFacing,
+  type ScreenFacing,
+} from '../utils/spriteFacing';
+import {
   applyHeroCombatStats,
   applyRewardBonus,
   applyStatDamageReduction,
@@ -2240,15 +2244,12 @@ export default function CleanBattlefieldSource() {
       });
   }, [twitchId, user?.id]);
 
-  // Get facing direction (from preferences or defaults)
-  const getFacingDirection = (roleOrEnemyName: string, defaultFacing: 'left' | 'right'): 'left' | 'right' => {
-    // Check preferences first
-    if (facingPreferences[roleOrEnemyName]) {
-      return facingPreferences[roleOrEnemyName];
-    }
-    
-    // Default facing
-    return defaultFacing;
+  // Desired screen facing (prefs override; mirror uses facesLeft in spriteFacingConfig)
+  const getFacingDirection = (
+    roleOrEnemyName: string,
+    side: 'hero' | 'enemy'
+  ): ScreenFacing => {
+    return resolveBattlefieldFacing(side, facingPreferences[roleOrEnemyName]);
   };
 
   // Toggle test healer
@@ -8433,7 +8434,7 @@ export default function CleanBattlefieldSource() {
                   ref={getHeroSpriteRef(hero.id)}
                   heroId={hero.id}
                   role={hero.role}
-                  facing={getFacingDirection(hero.role, 'right')}
+                  facing={getFacingDirection(hero.role, 'hero')}
                   scale={3.0}
                   shield={0}
                 />
@@ -8534,7 +8535,7 @@ export default function CleanBattlefieldSource() {
                   enemyId={enemy.id}
                   enemyType={enemy.enemyType || enemy.name}
                   enemyName={enemy.name}
-                  facing="left"
+                  facing={getFacingDirection(enemy.enemyType || enemy.name, 'enemy')}
                   scale={getBattlefieldSpriteScale({ isBoss: enemy.isBoss, enemyType: enemy.enemyType, enemyName: enemy.name })}
                 />
               </div>
@@ -8893,7 +8894,7 @@ export default function CleanBattlefieldSource() {
                   ref={getHeroSpriteRef(hero.id)}
                   heroId={hero.id}
                   role={hero.role}
-                  facing={getFacingDirection(hero.role, 'right')}
+                  facing={getFacingDirection(hero.role, 'hero')}
                   scale={3.0} // Same scale as idle
                   shield={0}
                   auraEffect={hero.auraEffect as any}
@@ -8993,10 +8994,6 @@ export default function CleanBattlefieldSource() {
                     'Elder Dragon': 'Elder Dragon'
                   };
                   const mappedType = spriteMap[enemy.name] || enemy.name;
-                  const defaultRaidFacing = 'right';
-                  const baseFacing = enemy.isBoss && enemy.enemyType === 'Corrupted High Priest'
-                    ? 'left'
-                    : (mappedType.startsWith('Dragon_') ? 'left' : getFacingDirection(enemy.enemyType || mappedType, defaultRaidFacing));
                   const finalScale = getBattlefieldSpriteScale({
                     isBoss: enemy.isBoss,
                     enemyType: enemy.enemyType || mappedType,
@@ -9009,7 +9006,7 @@ export default function CleanBattlefieldSource() {
                       enemyId={enemy.id}
                       enemyType={enemy.enemyType || mappedType}
                       enemyName={enemy.name}
-                      facing={baseFacing}
+                      facing={getFacingDirection(enemy.enemyType || mappedType, 'enemy')}
                       scale={finalScale}
                     />
                   );
@@ -9398,7 +9395,7 @@ export default function CleanBattlefieldSource() {
                 ref={getHeroSpriteRef(hero.id)}
                 heroId={hero.id}
                 role={hero.role}
-                facing={getFacingDirection(hero.role, 'right')}
+                facing={getFacingDirection(hero.role, 'hero')}
                 scale={3.0}
                 shield={0}
               />
@@ -9484,13 +9481,6 @@ export default function CleanBattlefieldSource() {
               }}
             >
               {(() => {
-                const defaultFacing = gameMode === 'raid' ? 'right' : 'left';
-                const isCultist = !enemy.isBoss && (enemy.enemyType === 'Cultist' || enemy.enemyType === 'Corrupted High Priest');
-                const baseFacing = enemy.isBoss && enemy.enemyType === 'Corrupted High Priest'
-                  ? 'left'
-                  : isCultist
-                    ? 'left'
-                    : getFacingDirection(enemy.enemyType || enemy.name, defaultFacing);
                 const finalScale = getBattlefieldSpriteScale({
                   isBoss: enemy.isBoss,
                   enemyType: enemy.enemyType || enemy.name,
@@ -9503,7 +9493,7 @@ export default function CleanBattlefieldSource() {
                     enemyId={enemy.id}
                     enemyType={enemy.enemyType || enemy.name}
                     enemyName={enemy.name}
-                    facing={baseFacing}
+                    facing={getFacingDirection(enemy.enemyType || enemy.name, 'enemy')}
                     scale={finalScale}
                     isTransformed={enemy.isTransformed || false}
                   />
