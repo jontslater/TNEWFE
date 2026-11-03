@@ -1106,14 +1106,16 @@ export const raidAPI = {
     return response.data;
   },
 
-  async joinRaidQueue(raidId: string, userId: string, heroName: string, heroLevel: number, heroRole: string, itemScore: number): Promise<{success: boolean}> {
-    const response = await apiClient.post(`/api/raids/queue/${raidId}/join`, {
-      userId,
-      heroName,
-      heroLevel,
-      heroRole,
-      itemScore
-    });
+  async joinRaidQueue(
+    raidId: string,
+    payload: {
+      userId: string;
+      heroId: string;
+      role: 'tank' | 'healer' | 'dps';
+      itemScore?: number;
+    }
+  ): Promise<{ success: boolean }> {
+    const response = await apiClient.post(`/api/raids/queue/${raidId}/join`, payload);
     return response.data;
   },
 
@@ -1192,14 +1194,23 @@ export const raidAPI = {
   },
   
   // Queue methods
-  async joinQueue(raidId: string, userId: string, heroName: string, heroLevel: number, heroRole: string, itemScore: number): Promise<{success: boolean, message: string, position?: number, queueSize?: number, spotsRemaining?: number, autoStarted?: boolean, instanceId?: string}> {
-    const response = await apiClient.post(`/api/raids/queue/${raidId}/join`, {
-      userId,
-      heroName,
-      heroLevel,
-      heroRole,
-      itemScore
-    });
+  async joinQueue(
+    raidId: string,
+    payload: {
+      userId: string;
+      heroId: string;
+      role: 'tank' | 'healer' | 'dps';
+      itemScore?: number;
+    }
+  ): Promise<{
+    success: boolean;
+    message: string;
+    position?: number;
+    queueSize?: number;
+    roleCounts?: { tank: number; healer: number; dps: number };
+    estimatedWait?: number;
+  }> {
+    const response = await apiClient.post(`/api/raids/queue/${raidId}/join`, payload);
     return response.data;
   },
   
@@ -1208,8 +1219,20 @@ export const raidAPI = {
     return response.data;
   },
   
-  async getQueueStatus(raidId: string): Promise<{queueSize: number, participants: any[], lastUpdated?: any}> {
-    const response = await apiClient.get(`/api/raids/queue/${raidId}`);
+  async getQueueStatus(
+    raidId: string,
+    userId?: string
+  ): Promise<{
+    inQueue?: boolean;
+    queueSize: number;
+    participants: any[];
+    roleCounts?: { tank: number; healer: number; dps: number };
+    userRole?: string;
+    lastUpdated?: any;
+  }> {
+    const response = await apiClient.get(`/api/raids/queue/${raidId}`, {
+      params: userId ? { userId } : undefined,
+    });
     return response.data;
   },
   
@@ -1650,7 +1673,81 @@ export const dungeonAPI = {
       groupId
     });
     return response.data;
-  }
+  },
+
+  async startDungeon(
+    dungeonId: string,
+    participants: string[],
+    organizerId: string
+  ): Promise<{ success: boolean; instanceId?: string }> {
+    const response = await apiClient.post(`/api/dungeon/${dungeonId}/start`, {
+      participants,
+      organizerId,
+    });
+    return response.data;
+  },
+};
+
+/** Streamer battlefield party queues (Jackbox-style codes). Requires backend routes — see docs/DUNGEON_RAID_LOBBY_DESIGN.md */
+export const battlefieldQueueAPI = {
+  async create(
+    battlefieldId: string,
+    body: {
+      streamerId: string;
+      streamerName: string;
+      type: 'dungeon' | 'raid';
+      instanceId: string;
+    }
+  ): Promise<{ success: boolean; queue?: any; message?: string; error?: string }> {
+    try {
+      const response = await apiClient.post(
+        `/api/battlefields/${encodeURIComponent(battlefieldId)}/queue`,
+        body
+      );
+      return response.data;
+    } catch (err: any) {
+      if (err.response?.status === 404) {
+        return {
+          success: false,
+          error:
+            'Battlefield queue API is not deployed yet. Use chat or wait for backend update (see docs/DUNGEON_RAID_LOBBY_DESIGN.md).',
+        };
+      }
+      throw err;
+    }
+  },
+
+  async joinByCode(body: {
+    code: string;
+    heroId: string;
+    userId: string;
+    username: string;
+  }): Promise<{ success: boolean; message?: string; queue?: any; error?: string }> {
+    try {
+      const response = await apiClient.post('/api/battlefields/queue/join', body);
+      return response.data;
+    } catch (err: any) {
+      if (err.response?.status === 404) {
+        return {
+          success: false,
+          error: 'Battlefield queue join API is not deployed yet. Use !join on the streamer battlefield first.',
+        };
+      }
+      throw err;
+    }
+  },
+
+  async leave(body: { userId: string }): Promise<{ success: boolean; message?: string }> {
+    try {
+      const response = await apiClient.post('/api/battlefields/queue/leave', body);
+      return response.data;
+    } catch (err: any) {
+      if (err.response?.status === 404) {
+        return { success: false, message: 'Leave endpoint not available' };
+      }
+      throw err;
+    }
+  },
 };
 
 // Enchanting API
