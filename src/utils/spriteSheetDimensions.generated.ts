@@ -11,7 +11,9 @@ export interface SpriteSheetDimensions {
 
 const LOOKUP: Record<string, SpriteSheetDimensions> = {
   "/Sprites/enemies/Dragon_1/Dead.png|3": { frameWidth: 256, frameHeight: 256, frameCount: 3, pngWidth: 768, pngHeight: 256 },
+  "/Sprites/enemies/Dragon_1/Flight.png|12": { frameWidth: 256, frameHeight: 256, frameCount: 12, pngWidth: 3072, pngHeight: 256 },
   "/Sprites/enemies/Dragon_1/Hurt.png|4": { frameWidth: 256, frameHeight: 256, frameCount: 4, pngWidth: 1024, pngHeight: 256 },
+  "/Sprites/enemies/Dragon_1/Idle.png|7": { frameWidth: 256, frameHeight: 256, frameCount: 7, pngWidth: 1792, pngHeight: 256 },
   "/Sprites/enemies/Dragon_1/Landing.png|5": { frameWidth: 256, frameHeight: 256, frameCount: 5, pngWidth: 1280, pngHeight: 256 },
   "/Sprites/enemies/Dragon_1/Rise.png|7": { frameWidth: 256, frameHeight: 256, frameCount: 7, pngWidth: 1792, pngHeight: 256 },
   "/Sprites/enemies/Dragon_1/Walk.png|12": { frameWidth: 256, frameHeight: 256, frameCount: 12, pngWidth: 3072, pngHeight: 256 },

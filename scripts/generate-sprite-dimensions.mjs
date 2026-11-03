@@ -43,7 +43,7 @@ function parseStripEntriesFromSpriteAnimationData(source) {
   /** @type {{ spriteSheet: string; frameCount: number; frameWidth?: number; frameHeight?: number }[]} */
   const entries = [];
   const re =
-    /frameCount:\s*(\d+),\s*\n\s*frameWidth:\s*(\d+),\s*\n\s*frameHeight:\s*(\d+),[\s\S]*?spriteSheet:\s*"(\/Sprites\/[^"]+)"/g;
+    /frameCount:\s*(\d+),\s*\n\s*frameWidth:\s*(\d+),[^\n]*\n\s*frameHeight:\s*(\d+),[\s\S]*?spriteSheet:\s*"(\/Sprites\/[^"]+)"/g;
   let m;
   while ((m = re.exec(source))) {
     entries.push({
