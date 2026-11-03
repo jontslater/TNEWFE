@@ -295,73 +295,78 @@ export default function PlayerPortal() {
     <div className="min-h-screen bg-gradient-to-b from-gray-900 via-gray-800 to-gray-900">
       {/* Header */}
       <header className="bg-gray-800 border-b border-gray-700 shadow-lg">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center space-x-6">
-            <h1 className="text-2xl font-bold text-white">Player Portal</h1>
-            <nav className="flex space-x-4">
+        <div className="container mx-auto px-4 py-3 sm:py-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4 min-w-0">
+            <h1 className="text-xl sm:text-2xl font-bold text-white truncate">Player Portal</h1>
+            <nav className="hidden md:flex flex-wrap gap-x-3 gap-y-1 text-sm">
               <button
                 onClick={() => navigate('/')}
-                className="text-gray-300 hover:text-white transition-colors"
+                className="min-h-[44px] px-2 text-gray-300 hover:text-white transition-colors"
               >
                 Home
               </button>
               <button
                 onClick={() => navigate('/classes')}
-                className="text-gray-300 hover:text-white transition-colors"
+                className="min-h-[44px] px-2 text-gray-300 hover:text-white transition-colors"
               >
                 Classes
               </button>
               <button
                 onClick={() => navigate('/professions')}
-                className="text-gray-300 hover:text-white transition-colors"
+                className="min-h-[44px] px-2 text-gray-300 hover:text-white transition-colors"
               >
                 Professions
               </button>
               <button
                 onClick={() => navigate('/raids')}
-                className="text-gray-300 hover:text-white transition-colors"
+                className="min-h-[44px] px-2 text-gray-300 hover:text-white transition-colors"
               >
                 Raids
               </button>
             </nav>
           </div>
-          <div className="flex items-center space-x-4">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             {loginRewardStatus?.canClaim && (
               <button
                 onClick={() => setShowLoginReward(true)}
-                className="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded transition-colors flex items-center gap-2"
+                className="min-h-[44px] bg-yellow-600 hover:bg-yellow-700 text-white px-3 sm:px-4 py-2 rounded transition-colors flex items-center gap-2 text-sm"
               >
                 <span>🎁</span>
-                <span>Daily Reward</span>
+                <span className="hidden sm:inline">Daily Reward</span>
+                <span className="sm:hidden">Reward</span>
                 {loginRewardStatus?.consecutiveDays > 0 && (
                   <span className="text-xs bg-yellow-700 px-2 py-0.5 rounded">
-                    {loginRewardStatus.consecutiveDays} day streak
+                    {loginRewardStatus.consecutiveDays}d
                   </span>
                 )}
               </button>
             )}
             {dungeonQueueStatus?.inQueue && (
-              <div className="bg-orange-600 text-white px-4 py-2 rounded flex items-center gap-2">
+              <div className="min-h-[44px] bg-orange-600 text-white px-3 py-2 rounded flex items-center gap-2 text-sm">
                 <span>⚔️</span>
                 <span>In Queue</span>
               </div>
             )}
             <button
               onClick={() => navigate('/purchases/history')}
-              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded transition-colors"
+              className="min-h-[44px] bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded transition-colors text-sm"
             >
-              Purchase History
+              <span className="hidden sm:inline">Purchase History</span>
+              <span className="sm:hidden">Purchases</span>
             </button>
             <button
               onClick={() => navigate('/report-issue')}
-              className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded transition-colors"
+              className="min-h-[44px] bg-orange-600 hover:bg-orange-700 text-white px-3 py-2 rounded transition-colors text-sm"
             >
-              Report Issue
+              <span className="hidden sm:inline">Report Issue</span>
+              <span className="sm:hidden">Report</span>
             </button>
-            <span className="text-gray-300">Welcome, {user?.twitchUsername}</span>
+            <span className="hidden lg:inline text-gray-300 text-sm truncate max-w-[120px]">
+              {user?.twitchUsername}
+            </span>
             <button 
               onClick={logout}
-              className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded transition-colors"
+              className="min-h-[44px] bg-gray-700 hover:bg-gray-600 text-white px-3 sm:px-4 py-2 rounded transition-colors text-sm"
             >
               Logout
             </button>
@@ -371,11 +376,14 @@ export default function PlayerPortal() {
 
       {/* Navigation Tabs */}
       <div className="bg-gray-800 border-b border-gray-700">
-        <div className="container mx-auto px-4">
-          <nav className="flex space-x-4">
+        <div className="container mx-auto px-2 sm:px-4">
+          <nav
+            className="flex gap-1 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            aria-label="Portal sections"
+          >
             <button
               onClick={() => setActiveTab('hero')}
-              className={`px-6 py-4 font-semibold transition-colors border-b-2 ${
+              className={`shrink-0 px-4 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 min-h-[44px] text-sm sm:text-base ${
                 activeTab === 'hero'
                   ? 'text-blue-400 border-blue-400'
                   : 'text-gray-400 border-transparent hover:text-gray-300'
@@ -385,7 +393,7 @@ export default function PlayerPortal() {
             </button>
             <button
               onClick={() => setActiveTab('inventory')}
-              className={`px-6 py-4 font-semibold transition-colors border-b-2 ${
+              className={`shrink-0 px-4 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 min-h-[44px] text-sm sm:text-base ${
                 activeTab === 'inventory'
                   ? 'text-yellow-400 border-yellow-400'
                   : 'text-gray-400 border-transparent hover:text-gray-300'
@@ -395,7 +403,7 @@ export default function PlayerPortal() {
             </button>
             <button
               onClick={() => setActiveTab('profession')}
-              className={`px-6 py-4 font-semibold transition-colors border-b-2 ${
+              className={`shrink-0 px-4 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 min-h-[44px] text-sm sm:text-base ${
                 activeTab === 'profession'
                   ? 'text-green-400 border-green-400'
                   : 'text-gray-400 border-transparent hover:text-gray-300'
@@ -405,7 +413,7 @@ export default function PlayerPortal() {
             </button>
             <button
               onClick={() => setActiveTab('guild')}
-              className={`px-6 py-4 font-semibold transition-colors border-b-2 ${
+              className={`shrink-0 px-4 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 min-h-[44px] text-sm sm:text-base ${
                 activeTab === 'guild'
                   ? 'text-purple-400 border-purple-400'
                   : 'text-gray-400 border-transparent hover:text-gray-300'
@@ -415,7 +423,7 @@ export default function PlayerPortal() {
             </button>
             <button
               onClick={() => setActiveTab('raids')}
-              className={`px-6 py-4 font-semibold transition-colors border-b-2 ${
+              className={`shrink-0 px-4 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 min-h-[44px] text-sm sm:text-base ${
                 activeTab === 'raids'
                   ? 'text-red-400 border-red-400'
                   : 'text-gray-400 border-transparent hover:text-gray-300'
@@ -425,7 +433,7 @@ export default function PlayerPortal() {
             </button>
             <button
               onClick={() => setActiveTab('skills')}
-              className={`px-6 py-4 font-semibold transition-colors border-b-2 ${
+              className={`shrink-0 px-4 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 min-h-[44px] text-sm sm:text-base ${
                 activeTab === 'skills'
                   ? 'text-indigo-400 border-indigo-400'
                   : 'text-gray-400 border-transparent hover:text-gray-300'
@@ -435,7 +443,7 @@ export default function PlayerPortal() {
             </button>
             <button
               onClick={() => setActiveTab('achievements')}
-              className={`px-6 py-4 font-semibold transition-colors border-b-2 ${
+              className={`shrink-0 px-4 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 min-h-[44px] text-sm sm:text-base ${
                 activeTab === 'achievements'
                   ? 'text-amber-400 border-amber-400'
                   : 'text-gray-400 border-transparent hover:text-gray-300'
@@ -445,7 +453,7 @@ export default function PlayerPortal() {
             </button>
             <button
               onClick={() => setActiveTab('dungeon')}
-              className={`px-6 py-4 font-semibold transition-colors border-b-2 relative ${
+              className={`shrink-0 px-4 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 relative min-h-[44px] text-sm sm:text-base ${
                 activeTab === 'dungeon'
                   ? 'text-orange-400 border-orange-400'
                   : 'text-gray-400 border-transparent hover:text-gray-300'
@@ -458,7 +466,7 @@ export default function PlayerPortal() {
             </button>
             <button
               onClick={() => setActiveTab('browserSource')}
-              className={`px-6 py-4 font-semibold transition-colors border-b-2 ${
+              className={`shrink-0 px-4 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 min-h-[44px] text-sm sm:text-base ${
                 activeTab === 'browserSource'
                   ? 'text-cyan-400 border-cyan-400'
                   : 'text-gray-400 border-transparent hover:text-gray-300'
@@ -468,7 +476,7 @@ export default function PlayerPortal() {
             </button>
             <button
               onClick={() => setActiveTab('auction')}
-              className={`px-6 py-4 font-semibold transition-colors border-b-2 ${
+              className={`shrink-0 px-4 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 min-h-[44px] text-sm sm:text-base ${
                 activeTab === 'auction'
                   ? 'text-emerald-400 border-emerald-400'
                   : 'text-gray-400 border-transparent hover:text-gray-300'
@@ -478,7 +486,7 @@ export default function PlayerPortal() {
             </button>
             <button
               onClick={() => setActiveTab('quests')}
-              className={`px-6 py-4 font-semibold transition-colors border-b-2 relative ${
+              className={`shrink-0 px-4 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 relative min-h-[44px] text-sm sm:text-base ${
                 activeTab === 'quests'
                   ? 'text-orange-400 border-orange-400'
                   : 'text-gray-400 border-transparent hover:text-gray-300'
@@ -488,7 +496,7 @@ export default function PlayerPortal() {
             </button>
             <button
               onClick={() => setActiveTab('prestige')}
-              className={`px-6 py-4 font-semibold transition-colors border-b-2 ${
+              className={`shrink-0 px-4 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 min-h-[44px] text-sm sm:text-base ${
                 activeTab === 'prestige'
                   ? 'text-amber-400 border-amber-400'
                   : 'text-gray-400 border-transparent hover:text-gray-300'
@@ -499,7 +507,7 @@ export default function PlayerPortal() {
             {isAdmin && (
               <button
                 onClick={() => setActiveTab('allHeroes')}
-                className={`px-6 py-4 font-semibold transition-colors border-b-2 ${
+                className={`shrink-0 px-4 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 min-h-[44px] text-sm sm:text-base ${
                   activeTab === 'allHeroes'
                     ? 'text-pink-400 border-pink-400'
                     : 'text-gray-400 border-transparent hover:text-gray-300'
@@ -513,7 +521,7 @@ export default function PlayerPortal() {
       </div>
 
       {/* Main Content */}
-      <main className="container mx-auto px-4 py-8">
+      <main className="container mx-auto px-3 sm:px-4 py-6 sm:py-8 min-w-0">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Social Sidebar (Party & Chat) - Right side, always visible except on auction/quests */}
           {activeTab !== 'auction' && activeTab !== 'quests' && (
@@ -814,7 +822,7 @@ export default function PlayerPortal() {
               />
             )}
             {activeTab === 'quests' && (
-              <QuestsPage heroId={hero?.id} />
+              <QuestsPage heroId={hero?.id} embedded />
             )}
             {activeTab === 'prestige' && hero && (
               <PrestigeStore hero={hero} onUpdate={refetchHero} />

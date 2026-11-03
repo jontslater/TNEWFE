@@ -5,22 +5,22 @@ export default function FAQPage() {
     <div className="min-h-screen bg-gradient-to-b from-gray-900 via-purple-900 to-gray-900">
       <Navigation />
 
-      <div className="container mx-auto px-4 py-12 max-w-6xl">
-        <div className="text-center mb-12">
-          <h1 className="text-5xl font-bold text-white mb-4">Frequently Asked Questions</h1>
-          <p className="text-xl text-gray-400">
+      <div className="container mx-auto px-4 py-8 sm:py-12 max-w-6xl">
+        <div className="text-center mb-8 sm:mb-12">
+          <h1 className="text-3xl sm:text-5xl font-bold text-white mb-3 sm:mb-4">Frequently Asked Questions</h1>
+          <p className="text-base sm:text-xl text-gray-400 px-1">
             Everything you need to know about The Never Ending War
           </p>
         </div>
 
         {/* Getting Started */}
-        <div className="bg-gray-800 rounded-lg p-8 mb-8 border-2 border-purple-600">
-          <h2 className="text-3xl font-bold text-purple-400 mb-6">🚀 Getting Started</h2>
+        <div className="bg-gray-800 rounded-lg p-4 sm:p-8 mb-6 sm:mb-8 border-2 border-purple-600">
+          <h2 className="text-2xl sm:text-3xl font-bold text-purple-400 mb-4 sm:mb-6">🚀 Getting Started</h2>
           
           <div className="space-y-4 text-gray-300">
             <div>
               <h3 className="text-xl font-bold text-white mb-2">How do I join the game?</h3>
-              <p>Type <code className="bg-gray-900 px-2 py-1 rounded text-green-400">!join [class]</code> in Twitch chat to create your first character and join the battlefield!</p>
+              <p>Type <code className="break-all bg-gray-900 px-2 py-1 rounded text-green-400">!join [class]</code> in Twitch chat to create your first character and join the battlefield!</p>
             </div>
 
             <div>

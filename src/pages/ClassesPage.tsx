@@ -64,11 +64,11 @@ export default function ClassesPage() {
     <div className="min-h-screen bg-gradient-to-b from-gray-900 via-purple-900 to-gray-900">
       <Navigation />
 
-      <div className="container mx-auto px-4 py-12">
+      <div className="container mx-auto px-4 py-8 sm:py-12">
         {/* Header */}
-        <div className="text-center mb-12">
-          <h1 className="text-5xl font-bold text-white mb-4">Choose Your Class</h1>
-          <p className="text-xl text-gray-400">
+        <div className="text-center mb-8 sm:mb-12">
+          <h1 className="text-3xl sm:text-5xl font-bold text-white mb-3 sm:mb-4">Choose Your Class</h1>
+          <p className="text-base sm:text-xl text-gray-400 px-1">
             28 unique classes across 3 roles. Master your playstyle.
           </p>
         </div>

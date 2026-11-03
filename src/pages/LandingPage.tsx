@@ -20,28 +20,28 @@ export default function LandingPage() {
         </div>
 
         {/* Hero Content */}
-        <div className="relative z-10 container mx-auto px-4 py-20 text-center">
-          <h1 className="text-7xl font-bold text-white mb-6 drop-shadow-2xl">
+        <div className="relative z-10 container mx-auto px-4 py-12 sm:py-16 md:py-20 text-center">
+          <h1 className="text-4xl sm:text-5xl md:text-7xl font-bold text-white mb-4 sm:mb-6 drop-shadow-2xl leading-tight">
             The Never Ending War
           </h1>
-          <p className="text-2xl text-gray-300 mb-4">
+          <p className="text-lg sm:text-2xl text-gray-300 mb-3 sm:mb-4">
             An Idle Twitch-Integrated MMORPG
           </p>
-          <p className="text-xl text-gray-400 mb-12 max-w-2xl mx-auto">
+          <p className="text-base sm:text-xl text-gray-400 mb-8 sm:mb-12 max-w-2xl mx-auto px-1">
             Join the battle. Choose your class. Master your profession. 
             Raid epic bosses. All while your hero fights 24/7.
           </p>
 
-          <div className="flex gap-4 justify-center">
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center items-stretch sm:items-center max-w-md sm:max-w-none mx-auto">
             <button
               onClick={loginWithTwitch}
-              className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white text-xl px-12 py-4 rounded-lg font-bold transition-all transform hover:scale-105 shadow-2xl"
+              className="min-h-[48px] bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white text-lg sm:text-xl px-8 sm:px-12 py-3.5 sm:py-4 rounded-lg font-bold transition-all sm:transform sm:hover:scale-105 shadow-2xl"
             >
               Start Your Journey
             </button>
             <button
               onClick={() => navigate('/classes')}
-              className="bg-gray-800 hover:bg-gray-700 text-white text-xl px-12 py-4 rounded-lg font-bold transition-colors"
+              className="min-h-[48px] bg-gray-800 hover:bg-gray-700 text-white text-lg sm:text-xl px-8 sm:px-12 py-3.5 sm:py-4 rounded-lg font-bold transition-colors"
             >
               View Classes
             </button>
@@ -51,7 +51,7 @@ export default function LandingPage() {
 
       {/* Features Grid */}
       <div className="container mx-auto px-4 py-20">
-        <h2 className="text-4xl font-bold text-white text-center mb-12">
+        <h2 className="text-3xl sm:text-4xl font-bold text-white text-center mb-8 sm:mb-12">
           Epic MMO Features
         </h2>
 
@@ -132,15 +132,15 @@ export default function LandingPage() {
       {/* CTA Section */}
       <div className="bg-gradient-to-r from-purple-900 to-blue-900 py-20">
         <div className="container mx-auto px-4 text-center">
-          <h2 className="text-5xl font-bold text-white mb-6">
+          <h2 className="text-3xl sm:text-5xl font-bold text-white mb-4 sm:mb-6">
             Ready to Join the War?
           </h2>
-          <p className="text-xl text-gray-300 mb-8">
+          <p className="text-base sm:text-xl text-gray-300 mb-6 sm:mb-8 px-2">
             Your legend awaits. Login with Twitch and start your adventure.
           </p>
           <button
             onClick={loginWithTwitch}
-            className="bg-white hover:bg-gray-100 text-purple-900 text-xl px-12 py-4 rounded-lg font-bold transition-colors"
+            className="min-h-[48px] bg-white hover:bg-gray-100 text-purple-900 text-lg sm:text-xl px-8 sm:px-12 py-3.5 sm:py-4 rounded-lg font-bold transition-colors"
           >
             Login with Twitch
           </button>
