@@ -12,7 +12,10 @@ import {
 
 const DEMO_HEROES = [
   { id: 'demo-guardian', role: 'guardian', label: 'Guardian' },
-  { id: 'demo-mage', role: 'mage', label: 'Mage (LuizMelo)' },
+  { id: 'demo-chronomancer', role: 'chronomancer', label: 'Chronomancer' },
+  { id: 'demo-stormwarrior', role: 'stormwarrior', label: 'Stormwarrior' },
+  { id: 'demo-mage', role: 'mage', label: 'Mage' },
+  { id: 'demo-hunter', role: 'hunter', label: 'Hunter' },
   { id: 'demo-monk', role: 'monk', label: 'Monk' },
 ] as const;
 
@@ -22,6 +25,12 @@ const DEMO_ENEMIES = [
     enemyType: 'Imp',
     enemyName: 'Imp',
     label: 'Imp',
+  },
+  {
+    id: 'demo-kobold',
+    enemyType: 'Kobold Warrior',
+    enemyName: 'Kobold Warrior',
+    label: 'Kobold',
   },
   {
     id: 'demo-dragon1',
@@ -42,6 +51,7 @@ export default function BattlefieldFacingPreviewPage() {
   return (
     <div
       id="battlefield-facing-preview"
+      className="clean-battlefield-page"
       style={{
         width: '1920px',
         height: '1080px',
@@ -68,24 +78,30 @@ export default function BattlefieldFacingPreviewPage() {
       <div
         style={{
           position: 'absolute',
-          left: 80,
-          top: 120,
-          bottom: 80,
-          width: '42%',
+          left: 48,
+          right: '50%',
+          bottom: 72,
           display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'flex-end',
-          gap: 48,
-          borderRight: '1px dashed rgba(148,163,184,0.35)',
-          paddingRight: 40,
+          flexDirection: 'row',
+          alignItems: 'flex-end',
+          justifyContent: 'flex-start',
+          gap: 28,
+          paddingRight: 24,
+          borderBottom: '2px solid rgba(59,130,246,0.35)',
+          minHeight: 220,
         }}
       >
-        <div style={{ color: '#94a3b8', fontSize: 14, marginBottom: 8 }}>Heroes (left)</div>
         {DEMO_HEROES.map((h) => (
           <div
             key={h.id}
+            data-hero-id={h.id}
             data-side="hero"
-            style={{ display: 'flex', alignItems: 'flex-end', gap: 16 }}
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 8,
+            }}
           >
             <HeroSpriteJS
               heroId={h.id}
@@ -93,7 +109,9 @@ export default function BattlefieldFacingPreviewPage() {
               facing={BATTLEFIELD_HERO_FACING}
               scale={2.5}
             />
-            <span style={{ color: '#e2e8f0', fontSize: 18 }}>{h.label}</span>
+            <span style={{ color: '#e2e8f0', fontSize: 13, textAlign: 'center' }}>
+              {h.label}
+            </span>
           </div>
         ))}
       </div>
@@ -101,21 +119,19 @@ export default function BattlefieldFacingPreviewPage() {
       <div
         style={{
           position: 'absolute',
-          right: 80,
-          top: 120,
-          bottom: 80,
-          width: '42%',
+          left: '50%',
+          right: 48,
+          bottom: 72,
           display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'flex-end',
+          flexDirection: 'row',
           alignItems: 'flex-end',
-          gap: 48,
-          paddingLeft: 40,
+          justifyContent: 'flex-end',
+          gap: 32,
+          paddingLeft: 24,
+          borderBottom: '2px solid rgba(239,68,68,0.35)',
+          minHeight: 220,
         }}
       >
-        <div style={{ color: '#94a3b8', fontSize: 14, marginBottom: 8, alignSelf: 'flex-end' }}>
-          Enemies (right)
-        </div>
         {DEMO_ENEMIES.map((e) => {
           const isBoss = 'isBoss' in e && Boolean(e.isBoss);
           const scale = getBattlefieldSpriteScale({
@@ -127,7 +143,12 @@ export default function BattlefieldFacingPreviewPage() {
             <div
               key={e.id}
               data-side="enemy"
-              style={{ display: 'flex', alignItems: 'flex-end', gap: 16, flexDirection: 'row-reverse' }}
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: 8,
+              }}
             >
               <div style={{ overflow: 'visible', minWidth: isBoss ? 720 : undefined }}>
                 <EnemySpriteJS
@@ -138,7 +159,9 @@ export default function BattlefieldFacingPreviewPage() {
                   scale={scale}
                 />
               </div>
-              <span style={{ color: '#e2e8f0', fontSize: 18 }}>{e.label}</span>
+              <span style={{ color: '#e2e8f0', fontSize: 13, textAlign: 'center' }}>
+                {e.label}
+              </span>
             </div>
           );
         })}

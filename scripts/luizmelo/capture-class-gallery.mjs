@@ -15,7 +15,10 @@ fs.mkdirSync(outDir, { recursive: true });
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage({ viewport: { width: 1400, height: 2400 } });
 await page.goto(`${baseUrl}/class-sprites`, { waitUntil: 'networkidle', timeout: 120000 });
-await page.waitForTimeout(2000);
+await page.waitForSelector('[data-class="chronomancer"] canvas, [data-class="chronomancer"] img', {
+  timeout: 60000,
+}).catch(() => {});
+await page.waitForTimeout(3500);
 
 await page.screenshot({
   path: path.join(outDir, 'all-classes-gallery.png'),
