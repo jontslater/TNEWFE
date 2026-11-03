@@ -20,6 +20,7 @@ import { checkLastStand, checkGroupHeal, checkInstantHeal, checkAutoDispel } fro
 import { spawnRandomEncounter, generateEnemyPack, getPackSize } from '../utils/enemySpawning';
 import { calculateEnemyScaling, scaleEnemyStats, getEnemyBaseStats, calculateAveragePartyLevel, calculateAverageGearScore } from '../utils/enemyScaling';
 import { getHeroAnimations, getEnemyAnimations } from '../utils/spriteAnimationData';
+import { BATTLEFIELD_ENEMY_FACING, BATTLEFIELD_HERO_FACING } from '../utils/spriteFacing';
 import { getSkillTree, calculateSkillBonuses, getTotalSkillPoints, getAvailableSkillPoints, SkillData, SkillDefinition } from '../utils/skillSystem';
 import { heroAPI } from '../api/client';
 import { Hero } from '../types/Hero';
@@ -121,47 +122,23 @@ export interface TestEnemy {
 // LocalStorage keys for facing preferences
 const HERO_FACING_STORAGE_KEY = 'animationTest_heroFacing';
 const ENEMY_FACING_STORAGE_KEY = 'animationTest_enemyFacing';
-// Mapping of enemy names to their sprite sheet facing direction
-// If sprite sheet faces RIGHT, we use 'left' (which flips with scaleX(-1) to face left on screen)
-// If sprite sheet faces LEFT, we use 'right' (no flip, already facing left on screen)
-const ENEMY_SPRITE_SHEET_FACING: Record<string, 'left' | 'right'> = {
-  'Kobold Warrior': 'left', // Sprite sheet faces right, needs flip
-  'Baby Dragon': 'right', // Sprite sheet faces left, no flip needed
-  'Imp': 'left',
-  'Lizardman': 'left',
-  'Masked Orc': 'right', // Sprite sheet faces left, no flip needed
-  'Werewolf': 'left',
-  'Skeleton Mage': 'left',
-  'Witch': 'right', // Sprite sheet faces left, no flip needed
-  'Mimic': 'left',
-  'Gryphon': 'left', // Sprite sheet faces right, needs flip
-  'Minotaur': 'left',
-  'Headless Horseman': 'right', // Sprite sheet faces left, no flip needed
-  'Adult Dragon': 'right', // Sprite sheet faces left, no flip needed
-  'Demon Lord': 'right', // Sprite sheet faces left, no flip needed
-  'Elder Dragon': 'right', // Sprite sheet faces left, no flip needed
-};
-// Helper functions for localStorage
+
 const getSavedFacing = (key: string, spriteType: string): 'left' | 'right' => {
   try {
     const saved = localStorage.getItem(key);
     if (saved) {
       const prefs = JSON.parse(saved);
-      // If preference exists, use it; otherwise use default based on key
       if (prefs[spriteType]) {
         return prefs[spriteType];
       }
     }
   } catch (e) {
   }
-  
-  // For enemies: use sprite sheet facing mapping, or default to 'left' (flip)
+
   if (key === ENEMY_FACING_STORAGE_KEY) {
-    return ENEMY_SPRITE_SHEET_FACING[spriteType] || 'left';
+    return BATTLEFIELD_ENEMY_FACING;
   }
-  
-  // For heroes: default to right (toward enemies)
-  return 'right';
+  return BATTLEFIELD_HERO_FACING;
 };
 const saveFacing = (key: string, spriteType: string, facing: 'left' | 'right') => {
   try {

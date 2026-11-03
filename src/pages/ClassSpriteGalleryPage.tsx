@@ -56,7 +56,12 @@ export default function ClassSpriteGalleryPage() {
             data-class={role}
           >
             <div className="mb-3 flex h-[120px] w-[120px] items-end justify-center rounded bg-slate-800/80">
-              <HeroSpriteJS heroId={`gallery-${role}`} role={role} scale={2.5} />
+              <HeroSpriteJS
+                heroId={`gallery-${role}`}
+                role={role}
+                scale={2.5}
+                facing="right"
+              />
             </div>
             <span className="text-sm font-medium capitalize text-slate-200">{role}</span>
           </div>

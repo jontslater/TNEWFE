@@ -37,6 +37,10 @@ import {
   type ScreenFacing,
 } from '../utils/spriteFacing';
 import {
+  resolveBattlefieldFacing,
+  type ScreenFacing,
+} from '../utils/spriteFacing';
+import {
   applyHeroCombatStats,
   applyRewardBonus,
   applyStatDamageReduction,

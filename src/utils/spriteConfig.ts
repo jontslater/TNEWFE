@@ -5,6 +5,8 @@ export const HERO_SPRITES: Record<string, {
   sprite: string;
   isAnimated: boolean;
   spriteSize?: number;
+  /** True when idle art faces the left side of the frame (see spriteFacing.ts) */
+  facesLeft?: boolean;
   frameCount?: { idle: number; attack: number; hurt: number; death: number; rangedAttack?: number; projectile?: number; walk?: number; run?: number };
   frameWidth?: { idle?: number; attack?: number; hurt?: number; death?: number; rangedAttack?: number; projectile?: number; walk?: number; run?: number }; // Optional per-animation frame widths
   animations?: {

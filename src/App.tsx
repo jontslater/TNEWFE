@@ -39,6 +39,7 @@ import PurchaseCancelPage from './pages/PurchaseCancelPage';
 import PurchaseHistoryPage from './pages/PurchaseHistoryPage';
 import FAQPage from './pages/FAQPage';
 import ClassSpriteGalleryPage from './pages/ClassSpriteGalleryPage';
+import BattlefieldFacingPreviewPage from './pages/BattlefieldFacingPreviewPage';
 // Old UnifiedBrowserSourcePage kept for reference but route now uses new component
 // import UnifiedBrowserSourcePage from './pages/UnifiedBrowserSourcePage';
 import LoginRewardModal from './components/LoginRewardModal';
@@ -71,6 +72,7 @@ function App() {
         <Route path="/enemy-animation-test" element={<EnemyAnimationTestPage />} />
         <Route path="/animation-test" element={<AnimationTestPage />} />
         <Route path="/class-sprites" element={<ClassSpriteGalleryPage />} />
+        <Route path="/battlefield-facing" element={<BattlefieldFacingPreviewPage />} />
         <Route path="/dragon-test" element={<DragonAnimationTest />} />
         <Route path="/dragon-raid-preview" element={<DragonRaidBattlefieldPreview />} />
         <Route path="/achievements" element={<AchievementsPage />} />

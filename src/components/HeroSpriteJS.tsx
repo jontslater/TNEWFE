@@ -9,6 +9,11 @@ import {
 } from "react";
 import { useHeroAnimator } from "../hooks/useHeroAnimator";
 import { SPRITE_DISPLAY_SCALE } from "../utils/spriteDisplayScale";
+import {
+  getSpriteContainerTransform,
+  type ScreenFacing,
+} from "../utils/spriteFacing";
+import { getHeroFacesLeft } from "../utils/spriteFacingConfig";
 
 export interface HeroSpriteJSHandle {
   playAnimation: (animation: string) => void;
@@ -20,7 +25,9 @@ interface HeroSpriteJSProps {
   heroId: string;
   role: string;
   className?: string;
-  facing?: "left" | "right";
+  facing?: ScreenFacing;
+  /** Override native sheet facing from config */
+  facesLeft?: boolean;
   style?: CSSProperties;
   scale?: number;
   shield?: number;
@@ -37,6 +44,7 @@ const HeroSpriteJS = forwardRef<HeroSpriteJSHandle, HeroSpriteJSProps>(
       role,
       className,
       facing = "right",
+      facesLeft: facesLeftProp,
       style,
       scale = SPRITE_DISPLAY_SCALE,
       shield = 0,
@@ -261,8 +269,9 @@ const HeroSpriteJS = forwardRef<HeroSpriteJSHandle, HeroSpriteJSProps>(
 
     // Calculate final scale with animated enrage multiplier
     const finalScale = scale * enrageScale;
+    const nativeFacesLeft = facesLeftProp ?? getHeroFacesLeft(role);
     
-    // Combat glow filter - applies to wrapper (for ability effects only)
+    // Combat glow filter
     // Shield/enrage are handled by browser source wrapper
     const getCombatGlowFilter = () => {
       const filters = [];
@@ -293,10 +302,11 @@ const HeroSpriteJS = forwardRef<HeroSpriteJSHandle, HeroSpriteJSProps>(
           overflow: "visible", // Allow effects to extend beyond sprite bounds
           position: "relative",
           paddingBottom: hasShield ? "4px" : "0px", // Allow space for glow at bottom
-          transform:
-            facing === "left"
-              ? `scale(${finalScale}) scaleX(-1)`
-              : `scale(${finalScale})`,
+          transform: getSpriteContainerTransform(
+            finalScale,
+            facing,
+            nativeFacesLeft
+          ),
           transformOrigin: "bottom center",
           imageRendering: "pixelated",
         }}

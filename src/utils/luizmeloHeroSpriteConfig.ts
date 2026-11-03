@@ -3,9 +3,19 @@
  */
 const ROOT = '/Sprites/Heroes/HeroSprites/LuizMelo';
 
+/** Native idle facing per LuizMelo pack (audit: scripts/audit-sprite-facing.mjs) */
+const LUIZ_PACK_FACES_LEFT: Record<string, boolean> = {
+  'Hero Knight': false,
+  'Medieval Warrior': true,
+  'Martial Hero': true,
+  'Huntress': true,
+  Wizard: true,
+};
+
 export type HeroSpriteConfigEntry = {
   sprite: string;
   isAnimated: boolean;
+  facesLeft?: boolean;
   spriteSize?: number;
   frameCount?: {
     idle: number;
@@ -74,6 +84,7 @@ function luizHero(
   return {
     sprite: animations.idle,
     isAnimated: true,
+    facesLeft: LUIZ_PACK_FACES_LEFT[packDir] ?? false,
     frameCount: mergedCounts,
     animations,
   };
