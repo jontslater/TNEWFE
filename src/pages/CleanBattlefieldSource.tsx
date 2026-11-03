@@ -9563,64 +9563,6 @@ export default function CleanBattlefieldSource() {
         );
       })}
 
-      {/* Minimal Status - Single Line at Bottom */}
-      {(() => {
-        // Calculate needed classes
-        const aliveHeroes = heroes.filter(h => !h.isDead && h.hp > 0);
-        const tanks = aliveHeroes.filter(h => h.role === 'guardian' || h.role === 'paladin');
-        const healers = aliveHeroes.filter(h => h.role === 'shaman' || h.role === 'monk' || h.role === 'cleric');
-        const dps = aliveHeroes.filter(h => h.role === 'berserker' || h.role === 'mage' || h.role === 'ranger' || h.role === 'rogue' || h.role === 'assassin');
-        
-        const needed = [];
-        if (tanks.length === 0) needed.push('Tank');
-        if (healers.length === 0) needed.push('Healer');
-        if (dps.length < 2) needed.push('DPS');
-        
-        // Build status line
-        const statusParts = [];
-        
-        // Combat status
-        const statusColor = isTraveling ? '#fbbf24' : inCombat ? '#ef4444' : '#10b981';
-        const statusText = isTraveling ? 'Travel' : inCombat ? 'Combat' : 'Idle';
-        const waveText = combatWaveCount > 0 ? ` • W${combatWaveCount}${(combatWaveCount % 10 === 0) ? '👑' : ''}` : '';
-        statusParts.push(<span key="status" style={{ color: statusColor }}>{statusText}{waveText}</span>);
-        
-        // Viewer buffs
-        const viewerBonus = Math.floor((calculateViewerBonuses().damage - 1) * 100);
-        statusParts.push(<span key="viewers" style={{ color: '#a78bfa' }}> • {activeChatterCount}👥 +{viewerBonus}%</span>);
-        
-        // Difficulty
-        statusParts.push(<span key="difficulty" style={{ color: '#fbbf24' }}> • Difficulty: {Math.floor(difficultyModifier * 100)}%</span>);
-        
-        // Needs
-        if (needed.length > 0) {
-          statusParts.push(<span key="needs" style={{ color: '#ef4444' }}> • Need: {needed.join(', ')}</span>);
-        }
-        
-        return (
-          <div style={{
-            position: 'absolute',
-            bottom: '10px',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            color: 'white',
-            fontSize: '16px',
-            fontFamily: 'monospace',
-            textShadow: '2px 2px 4px rgba(0,0,0,0.9)',
-            zIndex: 1000,
-            whiteSpace: 'nowrap',
-            backgroundColor: 'rgba(0, 0, 0, 0.75)', // Semi-transparent black background
-            padding: '8px 16px', // Padding for better spacing
-            borderRadius: '8px', // Rounded corners
-            border: '1px solid rgba(255, 255, 255, 0.2)', // Subtle border for definition
-            backdropFilter: 'blur(4px)' // Optional: blur effect for better readability
-          }}>
-            {statusParts}
-          </div>
-        );
-      })()}
-
-
       {/* No Heroes Message */}
       {(!allHeroes || allHeroes.length === 0) && !loading && (
         <div style={{
