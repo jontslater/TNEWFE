@@ -62,26 +62,19 @@ export function resolveBattlefieldFacing(
 }
 
 /**
- * Global Firestore sprite overrides are authored in /battlefield-facing against
- * canonical battlefield facing. Streamer per-class prefs must not change mirror
- * math when an override exists, or saved flip/scale won't match live sprites.
+ * Screen facing for live battlefield sprites and /battlefield-facing editor.
+ * Legacy streamer prefs (Animation Test) are ignored so mirror math matches the editor.
  */
 export function resolveHeroFacingForSpriteOverride(
-  preference: ScreenFacing | null | undefined,
-  hasRuntimeOverride: boolean
+  _preference: ScreenFacing | null | undefined,
+  _hasRuntimeOverride: boolean
 ): ScreenFacing {
-  if (hasRuntimeOverride) {
-    return BATTLEFIELD_HERO_FACING;
-  }
-  return resolveBattlefieldFacing('hero', preference);
+  return BATTLEFIELD_HERO_FACING;
 }
 
 export function resolveEnemyFacingForSpriteOverride(
-  preference: ScreenFacing | null | undefined,
-  hasRuntimeOverride: boolean
+  _preference: ScreenFacing | null | undefined,
+  _hasRuntimeOverride: boolean
 ): ScreenFacing {
-  if (hasRuntimeOverride) {
-    return BATTLEFIELD_ENEMY_FACING;
-  }
-  return resolveBattlefieldFacing('enemy', preference);
+  return BATTLEFIELD_ENEMY_FACING;
 }

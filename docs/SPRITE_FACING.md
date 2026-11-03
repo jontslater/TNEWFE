@@ -53,13 +53,14 @@ Each entry (hero role or enemy type key):
 - `scaleMultiplier?: number` — multiply display scale (0.25–3)
 - `offsetY?: number` — nudge feet in logical px (−48…48)
 
-Editor: **`/battlefield-facing`** (Save / Export JSON). Live **`CleanBattlefieldSource`** polls overrides ~every 90s.
+Editor: **`/battlefield-facing`** (Save / Export JSON). Live **`CleanBattlefieldSource`** uses the same canonical hero/enemy facing as the editor; legacy streamer sprite-facing prefs are not applied on `/clean-battlefield`.
 
 Regenerate hero feet metrics: `node scripts/generate-hero-sprite-layout.mjs`
 
 Capture QA screenshots:
 
 ```bash
+node scripts/verify-battlefield-hero-facing.mjs   # PREVIEW_URL=http://127.0.0.1:4173 for production build
 node scripts/capture-battlefield-sprite-qa.mjs before   # stash old sprite code first, or compare tags
 node scripts/capture-battlefield-sprite-qa.mjs after
 ```
