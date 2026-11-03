@@ -31,6 +31,12 @@ import { createProjectile } from '../utils/projectiles';
 import { createExhaustEffect, shouldShowExhaustEffect } from '../utils/exhaustEffects';
 import { createMusicalNoteEffect } from '../utils/musicalNoteEffects';
 import { getBattlefieldSpriteScale } from '../utils/spriteDisplayScale';
+import {
+  applyHeroCombatStats,
+  applyRewardBonus,
+  applyStatDamageReduction,
+  getCritDamageMultiplier,
+} from '../game/stats';
 
 // Hero type (with full gear support)
 interface Hero {
@@ -115,6 +121,13 @@ interface Hero {
   hpRegen?: number;
   damageReduction?: number;
   critChance?: number;
+  critDamage?: number;
+  xpGain?: number;
+  goldGain?: number;
+  tokenGain?: number;
+  damageMultiplier?: number;
+  healingMultiplier?: number;
+  defenseMultiplier?: number;
   // Cosmetic fields
   activeTitle?: string;
   founderBadge?: string;
@@ -269,6 +282,7 @@ export default function CleanBattlefieldSource() {
   const [resurrectionTimers, setResurrectionTimers] = useState<Record<string, number>>({});
   const corruptedPriestSpawnedRef = useRef<boolean>(false); // Track if skeleton mages have been spawned
   const corruptedPriestSpawnInProgress = useRef<boolean>(false); // Prevent concurrent spawns
+  const forcedLegacyInstanceRef = useRef<string | null>(null);
   const [difficultyModifier, setDifficultyModifier] = useState(1.0);
   const [consecutiveWins, setConsecutiveWins] = useState(0);
   const [testHealer, setTestHealer] = useState<Hero | null>(null);
@@ -947,6 +961,24 @@ export default function CleanBattlefieldSource() {
       console.error(`[Mode] Failed to load ${type} instance:`, error);
     }
   };
+
+  // Legacy /browser-source/raid/:id URLs → force instance on clean battlefield
+  const forceModeParam = searchParams.get('forceMode');
+  const forceInstanceIdParam = searchParams.get('forceInstanceId');
+
+  useEffect(() => {
+    if (!forceInstanceIdParam || (forceModeParam !== 'raid' && forceModeParam !== 'dungeon')) {
+      return;
+    }
+    if (forcedLegacyInstanceRef.current === forceInstanceIdParam) {
+      return;
+    }
+    forcedLegacyInstanceRef.current = forceInstanceIdParam;
+    console.log(`[Mode] Legacy overlay URL → ${forceModeParam} ${forceInstanceIdParam}`);
+    setGameMode(forceModeParam);
+    setCurrentInstanceId(forceInstanceIdParam);
+    loadInstanceData(forceModeParam, forceInstanceIdParam);
+  }, [forceModeParam, forceInstanceIdParam]);
 
   // ============================================================================
   // RAID COMBAT SYSTEM - Uses SAME combat engine as idle adventure!
@@ -4210,7 +4242,7 @@ export default function CleanBattlefieldSource() {
       const critChance = criticalStrikeActive ? 1.0 : (baseCritChance + (hero.critChance || 0));
       const isCrit = Math.random() < critChance;
       if (isCrit) {
-        damage = Math.round(damage * 2);
+        damage = Math.round(damage * getCritDamageMultiplier(hero.critDamage || 0));
         console.log(`[Combat] ⚡ CRITICAL HIT! ${hero.name} crits for ${damage}!`);
       }
       
@@ -5408,6 +5440,14 @@ export default function CleanBattlefieldSource() {
         blockedByAbilities += (damageBefore - actualDamage);
         console.log(`[Shield Wall] 🛡️ Damage reduced by 30%: ${Math.floor(actualDamage / 0.7)} → ${actualDamage}`);
       }
+
+      if (targetHeroRef.damageReduction && targetHeroRef.damageReduction > 0) {
+        const beforeDr = actualDamage;
+        actualDamage = applyStatDamageReduction(actualDamage, targetHeroRef.damageReduction);
+        if (actualDamage < beforeDr) {
+          console.log(`[Stats] 🛡️ Gem/gear damage reduction: ${beforeDr} → ${actualDamage}`);
+        }
+      }
       
       // SANITY CAP
       const maxReasonableDamage = targetHeroRef.maxHp * 3;
@@ -6090,10 +6130,10 @@ export default function CleanBattlefieldSource() {
           const updated = currentHeroes.map(hero => {
             // Dead heroes still gain XP (just can't fight)
             
-            // Apply XP Boost buff (+50% XP)
-            let xpToGrant = totalXP;
+            // Apply XP Boost buff (+50% XP) and gem/socket XP gain
+            let xpToGrant = applyRewardBonus(totalXP, hero.xpGain || 0);
             if (hero.shopBuffs?.xpBoost && hero.shopBuffs.xpBoost.remainingDuration > 0) {
-              xpToGrant = Math.floor(totalXP * 1.5); // +50% XP
+              xpToGrant = Math.floor(xpToGrant * 1.5); // +50% XP
               console.log(`[XP Boost] ⚡ ${hero.name} gets +50% XP! ${totalXP} → ${xpToGrant}`);
             }
             
@@ -6103,7 +6143,10 @@ export default function CleanBattlefieldSource() {
             // Calculate gold with founder pack multiplier
             const founderTier = (hero as any).founderPackTier || null;
             const goldMultiplier = getFounderGoldMultiplier(founderTier);
-            const goldToGrant = Math.floor(totalBaseGold * goldMultiplier);
+            const goldToGrant = applyRewardBonus(
+              Math.floor(totalBaseGold * goldMultiplier),
+              hero.goldGain || 0,
+            );
             
             // Track gold results for SCT
             goldResults.push({
@@ -7826,388 +7869,7 @@ export default function CleanBattlefieldSource() {
     return (newValue - currentValue) / currentValue;
   };
 
-  // Calculate skill bonuses from skill tree
-  const calculateSkillBonuses = (hero: Hero): any => {
-    const skills = hero.skills || {};
-    const bonuses = {
-      attack: 0,
-      defense: 0,
-      hp: 0,
-      damageMultiplier: 0,
-      healingMultiplier: 0,
-      defenseMultiplier: 0,
-      critChance: 0,
-      critDamage: 0
-    };
-
-    // Simplified skill templates (matches backend pattern)
-    const category = isTankRole(hero.role) ? 'tank' : isHealerRole(hero.role) ? 'healer' : 'dps';
-    
-    Object.entries(skills).forEach(([skillId, skillData]: [string, any]) => {
-      if (!skillData || !skillData.points) return;
-      
-      const points = skillData.points;
-      
-      // Parse skill index from skillId (format: "classname_skill_0")
-      const skillIndex = parseInt(skillId.split('_skill_')[1] || '0');
-      
-      // Apply bonuses based on category and skill index
-      if (category === 'tank') {
-        if (skillIndex === 0 || skillIndex === 8) bonuses.hp += 5 * points;
-        if (skillIndex === 2 || skillIndex === 6) bonuses.defense += 4 * points;
-        if (skillIndex === 3) bonuses.attack += 2 * points;
-        if (skillIndex === 1 || skillIndex === 4 || skillIndex === 7 || skillIndex === 9) bonuses.defenseMultiplier += 3 * points;
-      } else if (category === 'healer') {
-        if (skillIndex === 0 || skillIndex === 2 || skillIndex === 4 || skillIndex === 6 || skillIndex === 9) bonuses.healingMultiplier += 5 * points;
-        if (skillIndex === 8) bonuses.defense += 3 * points;
-      } else { // DPS
-        if (skillIndex === 0 || skillIndex === 5 || skillIndex === 7 || skillIndex === 9) bonuses.damageMultiplier += 5 * points;
-        if (skillIndex === 1 || skillIndex === 6) bonuses.critChance += 3 * points;
-        if (skillIndex === 2) bonuses.critDamage += 10 * points;
-        if (skillIndex === 3) bonuses.attack += 4 * points;
-      }
-    });
-
-    return bonuses;
-  };
-
-  // Calculate comprehensive stats from equipment (including skill bonuses, HP regen, etc.)
-  const calculateHeroStats = (hero: Hero): Hero => {
-    // If no equipment, use basic level-based stats
-    if (!hero.equipment || Object.keys(hero.equipment).length === 0) {
-      return {
-        ...hero,
-        attack: hero.attack || hero.level * 5,
-        defense: hero.defense || hero.level * 2,
-        maxHp: hero.maxHp || (100 + hero.level * 20),
-        hpRegen: 0
-      };
-    }
-
-    // Determine role category for stat scaling
-    const role = hero.role?.toLowerCase() || '';
-    const isTank = isTankRole(role);
-    const isHealer = isHealerRole(role);
-    const isDps = isDpsRole(role);
-    
-    // Base stats that all heroes get (scaled by role)
-    // All heroes have ALL stats - they just scale differently by role
-    let baseAttack = 10 + hero.level * 3;
-    let baseDefense = 5 + hero.level * 2;
-    let baseHp = 100 + hero.level * 20;
-    
-    // Apply role-based multipliers (all heroes have all stats, just different values)
-    if (isTank) {
-      // Tanks: Higher defense and HP, moderate attack
-      baseAttack = Math.floor(baseAttack * 0.8);  // 80% of base attack
-      baseDefense = Math.floor(baseDefense * 1.5); // 150% of base defense
-      baseHp = Math.floor(baseHp * 1.3);          // 130% of base HP
-    } else if (isHealer) {
-      // Healers: Balanced stats, slightly higher HP
-      baseAttack = Math.floor(baseAttack * 0.9);  // 90% of base attack
-      baseDefense = Math.floor(baseDefense * 1.1); // 110% of base defense
-      baseHp = Math.floor(baseHp * 1.15);         // 115% of base HP
-    } else {
-      // DPS: Higher attack, standard defense and HP
-      baseAttack = Math.floor(baseAttack * 1.2);  // 120% of base attack
-      baseDefense = Math.floor(baseDefense * 0.9); // 90% of base defense
-      baseHp = Math.floor(baseHp * 1.0);          // 100% of base HP
-    }
-    
-    // Start with base stats (from level, scaled by role)
-    let stats = {
-      attack: baseAttack,
-      defense: baseDefense,
-      maxHp: baseHp,
-      intellect: 0,
-      strength: 0,
-      dexterity: 0,
-      wisdom: 0,
-      stamina: 0,
-      healingPower: 0,
-      spellDamage: 0,
-      meleeDamage: 0,
-      hpRegen: 0,
-      damageReduction: 0,
-      critChance: 0,
-      damageMultiplier: 0,
-      healingMultiplier: 0,
-      defenseMultiplier: 0
-    };
-
-    // Add equipment bonuses (first pass - base stats only, no upgrades)
-    const equipment = hero.equipment || {};
-    Object.values(equipment).forEach((item: any) => {
-      if (!item) return;
-      
-      // Base stats
-      stats.attack += item.attack || 0;
-      stats.defense += item.defense || 0;
-      stats.maxHp += item.hp || 0;
-      
-      // Primary stats
-      stats.intellect += item.intellect || 0;
-      stats.strength += item.strength || 0;
-      stats.dexterity += item.dexterity || 0;
-      stats.wisdom += item.wisdom || 0;
-      stats.stamina += item.stamina || 0;
-      
-      // Secondary stats
-      if (item.secondaryStats) {
-        stats.healingPower += item.secondaryStats.healingPower || 0;
-        stats.spellDamage += item.secondaryStats.spellDamage || 0;
-        stats.meleeDamage += item.secondaryStats.meleeDamage || 0;
-        stats.hpRegen += item.secondaryStats.hpRegen || 0;
-        stats.damageReduction += item.secondaryStats.damageReduction || 0;
-        stats.critChance += item.secondaryStats.critChance || 0;
-      }
-    });
-    
-    // Store pre-upgrade totals for upgrade calculations
-    // Upgrades are percentages of the hero's TOTAL accumulated stats (base + equipment)
-    const preUpgradeStats = {
-      attack: stats.attack,
-      defense: stats.defense,
-      maxHp: stats.maxHp,
-      critChance: stats.critChance,
-      healingPower: stats.healingPower,
-      spellDamage: stats.spellDamage
-    };
-    
-    // Calculate gem stats from all equipped items
-    let gemStats = {
-      attack: 0,
-      defense: 0,
-      critChance: 0,
-      critDamage: 0,
-      damageReduction: 0,
-      maxHp: 0,
-      allStats: 0,
-      xpGain: 0,
-      goldGain: 0,
-      tokenGain: 0
-    };
-    
-    // Calculate socket bonuses from all equipped items
-    let socketBonusStats = {
-      attack: 0,
-      defense: 0,
-      allStats: 0,
-      xpGain: 0,
-      goldGain: 0,
-      critChance: 0,
-      damageReduction: 0
-    };
-    
-    Object.values(equipment).forEach((item: any) => {
-      if (!item) return;
-      
-      // Add gem stats from sockets
-      if (item.sockets && Array.isArray(item.sockets)) {
-        item.sockets.forEach((socket: any) => {
-          if (socket.gem && socket.gem.stats) {
-            const gemStat = socket.gem.stats;
-            gemStats.attack += gemStat.attack || 0;
-            gemStats.defense += gemStat.defense || 0;
-            gemStats.critChance += gemStat.critChance || 0;
-            gemStats.critDamage += gemStat.critDamage || 0;
-            gemStats.damageReduction += gemStat.damageReduction || 0;
-            gemStats.maxHp += gemStat.maxHp || 0;
-            gemStats.allStats += gemStat.allStats || 0;
-            gemStats.xpGain += gemStat.xpGain || 0;
-            gemStats.goldGain += gemStat.goldGain || 0;
-            gemStats.tokenGain += gemStat.tokenGain || 0;
-          }
-        });
-        
-        // Calculate socket bonuses for this item
-        if (item.socketBonuses) {
-          socketBonusStats.attack += item.socketBonuses.attack || 0;
-          socketBonusStats.defense += item.socketBonuses.defense || 0;
-          socketBonusStats.allStats += item.socketBonuses.allStats || 0;
-          socketBonusStats.xpGain += item.socketBonuses.xpGain || 0;
-          socketBonusStats.goldGain += item.socketBonuses.goldGain || 0;
-          socketBonusStats.critChance += item.socketBonuses.critChance || 0;
-          socketBonusStats.damageReduction += item.socketBonuses.damageReduction || 0;
-        }
-      }
-    });
-    
-    // Apply gem stats (flat bonuses)
-    stats.attack += gemStats.attack;
-    stats.defense += gemStats.defense;
-    stats.maxHp += gemStats.maxHp;
-    stats.critChance += gemStats.critChance / 100; // Convert percentage to decimal
-    stats.damageReduction += gemStats.damageReduction;
-    // All stats bonus (applied as percentage of current stats)
-    if (gemStats.allStats > 0) {
-      stats.attack += Math.floor(stats.attack * gemStats.allStats / 100);
-      stats.defense += Math.floor(stats.defense * gemStats.allStats / 100);
-      stats.maxHp += Math.floor(stats.maxHp * gemStats.allStats / 100);
-    }
-    
-    // Apply socket bonuses (percentage bonuses)
-    if (socketBonusStats.attack > 0) {
-      stats.attack += Math.floor(stats.attack * socketBonusStats.attack / 100);
-    }
-    if (socketBonusStats.defense > 0) {
-      stats.defense += Math.floor(stats.defense * socketBonusStats.defense / 100);
-    }
-    if (socketBonusStats.allStats > 0) {
-      stats.attack += Math.floor(stats.attack * socketBonusStats.allStats / 100);
-      stats.defense += Math.floor(stats.defense * socketBonusStats.allStats / 100);
-      stats.maxHp += Math.floor(stats.maxHp * socketBonusStats.allStats / 100);
-    }
-    stats.critChance += socketBonusStats.critChance / 100; // Convert percentage to decimal
-    stats.damageReduction += socketBonusStats.damageReduction;
-    
-    // Store gem/socket bonuses for display (optional - can be used in UI)
-    (stats as any).gemStats = gemStats;
-    (stats as any).socketBonusStats = socketBonusStats;
-    
-    // Apply profession enchantments/upgrades (appliedUpgrades)
-    // These are flat bonuses from Mining/Enchanting profession items (Fiery Weapon, Vampiric Touch, etc.)
-    Object.values(equipment).forEach((item: any) => {
-      if (!item || !item.appliedUpgrades || !Array.isArray(item.appliedUpgrades)) return;
-      
-      item.appliedUpgrades.forEach((appliedUpgrade: any) => {
-        if (appliedUpgrade.bonus) {
-          // Apply flat bonuses from profession enchantments
-          stats.attack += appliedUpgrade.bonus.attack || 0;
-          stats.defense += appliedUpgrade.bonus.defense || 0;
-          stats.maxHp += appliedUpgrade.bonus.hp || 0;
-        }
-      });
-    });
-    
-    // Apply upgrade bonuses (custom stat selection system)
-    // Upgrades are percentages of the hero's TOTAL stats, not the item's base stats
-    Object.values(equipment).forEach((item: any) => {
-      if (!item || !item.upgradeStats || !Array.isArray(item.upgradeStats)) return;
-      
-      item.upgradeStats.forEach((upgrade: any) => {
-        if (upgrade.selectedStats && Array.isArray(upgrade.selectedStats)) {
-          upgrade.selectedStats.forEach((selectedStat: any) => {
-            const statType = selectedStat.type;
-            const statValue = selectedStat.value || 0; // Percentage value
-            
-            switch (statType) {
-              case 'attack':
-                // Percentage of hero's total attack (base + all equipment)
-                stats.attack += Math.floor(preUpgradeStats.attack * statValue / 100);
-                break;
-              case 'defense':
-                // Percentage of hero's total defense (base + all equipment)
-                stats.defense += Math.floor(preUpgradeStats.defense * statValue / 100);
-                break;
-              case 'hp':
-                // Percentage of hero's total HP (base + all equipment)
-                stats.maxHp += Math.floor(preUpgradeStats.maxHp * statValue / 100);
-                break;
-              case 'critChance':
-                // Crit chance is in percentage points (flat bonus, not percentage of base)
-                stats.critChance += statValue / 100; // Convert percentage to decimal
-                break;
-              case 'critDamage':
-                // Crit damage is percentage points (flat bonus)
-                // Could add to a separate critDamageMultiplier stat later
-                // For now, treat as flat attack bonus (smaller since it's conditional)
-                stats.attack += Math.floor(preUpgradeStats.attack * statValue / 200);
-                break;
-              case 'healingPower':
-                // Percentage of hero's total healing power
-                stats.healingPower += Math.floor(preUpgradeStats.healingPower * statValue / 100);
-                break;
-              case 'spellDamage':
-                // Percentage of hero's total spell damage
-                stats.spellDamage += Math.floor(preUpgradeStats.spellDamage * statValue / 100);
-                break;
-            }
-          });
-        }
-      });
-    });
-
-    // Calculate and apply skill bonuses
-    const skillBonuses = calculateSkillBonuses(hero);
-    stats.attack += skillBonuses.attack;
-    stats.defense += skillBonuses.defense;
-    stats.maxHp += skillBonuses.hp;
-    stats.damageMultiplier = skillBonuses.damageMultiplier;
-    
-    // Apply defense multiplier from skills (tanks get 15-30% bonus!)
-    if (skillBonuses.defenseMultiplier > 0) {
-      const defenseBonus = 1 + (skillBonuses.defenseMultiplier / 100);
-      stats.defense = Math.floor(stats.defense * defenseBonus);
-    }
-    stats.healingMultiplier = skillBonuses.healingMultiplier;
-    stats.defenseMultiplier = skillBonuses.defenseMultiplier;
-    stats.critChance += skillBonuses.critChance / 100; // Convert from % to decimal
-    
-    // Calculate and apply SET BONUSES (Guardian's Bulwark, Berserker's Wrath, etc.)
-    const setBonuses = calculateSetBonuses(hero.equipment, hero.role);
-    stats.attack += setBonuses.attack;
-    stats.defense += setBonuses.defense;
-    stats.maxHp += setBonuses.hp;
-    stats.intellect += setBonuses.intellect;
-    stats.strength += setBonuses.strength;
-    stats.dexterity += setBonuses.dexterity;
-    stats.wisdom += setBonuses.wisdom;
-    stats.stamina += setBonuses.stamina;
-    stats.healingPower += setBonuses.healingPower;
-    stats.spellDamage += setBonuses.spellDamage;
-    
-    // FILTER: Healers don't use melee damage - convert to spell damage instead
-    // This ensures healers (including bards) benefit from equipment that might have melee damage
-    if (isHealer) {
-      // Convert all melee damage (from equipment + set bonuses) to spell damage for healers
-      stats.spellDamage += stats.meleeDamage + setBonuses.meleeDamage;
-      stats.meleeDamage = 0; // Set to 0 for healers
-    } else {
-      stats.meleeDamage += setBonuses.meleeDamage;
-    }
-    
-    stats.hpRegen += setBonuses.hpRegen;
-    stats.damageReduction += setBonuses.damageReduction;
-    stats.critChance += setBonuses.critChance;
-    
-    // Log set bonuses if any pieces equipped
-    const equippedSets = Object.values(hero.equipment || {}).filter((item: any) => item?.setName).map((item: any) => item.setName);
-    const uniqueSets = [...new Set(equippedSets)];
-    if (uniqueSets.length > 0) {
-      console.log(`[Set Bonuses] ${hero.name} has ${uniqueSets.length} set(s):`, uniqueSets.join(', '));
-      console.log(`[Set Bonuses] Bonuses: +${setBonuses.attack} ATK, +${setBonuses.defense} DEF, +${setBonuses.hp} HP, +${setBonuses.hpRegen} HP/sec`);
-    }
-
-    // Apply stamina → HP conversion (1 stamina = 10 HP)
-    stats.maxHp += stats.stamina * 10;
-
-    // Cap crit chance at 35%
-    stats.critChance = Math.min(stats.critChance, 0.35);
-
-    // Debug: Log ALL equipment slots and their stats
-    const equipmentSlots = ['weapon', 'armor', 'accessory', 'shield', 'helm', 'cloak', 'gloves', 'ring1', 'ring2', 'boots'];
-    const loadedSlots = equipmentSlots.filter(slot => equipment[slot]).map(slot => {
-      const item = equipment[slot];
-      return `${slot}(${item.rarity || 'common'}):+${item.attack || 0}atk/+${item.defense || 0}def/+${item.hp || 0}hp`;
-    });
-    
-    console.log(`[Stats] ${hero.name} has ${loadedSlots.length}/10 slots:`, loadedSlots.join(' | '));
-    console.log(`[Stats] ${hero.name} final stats:`, {
-      attack: stats.attack,
-      defense: stats.defense,
-      maxHp: stats.maxHp,
-      skillBonuses: `+${skillBonuses.damageMultiplier}% dmg, +${skillBonuses.healingMultiplier}% heal, +${skillBonuses.defenseMultiplier}% def`,
-      hpRegen: stats.hpRegen,
-      critChance: `${(stats.critChance * 100).toFixed(1)}%`
-    });
-
-    return {
-      ...hero,
-      ...stats,
-      hp: Math.min(hero.hp, stats.maxHp) // Don't overheal
-    };
-  };
+  const calculateHeroStats = applyHeroCombatStats;
 
   // Unified enemy positioning function - works consistently across idle, raid, and dungeon modes
   const getEnemyPosition = (index: number, total: number, isBoss: boolean = false, enemyType?: string, gameMode?: string, heroes?: Hero[]) => {

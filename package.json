@@ -10,7 +10,9 @@
     "preview": "vite preview",
     "sprites:generate": "node scripts/generate-sprite-dimensions.mjs",
     "sprites:check": "node scripts/generate-sprite-dimensions.mjs --check",
-    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
+    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@stripe/stripe-js": "^8.5.3",
@@ -35,6 +37,7 @@
     "postcss": "^8.4.32",
     "tailwindcss": "^3.3.6",
     "typescript": "^5.2.2",
-    "vite": "^5.0.8"
+    "vite": "^5.0.8",
+    "vitest": "^2.1.8"
   }
 }
