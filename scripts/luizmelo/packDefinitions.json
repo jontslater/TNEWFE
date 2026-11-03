@@ -1,0 +1,109 @@
+{
+  "heroKnight": {
+    "itchSlug": "hero-knight",
+    "extractSubdir": "Hero Knight/Sprites",
+    "publicDir": "Hero Knight",
+    "frameCounts": {
+      "idle": 11,
+      "run": 8,
+      "attack": 7,
+      "hurt": 4,
+      "death": 11
+    },
+    "files": {
+      "idle": "Idle.png",
+      "attack": "Attack1.png",
+      "hurt": "Take Hit.png",
+      "death": "Death.png",
+      "run": "Run.png",
+      "walk": "Run.png"
+    }
+  },
+  "medievalWarrior": {
+    "itchSlug": "medieval-warrior-pack",
+    "extractSubdir": "Medieval Warrior Pack",
+    "publicDir": "Medieval Warrior",
+    "frameCounts": {
+      "idle": 6,
+      "run": 8,
+      "attack": 4,
+      "hurt": 3,
+      "death": 9
+    },
+    "files": {
+      "idle": "Idle.png",
+      "attack": "Attack1.png",
+      "hurt": "Hit.png",
+      "death": "Death.png",
+      "run": "Run.png",
+      "walk": "Run.png"
+    }
+  },
+  "martialHero": {
+    "itchSlug": "martial-hero",
+    "extractSubdir": "Martial Hero/Sprites",
+    "publicDir": "Martial Hero",
+    "frameCounts": {
+      "idle": 8,
+      "run": 8,
+      "attack": 6,
+      "hurt": 4,
+      "death": 6
+    },
+    "files": {
+      "idle": "Idle.png",
+      "attack": "Attack1.png",
+      "hurt": "Take Hit.png",
+      "death": "Death.png",
+      "run": "Run.png",
+      "walk": "Run.png"
+    }
+  },
+  "huntress": {
+    "itchSlug": "huntress",
+    "extractSubdir": "Huntress/Sprites",
+    "publicDir": "Huntress",
+    "frameCounts": {
+      "idle": 8,
+      "run": 8,
+      "attack": 5,
+      "hurt": 3,
+      "death": 8,
+      "rangedAttack": 5
+    },
+    "files": {
+      "idle": "Idle.png",
+      "attack": "Attack1.png",
+      "hurt": "Take hit.png",
+      "death": "Death.png",
+      "run": "Run.png",
+      "walk": "Run.png",
+      "rangedAttack": "Attack2.png"
+    }
+  },
+  "wizard": {
+    "itchSlug": "wizard-pack",
+    "extractSubdir": "Wizard Pack",
+    "publicDir": "Wizard",
+    "frameCounts": {
+      "idle": 6,
+      "run": 8,
+      "attack": 8,
+      "hurt": 4,
+      "death": 7,
+      "rangedAttack": 8
+    },
+    "files": {
+      "idle": "Idle.png",
+      "attack": "Attack1.png",
+      "hurt": "Hit.png",
+      "death": "Death.png",
+      "run": "Run.png",
+      "walk": "Run.png",
+      "rangedAttack": "Attack2.png"
+    },
+    "frameCountNotes": {
+      "idle": "Itch lists 4 idle frames; sheet is 1386px wide and divides evenly at 6 frames (231px), matching other wizard animations."
+    }
+  }
+}

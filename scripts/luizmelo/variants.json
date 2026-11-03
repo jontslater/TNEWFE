@@ -1,0 +1,43 @@
+{
+  "base": { "label": "base", "transform": null },
+  "bloodknight-red": {
+    "label": "bloodknight-red",
+    "transform": { "type": "hslShift", "hueDelta": -15, "saturationScale": 1.35, "brightnessScale": 0.95, "tintRgb": [180, 40, 40], "tintStrength": 0.22 }
+  },
+  "martial-shadow": {
+    "label": "martial-shadow",
+    "transform": { "type": "hslShift", "hueDelta": 260, "saturationScale": 0.75, "brightnessScale": 0.85, "tintRgb": [60, 40, 90], "tintStrength": 0.18 }
+  },
+  "martial-crimson": {
+    "label": "martial-crimson",
+    "transform": { "type": "hslShift", "hueDelta": -10, "saturationScale": 1.2, "brightnessScale": 1.0, "tintRgb": [160, 30, 30], "tintStrength": 0.15 }
+  },
+  "martial-emerald": {
+    "label": "martial-emerald",
+    "transform": { "type": "hslShift", "hueDelta": 90, "saturationScale": 1.1, "brightnessScale": 0.95, "tintRgb": [40, 120, 70], "tintStrength": 0.12 }
+  },
+  "martial-gold": {
+    "label": "martial-gold",
+    "transform": { "type": "hslShift", "hueDelta": 35, "saturationScale": 1.15, "brightnessScale": 1.05, "tintRgb": [200, 160, 60], "tintStrength": 0.14 }
+  },
+  "wizard-frost": {
+    "label": "wizard-frost",
+    "transform": { "type": "hslShift", "hueDelta": 180, "saturationScale": 1.05, "brightnessScale": 1.05, "tintRgb": [80, 140, 220], "tintStrength": 0.2 }
+  },
+  "wizard-holy": {
+    "label": "wizard-holy",
+    "transform": { "type": "hslShift", "hueDelta": 45, "saturationScale": 0.85, "brightnessScale": 1.15, "tintRgb": [240, 220, 140], "tintStrength": 0.18 }
+  },
+  "wizard-storm": {
+    "label": "wizard-storm",
+    "transform": { "type": "hslShift", "hueDelta": 210, "saturationScale": 0.9, "brightnessScale": 0.9, "tintRgb": [70, 90, 160], "tintStrength": 0.16 }
+  },
+  "wizard-moon": {
+    "label": "wizard-moon",
+    "transform": { "type": "hslShift", "hueDelta": 230, "saturationScale": 0.7, "brightnessScale": 1.1, "tintRgb": [170, 180, 230], "tintStrength": 0.15 }
+  },
+  "wizard-bard": {
+    "label": "wizard-bard",
+    "transform": { "type": "hslShift", "hueDelta": 300, "saturationScale": 1.25, "brightnessScale": 1.05, "tintRgb": [180, 70, 180], "tintStrength": 0.2 }
+  }
+}

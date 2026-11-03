@@ -1,3 +1,5 @@
+import { LUIZMELO_HERO_ENTRIES } from './luizmeloHeroSpriteConfig';
+
 // Hero Sprite Mappings - Matches game.js HERO_SPRITES
 export const HERO_SPRITES: Record<string, {
   sprite: string;
@@ -477,7 +479,8 @@ export const HERO_SPRITES: Record<string, {
       hurt: '/Sprites/Heroes/HeroSprites/Pyromancer 2D Pixel Art/Sprites/HURT.png',
       death: '/Sprites/Heroes/HeroSprites/Pyromancer 2D Pixel Art/Sprites/DEATH.png'
     }
-  }
+  },
+  ...LUIZMELO_HERO_ENTRIES,
 };
 
 export function getHeroSpritePath(role: string, animation: 'idle' | 'attack' | 'hurt' | 'death' = 'idle'): string {

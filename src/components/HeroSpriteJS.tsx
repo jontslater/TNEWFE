@@ -124,9 +124,13 @@ const HeroSpriteJS = forwardRef<HeroSpriteJSHandle, HeroSpriteJSProps>(
       // Real sprite sheet size
       const sheetWidth = frameWidth * frames;
 
-      // Scale to fit 48x48
-      const scaleX = frameWidth > VIEWPORT ? VIEWPORT / frameWidth : 1;
-      const scaleY = frameHeight > VIEWPORT ? VIEWPORT / frameHeight : 1;
+      // Scale uniformly so every hero fits the viewport with consistent height
+      const uniformScale =
+        frameWidth > VIEWPORT || frameHeight > VIEWPORT
+          ? VIEWPORT / Math.max(frameWidth, frameHeight)
+          : 1;
+      const scaleX = uniformScale;
+      const scaleY = uniformScale;
 
       // Calculate scaled dimensions for positioning
       const scaledFrameWidth = frameWidth * scaleX;
@@ -134,7 +138,7 @@ const HeroSpriteJS = forwardRef<HeroSpriteJSHandle, HeroSpriteJSProps>(
 
       // FEET-ANCHOR OFFSET (after scaling)
       // Adjust offsetY based on sprite role - Dwarf Warrior sprites may need different alignment
-      const isDwarfWarrior = ['berserker', 'crusader', 'assassin', 'reaper', 'bladedancer', 'monk', 'stormwarrior', 'hunter'].includes(role.toLowerCase());
+      const isDwarfWarrior = ['berserker', 'crusader', 'stormwarrior'].includes(role.toLowerCase());
       const verticalOffset = isDwarfWarrior ? 5 : 0; // Move Dwarf Warrior sprites down slightly to align with others
       const offsetY = VIEWPORT - scaledFrameHeight + verticalOffset; // align feet at bottom
       const offsetX = (VIEWPORT - scaledFrameWidth) / 2; // center horizontally
@@ -182,8 +186,8 @@ const HeroSpriteJS = forwardRef<HeroSpriteJSHandle, HeroSpriteJSProps>(
 
       // Set initial frame (frame 0) immediately for all animations
       // This ensures animations start visible right away and prevents scrolling
-      const initialScaleX = frameWidth > VIEWPORT ? VIEWPORT / frameWidth : 1;
-      const initialScaleY = frameHeight > VIEWPORT ? VIEWPORT / frameHeight : 1;
+      const initialScaleX = uniformScale;
+      const initialScaleY = uniformScale;
       el.style.setProperty("transform", `scaleX(${initialScaleX}) scaleY(${initialScaleY}) translateX(0px)`, "important");
       lastIndex = 0; // Start at frame 0
       void el.offsetWidth; // Force reflow
@@ -213,8 +217,8 @@ const HeroSpriteJS = forwardRef<HeroSpriteJSHandle, HeroSpriteJSProps>(
 
           if (index !== lastIndex) {
             // Calculate scale for this animation (recalculate to ensure consistency)
-            const animScaleX = frameWidth > VIEWPORT ? VIEWPORT / frameWidth : 1;
-            const animScaleY = frameHeight > VIEWPORT ? VIEWPORT / frameHeight : 1;
+            const animScaleX = uniformScale;
+            const animScaleY = uniformScale;
             
             // CRITICAL: Translate by actual frameWidth (unscaled)
             // Transform order: scaleX() scaleY() translateX() applies translateX first (unscaled), then scales

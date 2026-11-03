@@ -14,7 +14,12 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "sim:ttk": "vitest run src/game/stats/enemyCombatScaling.test.ts -t \"before/after\"",
+<<<<<<< HEAD
     "sim:economy": "vitest run src/game/economy/"
+=======
+    "sprites:luizmelo:download": "node scripts/luizmelo/download-packs.mjs",
+    "sprites:luizmelo:build": "node scripts/luizmelo/build-hero-sprites.mjs"
+>>>>>>> ae738c8 (Add LuizMelo CC0 hero sprites with per-class bodies and palette variants)
   },
   "dependencies": {
     "@stripe/stripe-js": "^8.5.3",
@@ -36,7 +41,9 @@
     "eslint": "^8.55.0",
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.5",
+    "playwright": "^1.64.1",
     "postcss": "^8.4.32",
+    "sharp": "^0.35.5",
     "tailwindcss": "^3.3.6",
     "typescript": "^5.2.2",
     "vite": "^5.0.8",
