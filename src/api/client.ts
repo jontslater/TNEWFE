@@ -1630,7 +1630,10 @@ export const battlefieldAPI = {
 // Global sprite overrides (Firestore config/spriteOverrides)
 export const spriteOverridesAPI = {
   async get(): Promise<import('../utils/spriteRuntimeOverrides').SpriteOverridesDocument> {
-    const response = await apiClient.get('/api/config/sprite-overrides');
+    const response = await apiClient.get('/api/config/sprite-overrides', {
+      headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
+      params: { _: Date.now() },
+    });
     return response.data;
   },
 
