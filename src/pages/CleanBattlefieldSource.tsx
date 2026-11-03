@@ -2459,6 +2459,133 @@ export default function CleanBattlefieldSource() {
     }, duration);
   };
 
+  const QUEST_SYNC_INTERVAL_MS = 60000;
+
+  const syncPendingQuestProgress = useCallback(
+    async (
+      currentHeroes: Array<{ id: string; name?: string }>,
+      options?: { force?: boolean }
+    ) => {
+      const now = Date.now();
+      const timeSinceLastSync = now - lastQuestSyncRef.current;
+      if (questProgressRef.current.size === 0) return;
+      if (!options?.force && timeSinceLastSync < QUEST_SYNC_INTERVAL_MS) return;
+
+      console.log('[Quest Sync] ✅ Syncing quest progress for', questProgressRef.current.size, 'heroes...');
+
+      const questUpdates: Array<{
+        heroId: string;
+        updates: Array<{ trackingKey: string; type: 'daily' | 'weekly' | 'monthly'; increment: number }>;
+      }> = [];
+
+      questProgressRef.current.forEach((heroProgress, heroId) => {
+        const hero = currentHeroes.find((h) => h.id === heroId);
+        if (!hero) return;
+
+        const updates: Array<{ trackingKey: string; type: 'daily' | 'weekly' | 'monthly'; increment: number }> =
+          [];
+
+        heroProgress.forEach((count, trackingKey) => {
+          if (count > 0) {
+            updates.push({ trackingKey, type: 'daily', increment: count });
+            updates.push({ trackingKey, type: 'weekly', increment: count });
+            updates.push({ trackingKey, type: 'monthly', increment: count });
+          }
+        });
+
+        if (updates.length > 0) {
+          questUpdates.push({ heroId, updates });
+        }
+      });
+
+      if (questUpdates.length === 0) return;
+
+      try {
+        const response = await fetch(
+          `${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/quests/update-batch-all`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ updates: questUpdates }),
+          }
+        );
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('[Quest Sync] ❌ Failed to sync quest progress:', response.status, errorText);
+          return;
+        }
+
+        const result = await response.json();
+        console.log('[Quest Sync] ✅ Quest progress synced:', result);
+
+        if (result.success && result.results) {
+          result.results.forEach((heroResult: { heroId?: string; completedQuests?: Array<{ questName: string }> }) => {
+            if (!heroResult.completedQuests?.length) return;
+            heroResult.completedQuests.forEach((completedQuest) => {
+              console.log(`[Quest Complete] 🎉 ${completedQuest.questName} completed!`);
+              const hero = currentHeroes.find((h) => h.id === heroResult.heroId);
+              if (hero) {
+                const heroElement = document.querySelector(`[data-hero-id="${hero.id}"]`);
+                if (heroElement) {
+                  const rect = heroElement.getBoundingClientRect();
+                  addSCT(`Quest Complete!`, rect.left + rect.width / 2, rect.top - 20, 'questcomplete');
+                }
+              }
+            });
+          });
+        }
+
+        questProgressRef.current.clear();
+        lastQuestSyncRef.current = now;
+
+        for (const hero of currentHeroes) {
+          if (!hero.id) continue;
+          try {
+            const claimResponse = await questAPI.claimAllQuests(hero.id);
+            if (claimResponse.success && claimResponse.claimed > 0) {
+              console.log(`[Quest Auto-Claim] ✅ ${hero.name} claimed ${claimResponse.claimed} quests!`);
+              const heroElement = document.querySelector(`[data-hero-id="${hero.id}"]`);
+              if (heroElement) {
+                const rect = heroElement.getBoundingClientRect();
+                if (claimResponse.totalRewards.gold > 0) {
+                  addSCT(`+${claimResponse.totalRewards.gold}g`, rect.left + rect.width / 2, rect.top - 30, 'loot');
+                }
+                if (claimResponse.totalRewards.xp > 0) {
+                  setTimeout(() => {
+                    addSCT(`+${claimResponse.totalRewards.xp} XP`, rect.left + rect.width / 2, rect.top - 10, 'xp');
+                  }, 300);
+                }
+                if (claimResponse.totalRewards.tokens > 0) {
+                  setTimeout(() => {
+                    addSCT(`+${claimResponse.totalRewards.tokens} 🪙`, rect.left + rect.width / 2, rect.top + 10, 'loot');
+                  }, 600);
+                }
+              }
+              if (claimResponse.levelUp) {
+                const heroElement = document.querySelector(`[data-hero-id="${hero.id}"]`);
+                if (heroElement) {
+                  const rect = heroElement.getBoundingClientRect();
+                  setTimeout(() => {
+                    addSCT(`LEVEL ${claimResponse.levelUp}!`, rect.left + rect.width / 2, rect.top - 50, 'levelup');
+                  }, 900);
+                }
+              }
+            }
+          } catch (error: unknown) {
+            console.error(`[Quest Auto-Claim] ❌ Failed to auto-claim for ${hero.name}:`, error);
+          }
+        }
+      } catch (error) {
+        console.error('[Quest Sync] ❌ Failed to sync quest progress:', error);
+      }
+    },
+    []
+  );
+
+  const syncPendingQuestProgressRef = useRef(syncPendingQuestProgress);
+  syncPendingQuestProgressRef.current = syncPendingQuestProgress;
+
   // Step 3: Local adventure loop (auto-spawns enemies)
   useEffect(() => {
     // CRITICAL: Don't run adventure loop if in dungeon/raid mode
@@ -4477,6 +4604,11 @@ export default function CleanBattlefieldSource() {
           // Track boss kills separately
           if (target.isBoss) {
             trackQuest(hero.id, 'defeatBosses', 1);
+            heroesRef.current.forEach((h) => {
+              if (h.id && !h.isDead && h.hp > 0) {
+                trackQuest(h.id, 'surviveBosses', 1);
+              }
+            });
           }
           
           // ENCHANTING: Grant essence from enemy defeats (for heroes with enchanting profession)
@@ -6046,6 +6178,7 @@ export default function CleanBattlefieldSource() {
           aliveHeroes.forEach(hero => {
             trackQuest(hero.id, 'completeWaves', 1);
           });
+          void syncPendingQuestProgressRef.current(heroesRef.current, { force: true });
           
           // SPRITE RESET: Reset all hero sprites to idle after wave victory
           // This fixes heroes that died and got healed quickly before sprite state synced
@@ -6738,155 +6871,25 @@ export default function CleanBattlefieldSource() {
       }
       console.log('[Sync] Syncing', currentHeroes.length, 'heroes to Firebase...');
       
-      // QUEST TRACKING: Batch sync quest progress to backend
+      // QUEST TRACKING: Batch sync quest progress to backend (60s cadence)
       const now = Date.now();
       const timeSinceLastSync = now - lastQuestSyncRef.current;
-      
-      // Debug logging for quest sync status
+
       if (questProgressRef.current.size > 0) {
-        console.log(`[Quest Sync] 🔍 Pending quest progress for ${questProgressRef.current.size} heroes (${Math.floor(timeSinceLastSync / 1000)}s since last sync)`);
-        // Log quest progress details for debugging
+        console.log(
+          `[Quest Sync] 🔍 Pending quest progress for ${questProgressRef.current.size} heroes (${Math.floor(timeSinceLastSync / 1000)}s since last sync)`
+        );
         questProgressRef.current.forEach((heroProgress, heroId) => {
           const trackingKeys = Array.from(heroProgress.keys());
-          const hero = currentHeroes.find(h => h.id === heroId);
-          console.log(`[Quest Sync]   Hero ${heroId} (${hero?.name || 'unknown'}): ${trackingKeys.length} tracking keys:`, 
-            trackingKeys.map(key => `${key}:${heroProgress.get(key)}`).join(', '));
+          const hero = currentHeroes.find((h) => h.id === heroId);
+          console.log(
+            `[Quest Sync]   Hero ${heroId} (${hero?.name || 'unknown'}): ${trackingKeys.length} tracking keys:`,
+            trackingKeys.map((key) => `${key}:${heroProgress.get(key)}`).join(', ')
+          );
         });
       }
-      
-      if (questProgressRef.current.size > 0 && timeSinceLastSync >= 300000) { // Increased to 5 minutes
-        console.log('[Quest Sync] ✅ Syncing quest progress for', questProgressRef.current.size, 'heroes...');
-        
-        // Convert Map to array of updates for batch API
-        const questUpdates: Array<{ userId: string; updates: Array<{ trackingKey: string; type: 'daily' | 'weekly' | 'monthly'; increment: number }> }> = [];
-        
-        questProgressRef.current.forEach((heroProgress, heroId) => {
-          const hero = currentHeroes.find(h => h.id === heroId);
-          if (!hero) return;
-          
-          // Get hero's Twitch ID for backend
-          const twitchUserId = (hero as any).twitchUserId || (hero as any).twitchId;
-          if (!twitchUserId) {
-            console.warn(`[Quest Sync] ⚠️ No twitchUserId for hero ${heroId}, skipping quest sync`);
-            return;
-          }
-          
-          const updates: Array<{ trackingKey: string; type: 'daily' | 'weekly' | 'monthly'; increment: number }> = [];
-          
-          heroProgress.forEach((count, trackingKey) => {
-            if (count > 0) {
-              // Send to all three quest types (backend will filter by active quests)
-              updates.push({ trackingKey, type: 'daily', increment: count });
-              updates.push({ trackingKey, type: 'weekly', increment: count });
-              updates.push({ trackingKey, type: 'monthly', increment: count });
-            }
-          });
-          
-          if (updates.length > 0) {
-            questUpdates.push({ userId: twitchUserId, updates });
-          }
-        });
-        
-        // Send batch quest update to backend
-        if (questUpdates.length > 0) {
-          try {
-            const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/quests/update-batch-all`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ updates: questUpdates })
-            });
-            
-            if (!response.ok) {
-              const errorText = await response.text();
-              console.error('[Quest Sync] ❌ Failed to sync quest progress:', response.status, errorText);
-              return;
-            }
-            
-            const result = await response.json();
-            console.log('[Quest Sync] ✅ Quest progress synced:', result);
-            
-            // Check for completed quests and show SCT
-            if (result.success && result.results) {
-              result.results.forEach((userResult: any) => {
-                if (userResult.completedQuests && userResult.completedQuests.length > 0) {
-                  userResult.completedQuests.forEach((completedQuest: any) => {
-                    console.log(`[Quest Complete] 🎉 ${completedQuest.questName} completed!`);
-                    
-                    // Show SCT for quest completion
-                    const hero = currentHeroes.find(h => (h as any).twitchUserId === userResult.userId || (h as any).twitchId === userResult.userId);
-                    if (hero) {
-                      const heroElement = document.querySelector(`[data-hero-id="${hero.id}"]`);
-                      if (heroElement) {
-                        const rect = heroElement.getBoundingClientRect();
-                        addSCT(`Quest Complete!`, rect.left + rect.width / 2, rect.top - 20, 'questcomplete');
-                      }
-                    }
-                  });
-                }
-              });
-            }
-            
-            // Clear quest progress after successful sync
-            console.log('[Quest Sync] 🧹 Clearing quest progress cache after successful sync');
-            questProgressRef.current.clear();
-            lastQuestSyncRef.current = now;
-            
-            // AUTO-CLAIM: Claim all completed quests for each hero
-            currentHeroes.forEach(async (hero) => {
-              const twitchUserId = (hero as any).twitchUserId || (hero as any).twitchId;
-              if (!twitchUserId) return;
-              
-              try {
-                const claimResponse = await questAPI.claimAllQuests(twitchUserId);
-                
-                if (claimResponse.success && claimResponse.claimed > 0) {
-                  console.log(`[Quest Auto-Claim] ✅ ${hero.name} claimed ${claimResponse.claimed} quests!`);
-                  console.log(`[Quest Auto-Claim] Rewards:`, claimResponse.totalRewards);
-                  
-                  // Show SCT for auto-claimed rewards
-                  const heroElement = document.querySelector(`[data-hero-id="${hero.id}"]`);
-                  if (heroElement) {
-                    const rect = heroElement.getBoundingClientRect();
-                    
-                    // Show gold reward
-                    if (claimResponse.totalRewards.gold > 0) {
-                      addSCT(`+${claimResponse.totalRewards.gold}g`, rect.left + rect.width / 2, rect.top - 30, 'loot');
-                    }
-                    
-                    // Show XP reward
-                    if (claimResponse.totalRewards.xp > 0) {
-                      setTimeout(() => {
-                        addSCT(`+${claimResponse.totalRewards.xp} XP`, rect.left + rect.width / 2, rect.top - 10, 'xp');
-                      }, 300);
-                    }
-                    
-                    // Show token reward
-                    if (claimResponse.totalRewards.tokens > 0) {
-                      setTimeout(() => {
-                        addSCT(`+${claimResponse.totalRewards.tokens} 🪙`, rect.left + rect.width / 2, rect.top + 10, 'loot');
-                      }, 600);
-                    }
-                  }
-                  
-                  // If leveled up, show level up notification
-                  if (claimResponse.levelUp) {
-                    const heroElement = document.querySelector(`[data-hero-id="${hero.id}"]`);
-                    if (heroElement) {
-                      const rect = heroElement.getBoundingClientRect();
-                      setTimeout(() => {
-                        addSCT(`LEVEL ${claimResponse.levelUp}!`, rect.left + rect.width / 2, rect.top - 50, 'levelup');
-                      }, 900);
-                    }
-                  }
-                }
-              } catch (error: any) {
-                console.error(`[Quest Auto-Claim] ❌ Failed to auto-claim for ${hero.name}:`, error);
-              }
-            });
-          } catch (error) {
-            console.error('[Quest Sync] ❌ Failed to sync quest progress:', error);
-          }
-        }
+
+      await syncPendingQuestProgressRef.current(currentHeroes);
         
         // AUTO-PURCHASE BATCH SYNC: Sync pending purchases to backend
         const timeSinceLastPurchaseSync = now - lastPurchaseSyncRef.current;
@@ -7321,7 +7324,6 @@ export default function CleanBattlefieldSource() {
             lastProfessionMaterialsSyncRef.current = now;
           }
         }
-      }
     }, 600000); // Every 10 minutes (increased from 5 minutes to further reduce Firebase writes)
     
     syncIntervalRef.current = syncInterval;

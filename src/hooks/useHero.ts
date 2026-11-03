@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Hero } from '../types/Hero';
 import { heroAPI } from '../api/client';
+import { getSelectedHeroStorageKey, resolveSelectedHero } from '../utils/selectedHeroStorage';
 
 // NOTE: userId here is expected to be the Twitch user ID for the player,
 // which the backend uses to find the correct hero document.
@@ -68,12 +69,7 @@ export function useHero(userId: string | null) {
       setHeroes(list);
       
       // Try to restore previously selected hero from localStorage
-      const storageKey = `selectedHeroId_${userId}`;
-      const savedHeroId = localStorage.getItem(storageKey);
-      const savedHero = savedHeroId ? list.find(h => h.id === savedHeroId) : null;
-      
-      // Use saved hero if it exists, otherwise default to first hero
-      const selectedHero = savedHero || (list.length > 0 ? list[0] : null);
+      const selectedHero = resolveSelectedHero(list, userId);
       
       // Validate selected hero has required fields
       if (selectedHero) {
@@ -123,7 +119,7 @@ export function useHero(userId: string | null) {
         prev.map(h => (h.id === updated.id ? updated : h))
       );
       // Ensure the selected hero ID is still persisted
-      const storageKey = `selectedHeroId_${userId}`;
+      const storageKey = getSelectedHeroStorageKey(userId);
       localStorage.setItem(storageKey, updated.id);
     } catch (err) {
       setError('Failed to update hero');
@@ -161,7 +157,7 @@ export function useHero(userId: string | null) {
     
     // Persist selection to localStorage
     if (userId && found) {
-      const storageKey = `selectedHeroId_${userId}`;
+      const storageKey = getSelectedHeroStorageKey(userId);
       localStorage.setItem(storageKey, heroId);
     }
   };

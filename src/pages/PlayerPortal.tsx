@@ -12,7 +12,6 @@ import GuildPanel from '../components/GuildPanel';
 import RaidBrowser from '../components/RaidBrowser';
 import InventoryManager from '../components/InventoryManager';
 import CraftingStation from '../components/CraftingStation';
-import QuestTracker from '../components/QuestTracker';
 import LoginRewardModal from '../components/LoginRewardModal';
 import AchievementsPanel from '../components/AchievementsPanel';
 import { loginWithTwitch } from '../utils/twitchOAuth';
@@ -815,7 +814,7 @@ export default function PlayerPortal() {
               />
             )}
             {activeTab === 'quests' && (
-              <QuestsPage />
+              <QuestsPage heroId={hero?.id} />
             )}
             {activeTab === 'prestige' && hero && (
               <PrestigeStore hero={hero} onUpdate={refetchHero} />
