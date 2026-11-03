@@ -6,6 +6,7 @@
 import React, { useEffect, useRef } from 'react';
 import EnemySpriteJS, { EnemySpriteJSHandle } from '../components/EnemySpriteJS';
 import { getBattlefieldSpriteScale } from '../utils/spriteDisplayScale';
+import { BATTLEFIELD_ENEMY_FACING } from '../utils/spriteFacing';
 
 const DRAGONS: {
   id: string;
@@ -114,8 +115,12 @@ export default function DragonAnimationTest() {
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
+                justifyContent: 'flex-end',
                 overflow: 'visible',
-                minWidth: d.enemyType === 'Elder Dragon' ? 720 : 320,
+                minWidth: d.enemyType === 'Elder Dragon' ? 520 : 320,
+                flex: 1,
+                maxHeight: '100%',
+                paddingBottom: 8,
               }}
             >
               <div
@@ -129,10 +134,11 @@ export default function DragonAnimationTest() {
               >
                 {d.label}
                 <div style={{ color: '#94a3b8', fontSize: 12, fontWeight: 'normal' }}>
-                  {d.enemyType} · scale {scale}×
+                  {d.enemyType} · scale {scale}× · viewport{' '}
+                  {d.enemyType === 'Elder Dragon' ? 48 : 96}px
                 </div>
               </div>
-              <div style={{ overflow: 'visible' }}>
+              <div style={{ overflow: 'visible', lineHeight: 0 }}>
                 <EnemySpriteJS
                   ref={(el) => {
                     refs.current[d.id] = el;
@@ -140,7 +146,7 @@ export default function DragonAnimationTest() {
                   enemyId={`dragon-test-${d.id}`}
                   enemyType={d.enemyType}
                   enemyName={d.enemyName}
-                  facing="left"
+                  facing={BATTLEFIELD_ENEMY_FACING}
                   scale={scale}
                 />
               </div>

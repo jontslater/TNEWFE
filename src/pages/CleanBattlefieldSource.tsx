@@ -31,6 +31,11 @@ import { createProjectile } from '../utils/projectiles';
 import { createExhaustEffect, shouldShowExhaustEffect } from '../utils/exhaustEffects';
 import { createMusicalNoteEffect } from '../utils/musicalNoteEffects';
 import { getBattlefieldSpriteScale } from '../utils/spriteDisplayScale';
+import { getBattlefieldEnemyPosition } from '../utils/battlefieldEnemyPosition';
+import {
+  resolveBattlefieldFacing,
+  type ScreenFacing,
+} from '../utils/spriteFacing';
 import {
   applyHeroCombatStats,
   applyRewardBonus,
@@ -2239,15 +2244,12 @@ export default function CleanBattlefieldSource() {
       });
   }, [twitchId, user?.id]);
 
-  // Get facing direction (from preferences or defaults)
-  const getFacingDirection = (roleOrEnemyName: string, defaultFacing: 'left' | 'right'): 'left' | 'right' => {
-    // Check preferences first
-    if (facingPreferences[roleOrEnemyName]) {
-      return facingPreferences[roleOrEnemyName];
-    }
-    
-    // Default facing
-    return defaultFacing;
+  // Desired screen facing (prefs override; mirror uses facesLeft in spriteFacingConfig)
+  const getFacingDirection = (
+    roleOrEnemyName: string,
+    side: 'hero' | 'enemy'
+  ): ScreenFacing => {
+    return resolveBattlefieldFacing(side, facingPreferences[roleOrEnemyName]);
   };
 
   // Toggle test healer
@@ -7872,99 +7874,19 @@ export default function CleanBattlefieldSource() {
   const calculateHeroStats = applyHeroCombatStats;
 
   // Unified enemy positioning function - works consistently across idle, raid, and dungeon modes
-  const getEnemyPosition = (index: number, total: number, isBoss: boolean = false, enemyType?: string, gameMode?: string, heroes?: Hero[]) => {
-    const screenWidth = 1920;
-    const screenHeight = 1080;
-    
-    // UNIFIED horizontal positioning - same across all modes
-    const heroZoneEnd = screenWidth * 0.6; // 1152px (end of hero zone)
-    const leftMargin = 150; // Consistent distance from hero zone to prevent clipping
-    const rightMargin = 150; // Buffer for sprite width (sprites at 3.0x scale can be ~120px wide)
-    
-    // Idle mode: move enemies further to the right
-    const idleModeOffset = gameMode === 'idle' ? 150 : 0; // Move idle enemies 150px to the right
-    
-    // Calculate horizontal position (spread evenly, never exceed screen bounds)
-    const enemyStartX = heroZoneEnd + leftMargin + idleModeOffset; // 1452px for idle mode (1302px + 150px), 1302px for other modes
-    const maxX = screenWidth - rightMargin; // 1770px max (same for all modes)
-    
-    // Calculate available width based on actual start and end positions
-    // This ensures proper spacing regardless of idle mode offset
-    const availableEnemyWidth = maxX - enemyStartX; // Actual available space for enemies
-    
-    // Spread enemies evenly across the available width
-    // For multiple enemies, space them evenly from start to end
-    const spacing = total > 1 ? availableEnemyWidth / (total - 1) : 0;
-    const x = enemyStartX + (index * spacing);
-    
-    // Ensure enemies don't go off-screen (clamp to safe bounds)
-    const minX = enemyStartX;
-    const clampedX = Math.max(minX, Math.min(x, maxX));
-    
-    // UNIFIED vertical positioning logic
-    const spriteHeight = 240; // Sprite height at 3.0x scale
-    const buffer = 20; // Bottom buffer
-    
-    let y: number;
-    
-    if (isBoss) {
-      // Boss positioning: special handling for Corrupted High Priest
-      const isCorruptedHighPriest = enemyType === 'Corrupted High Priest';
-      
-      // In dungeon mode, align boss lower than regular enemies (1.5 inches = ~144px more down)
-      if (gameMode === 'dungeon') {
-        // Bosses positioned lower than regular enemies (1.5 inches lower)
-        const downOffset = 140 + 144; // 140px (same as regular enemies) + 144px (1.5 inches) = 284px
-        y = screenHeight - spriteHeight - buffer + downOffset; // ~1104px - positioned lower
-      } else if (gameMode === 'idle') {
-        // Idle mode: ALL bosses align with heroes (same as regular enemies)
-        const downOffset = 96; // Same as heroes and regular enemies
-        y = screenHeight - spriteHeight - buffer + downOffset; // ~916px - consistent alignment
-      } else {
-        // Raid mode: Corrupted High Priest aligned with heroes, other bosses lower
-        const downOffset = isCorruptedHighPriest ? 96 : 192;
-        y = screenHeight - spriteHeight - buffer + downOffset; // Corrupted High Priest: ~916px, Others: ~1012px
-      }
-      
-      // Boss horizontal positioning: ensure it's always to the right of hero zone
-      // Use the same enemyStartX calculation as regular enemies to prevent overlap
-      // Bosses are typically positioned further right than regular enemies
-      const bossLeftOffset = 200; // Additional offset for bosses to position them further right
-      const bossX = enemyStartX + bossLeftOffset; // Position boss further right than regular enemies
-      
-      // Ensure boss never overlaps with hero zone (hero zone ends at heroZoneEnd = 1152px)
-      const minBossX = heroZoneEnd + leftMargin; // Minimum safe position: 1302px (or 1452px for idle)
-      const safeBossX = Math.max(bossX, minBossX);
-      
-      // Clamp to screen bounds
-      const clampedBossX = Math.min(safeBossX, screenWidth - rightMargin);
-      
-      return {
-        left: `${clampedBossX}px`, // Boss positioned safely to the right of hero zone
-        top: `${y}px`
-      };
-    }
-    
-    // Regular enemies: consistent positioning based on enemy type
-    // NO STAGGER - all enemies align at the same Y position
-    const isCultist = enemyType === 'Cultist';
-    
-    // For idle mode: all enemies align with heroes (same as hero baseY)
-    // For raid/dungeon: cultists get extra downOffset
-    if (gameMode === 'idle') {
-      // All enemies align with heroes in idle mode - NO STAGGER
-      const downOffset = 96; // Same as heroes
-      y = screenHeight - spriteHeight - buffer + downOffset; // ~916px - consistent for all
-    } else {
-      // Raid/Dungeon: cultists moved down more, regular enemies lowered for dungeon
-      const downOffset = isCultist ? 192 : (gameMode === 'dungeon' ? 140 : 96); // Dungeon: ~960px, Raid: ~916px, Cultists: ~1012px
-      y = screenHeight - spriteHeight - buffer + downOffset;
-    }
-    
-    return {
-      left: `${clampedX}px`,
-      top: `${y}px`
-    };
+  const getEnemyPosition = (
+    index: number,
+    total: number,
+    isBoss: boolean = false,
+    enemyType?: string,
+    gameMode?: string,
+    _heroes?: Hero[]
+  ) => {
+    const mode =
+      gameMode === 'dungeon' || gameMode === 'raid' || gameMode === 'idle'
+        ? gameMode
+        : 'idle';
+    return getBattlefieldEnemyPosition(index, total, isBoss, enemyType, mode);
   };
   
   // Dungeon-specific positioning (prevents clipping with 2 heroes)
@@ -8512,7 +8434,7 @@ export default function CleanBattlefieldSource() {
                   ref={getHeroSpriteRef(hero.id)}
                   heroId={hero.id}
                   role={hero.role}
-                  facing={getFacingDirection(hero.role, 'right')}
+                  facing={getFacingDirection(hero.role, 'hero')}
                   scale={3.0}
                   shield={0}
                 />
@@ -8613,7 +8535,7 @@ export default function CleanBattlefieldSource() {
                   enemyId={enemy.id}
                   enemyType={enemy.enemyType || enemy.name}
                   enemyName={enemy.name}
-                  facing="left"
+                  facing={getFacingDirection(enemy.enemyType || enemy.name, 'enemy')}
                   scale={getBattlefieldSpriteScale({ isBoss: enemy.isBoss, enemyType: enemy.enemyType, enemyName: enemy.name })}
                 />
               </div>
@@ -8972,7 +8894,7 @@ export default function CleanBattlefieldSource() {
                   ref={getHeroSpriteRef(hero.id)}
                   heroId={hero.id}
                   role={hero.role}
-                  facing={getFacingDirection(hero.role, 'right')}
+                  facing={getFacingDirection(hero.role, 'hero')}
                   scale={3.0} // Same scale as idle
                   shield={0}
                   auraEffect={hero.auraEffect as any}
@@ -9072,10 +8994,6 @@ export default function CleanBattlefieldSource() {
                     'Elder Dragon': 'Elder Dragon'
                   };
                   const mappedType = spriteMap[enemy.name] || enemy.name;
-                  const defaultRaidFacing = 'right';
-                  const baseFacing = enemy.isBoss && enemy.enemyType === 'Corrupted High Priest'
-                    ? 'left'
-                    : (mappedType.startsWith('Dragon_') ? 'left' : getFacingDirection(enemy.enemyType || mappedType, defaultRaidFacing));
                   const finalScale = getBattlefieldSpriteScale({
                     isBoss: enemy.isBoss,
                     enemyType: enemy.enemyType || mappedType,
@@ -9088,7 +9006,7 @@ export default function CleanBattlefieldSource() {
                       enemyId={enemy.id}
                       enemyType={enemy.enemyType || mappedType}
                       enemyName={enemy.name}
-                      facing={baseFacing}
+                      facing={getFacingDirection(enemy.enemyType || mappedType, 'enemy')}
                       scale={finalScale}
                     />
                   );
@@ -9477,7 +9395,7 @@ export default function CleanBattlefieldSource() {
                 ref={getHeroSpriteRef(hero.id)}
                 heroId={hero.id}
                 role={hero.role}
-                facing={getFacingDirection(hero.role, 'right')}
+                facing={getFacingDirection(hero.role, 'hero')}
                 scale={3.0}
                 shield={0}
               />
@@ -9563,13 +9481,6 @@ export default function CleanBattlefieldSource() {
               }}
             >
               {(() => {
-                const defaultFacing = gameMode === 'raid' ? 'right' : 'left';
-                const isCultist = !enemy.isBoss && (enemy.enemyType === 'Cultist' || enemy.enemyType === 'Corrupted High Priest');
-                const baseFacing = enemy.isBoss && enemy.enemyType === 'Corrupted High Priest'
-                  ? 'left'
-                  : isCultist
-                    ? 'left'
-                    : getFacingDirection(enemy.enemyType || enemy.name, defaultFacing);
                 const finalScale = getBattlefieldSpriteScale({
                   isBoss: enemy.isBoss,
                   enemyType: enemy.enemyType || enemy.name,
@@ -9582,7 +9493,7 @@ export default function CleanBattlefieldSource() {
                     enemyId={enemy.id}
                     enemyType={enemy.enemyType || enemy.name}
                     enemyName={enemy.name}
-                    facing={baseFacing}
+                    facing={getFacingDirection(enemy.enemyType || enemy.name, 'enemy')}
                     scale={finalScale}
                     isTransformed={enemy.isTransformed || false}
                   />
