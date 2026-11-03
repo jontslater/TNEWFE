@@ -2,22 +2,35 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Raid, WorldBoss } from '../types/Raid';
 import { formatNumber, getItemScore } from '../utils/format';
-import { raidAPI, guildAPI } from '../api/client';
+import { raidAPI } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import { useGuild } from '../hooks/useGuild';
-import CombatInterface from './CombatInterface';
+import { useActiveInstanceListener } from '../hooks/useActiveInstanceListener';
+import { getCombatRoleFromClass } from '../utils/combatRole';
+import { openCleanBattlefield } from '../utils/battlefieldUrls';
 
 interface RaidBrowserProps {
   raids?: Raid[];
   worldBoss?: WorldBoss | null;
   hero?: any;
   userId?: string;
+  authUserId?: string;
+  twitchId?: string | null;
 }
 
-export default function RaidBrowser({ raids: propRaids, worldBoss: propWorldBoss, hero, userId }: RaidBrowserProps) {
+export default function RaidBrowser({
+  raids: propRaids,
+  worldBoss: propWorldBoss,
+  hero,
+  userId,
+  authUserId: authUserIdProp,
+  twitchId,
+}: RaidBrowserProps) {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const authUserId = authUserIdProp || user?.twitchId || user?.id;
   const targetUserId = hero?.id || userId || user?.id;
+  const { activeInstance } = useActiveInstanceListener(twitchId || authUserId || null);
   const { guild } = useGuild(targetUserId || null);
   const [allRaids, setAllRaids] = useState<any[]>([]);
   const [scheduledRaids, setScheduledRaids] = useState<any[]>([]);
@@ -28,14 +41,21 @@ export default function RaidBrowser({ raids: propRaids, worldBoss: propWorldBoss
   const [activeDifficultyTab, setActiveDifficultyTab] = useState<'normal' | 'heroic' | 'mythic'>('normal');
   
   // Queue state
-  const [queueStatuses, setQueueStatuses] = useState<Record<string, {queueSize: number, position?: number, participants: any[]}>>({});
+  const [queueStatuses, setQueueStatuses] = useState<
+    Record<
+      string,
+      {
+        queueSize: number;
+        position?: number;
+        participants: any[];
+        roleCounts?: { tank: number; healer: number; dps: number };
+        inQueue?: boolean;
+      }
+    >
+  >({});
   const [inQueue, setInQueue] = useState<Record<string, boolean>>({});
   const [joiningQueue, setJoiningQueue] = useState<Record<string, boolean>>({});
-  
-  // Active raid state
-  const [activeRaid, setActiveRaid] = useState<any | null>(null);
-  const [raidElapsedTime, setRaidElapsedTime] = useState(0);
-  const [combatLogs, setCombatLogs] = useState<any[]>([]);
+  const [queueNotice, setQueueNotice] = useState<string | null>(null);
 
   useEffect(() => {
     if (userId && hero) {
@@ -48,7 +68,7 @@ export default function RaidBrowser({ raids: propRaids, worldBoss: propWorldBoss
       setLoading(false);
     }
     fetchWorldBoss();
-    
+
     // Poll scheduled raids every 30 seconds
     const interval = setInterval(() => {
       fetchScheduledRaids();
@@ -81,6 +101,7 @@ export default function RaidBrowser({ raids: propRaids, worldBoss: propWorldBoss
       setLoading(true);
       const data = await raidAPI.getAvailableRaids(targetUserId);
       setAllRaids(data.availableRaids || []);
+      await syncRaidQueueMembership(data.availableRaids || []);
       
       // Use hero prop if available, otherwise fall back to API response
       if (hero) {
@@ -115,9 +136,32 @@ export default function RaidBrowser({ raids: propRaids, worldBoss: propWorldBoss
     }
   };
 
-  const handleJoinScheduledRaid = (instanceId: string) => {
-    // Navigate to raid browser source
-    navigate(`/browser-source/raid/${instanceId}`);
+  const syncRaidQueueMembership = async (raidsList: any[]) => {
+    if (!authUserId || !raidsList.length) return;
+    const membership: Record<string, boolean> = {};
+    await Promise.all(
+      raidsList.map(async (raid) => {
+        try {
+          const status = await raidAPI.getQueueStatus(raid.id, authUserId || undefined);
+          if (status.inQueue) membership[raid.id] = true;
+          if (status.inQueue) {
+            setQueueStatuses((prev) => ({ ...prev, [raid.id]: status }));
+          }
+        } catch {
+          /* ignore */
+        }
+      })
+    );
+    setInQueue((prev) => ({ ...prev, ...membership }));
+  };
+
+  const handleJoinScheduledRaid = (_instanceId: string) => {
+    const tid = twitchId || user?.twitchId;
+    if (tid) {
+      openCleanBattlefield(tid, { darkMode: true });
+    } else {
+      setQueueNotice('Log in with Twitch to open the battlefield overlay when the raid starts.');
+    }
   };
 
   const isRaidStartingSoon = (scheduledTime: any) => {
@@ -127,58 +171,6 @@ export default function RaidBrowser({ raids: propRaids, worldBoss: propWorldBoss
     // Show join button if raid starts within 10 minutes
     return timeUntilStart > 0 && timeUntilStart <= 10 * 60 * 1000;
   };
-
-  const handleExitRaid = () => {
-    setActiveRaid(null);
-    setRaidElapsedTime(0);
-    setCombatLogs([]);
-    fetchRaids(); // Refresh raid list
-  };
-  
-  // Raid timer
-  useEffect(() => {
-    if (!activeRaid) return;
-    
-    const timer = setInterval(() => {
-      setRaidElapsedTime(prev => prev + 1);
-    }, 1000);
-    
-    return () => clearInterval(timer);
-  }, [activeRaid]);
-  
-  // Simulate combat (this would come from your backend in production)
-  useEffect(() => {
-    if (!activeRaid) return;
-    
-    const combatInterval = setInterval(() => {
-      // Simulate damage
-      const damage = Math.floor(Math.random() * 5000) + 1000;
-      setActiveRaid((prev: any) => ({
-        ...prev,
-        currentBossHp: Math.max(0, prev.currentBossHp - damage)
-      }));
-      
-      setCombatLogs(prev => [...prev, {
-        id: Date.now().toString(),
-        timestamp: Date.now(),
-        type: 'damage',
-        message: `Party deals damage to ${activeRaid.boss.name}`,
-        amount: damage
-      }].slice(-50));
-      
-      // Check if boss is dead
-      if (activeRaid.currentBossHp - damage <= 0) {
-        setCombatLogs(prev => [...prev, {
-          id: Date.now().toString(),
-          timestamp: Date.now(),
-          type: 'system',
-          message: `${activeRaid.boss.name} has been defeated! Victory!`
-        }]);
-      }
-    }, 2000);
-    
-    return () => clearInterval(combatInterval);
-  }, [activeRaid]);
 
   const handleJoinWorldBoss = async () => {
     // Use hero.id (document ID) if available, otherwise fall back to userId/user.id
@@ -201,51 +193,35 @@ export default function RaidBrowser({ raids: propRaids, worldBoss: propWorldBoss
   };
 
   const handleJoinQueue = async (raid: any) => {
-    const targetUserId = hero?.id || userId || user?.id;
-    if (!targetUserId || !hero) return;
-    
+    if (!authUserId || !hero?.id) return;
+
     try {
-      setJoiningQueue(prev => ({ ...prev, [raid.id]: true }));
-      const result = await raidAPI.joinQueue(
-        raid.id,
-        targetUserId,
-        hero.name || user?.twitchUsername || 'Unknown',
-        hero.level || heroLevel,
-        hero.role || 'berserker',
-        getItemScore(hero.equipment || {})
-      );
-      
-      if (result.autoStarted && result.instanceId) {
-        // Auto-started, navigate to raid
-        setActiveRaid({
-          ...raid,
-          instanceId: result.instanceId,
-          currentBossHp: raid.boss.hp
-        });
-        setRaidElapsedTime(0);
-        setCombatLogs([{
-          id: Date.now().toString(),
-          timestamp: Date.now(),
-          type: 'system',
-          message: `Raid "${raid.name}" has begun!`
-        }]);
-      } else {
-        setInQueue(prev => ({ ...prev, [raid.id]: true }));
-        fetchQueueStatus(raid.id);
+      setJoiningQueue((prev) => ({ ...prev, [raid.id]: true }));
+      const result = await raidAPI.joinQueue(raid.id, {
+        userId: authUserId,
+        heroId: hero.id,
+        role: getCombatRoleFromClass(hero.role),
+        itemScore: getItemScore(hero.equipment || {}),
+      });
+
+      if (result.message) {
+        setQueueNotice(result.message);
       }
+
+      setInQueue((prev) => ({ ...prev, [raid.id]: true }));
+      await fetchQueueStatus(raid.id);
     } catch (error: any) {
       alert(`Failed to join queue: ${error.response?.data?.error || error.message}`);
     } finally {
-      setJoiningQueue(prev => ({ ...prev, [raid.id]: false }));
+      setJoiningQueue((prev) => ({ ...prev, [raid.id]: false }));
     }
   };
 
   const handleLeaveQueue = async (raidId: string) => {
-    const targetUserId = hero?.id || userId || user?.id;
-    if (!targetUserId) return;
+    if (!authUserId) return;
     
     try {
-      await raidAPI.leaveQueue(raidId, targetUserId);
+      await raidAPI.leaveQueue(raidId, authUserId);
       setInQueue(prev => ({ ...prev, [raidId]: false }));
       setQueueStatuses(prev => {
         const updated = { ...prev };
@@ -259,14 +235,14 @@ export default function RaidBrowser({ raids: propRaids, worldBoss: propWorldBoss
 
   const fetchQueueStatus = async (raidId: string) => {
     try {
-      const status = await raidAPI.getQueueStatus(raidId);
-      setQueueStatuses(prev => ({ ...prev, [raidId]: status }));
-      
-      // Check if we're still in queue
-      const targetUserId = hero?.id || userId || user?.id;
-      const inQueue = status.participants.some((p: any) => p.userId === targetUserId);
-      if (!inQueue) {
-        setInQueue(prev => ({ ...prev, [raidId]: false }));
+      const status = await raidAPI.getQueueStatus(raidId, authUserId || undefined);
+      setQueueStatuses((prev) => ({ ...prev, [raidId]: status }));
+
+      if (!status.inQueue) {
+        setInQueue((prev) => ({ ...prev, [raidId]: false }));
+        if (activeInstance.type === 'raid') {
+          setQueueNotice('Raid match found — combat is running on your Clean Battlefield overlay.');
+        }
       }
     } catch (error) {
       console.error('Failed to fetch queue status:', error);
@@ -283,14 +259,6 @@ export default function RaidBrowser({ raids: propRaids, worldBoss: propWorldBoss
       heroic: 'text-blue-400 bg-blue-900/30 border-blue-600',
       mythic: 'text-purple-400 bg-purple-900/30 border-purple-600'
     }[difficulty] || 'text-gray-400 bg-gray-900/30 border-gray-600';
-  };
-
-  const getTypeColor = (type: string) => {
-    return {
-      daily: 'bg-blue-600',
-      weekly: 'bg-purple-600',
-      monthly: 'bg-yellow-600'
-    }[type] || 'bg-gray-600';
   };
 
   const formatDate = (date: Date) => {
@@ -365,49 +333,35 @@ export default function RaidBrowser({ raids: propRaids, worldBoss: propWorldBoss
     return baseLevel + difficultyBonus;
   };
 
-  // If in active raid, show combat interface
-  if (activeRaid) {
-    const mockParticipants = [
-      { 
-        id: userId || user?.id || '1', 
-        name: user?.twitchUsername || hero?.name || 'You', 
-        role: (hero?.role || 'dps') as any, 
-        level: currentHeroLevel, 
-        hp: Math.floor((hero?.hp || hero?.maxHp || 8000) * 0.85), 
-        maxHp: hero?.maxHp || 8000, 
-        isDead: false 
-      },
-      { id: '2', name: 'Tank Buddy', role: 'tank' as const, level: currentHeroLevel, hp: 9000, maxHp: 10000, isDead: false },
-      { id: '3', name: 'Healer', role: 'healer' as const, level: currentHeroLevel - 1, hp: 6500, maxHp: 7000, isDead: false },
-      { id: '4', name: 'DPS Warrior', role: 'dps' as const, level: currentHeroLevel + 1, hp: 7200, maxHp: 8000, isDead: false },
-    ];
-    
+  // If in active raid instance, prompt overlay (combat is on clean battlefield)
+  if (activeInstance.type === 'raid' && activeInstance.instanceId) {
     return (
-      <div className="relative">
-        <button
-          onClick={handleExitRaid}
-          className="absolute top-4 right-4 z-50 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-semibold"
-        >
-          Exit Raid
-        </button>
-        <CombatInterface
-          bossName={activeRaid.boss.name}
-          bossHp={activeRaid.currentBossHp}
-          bossMaxHp={activeRaid.boss.hp}
-          bossLevel={activeRaid.boss.level}
-          bossSprite={activeRaid.boss.sprite}
-          mechanics={activeRaid.boss.mechanics}
-          participants={mockParticipants}
-          combatLogs={combatLogs}
-          duration={Math.ceil(activeRaid.estimatedDuration / 1000)}
-          elapsedTime={raidElapsedTime}
-        />
+      <div className="rounded-lg border border-green-600 bg-green-950/30 p-8 text-center space-y-4">
+        <h3 className="text-2xl font-bold text-white">Raid in progress</h3>
+        <p className="text-gray-300">
+          Instance <span className="font-mono text-green-300">{activeInstance.instanceId}</span> is active.
+          Watch and play on your Clean Battlefield browser source — the overlay switches modes automatically.
+        </p>
+        {twitchId || user?.twitchId ? (
+          <button
+            type="button"
+            onClick={() => openCleanBattlefield((twitchId || user?.twitchId)!, { darkMode: true })}
+            className="px-6 py-3 bg-green-600 hover:bg-green-700 rounded-lg font-semibold text-white"
+          >
+            Open battlefield view
+          </button>
+        ) : null}
       </div>
     );
   }
-  
+
   return (
     <div className="space-y-6">
+      {queueNotice && (
+        <div className="rounded-lg border border-blue-600 bg-blue-950/30 px-4 py-3 text-sm text-blue-100">
+          {queueNotice}
+        </div>
+      )}
       {/* Hero Stats */}
       {(hero || user?.hero) && (
         <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
@@ -675,7 +629,9 @@ export default function RaidBrowser({ raids: propRaids, worldBoss: propWorldBoss
                   <div className="flex items-center gap-2">
                     {inQueue[raid.id] && queueStatuses[raid.id] && (
                       <div className="text-xs text-blue-400 mr-2">
-                        Queue: {queueStatuses[raid.id].position || 0}/{queueStatuses[raid.id].queueSize}
+                        Queue: {queueStatuses[raid.id].queueSize} players
+                        {queueStatuses[raid.id].roleCounts &&
+                          ` · T${queueStatuses[raid.id].roleCounts.tank} H${queueStatuses[raid.id].roleCounts.healer} D${queueStatuses[raid.id].roleCounts.dps}`}
                       </div>
                     )}
                     {inQueue[raid.id] ? (
@@ -697,7 +653,7 @@ export default function RaidBrowser({ raids: propRaids, worldBoss: propWorldBoss
                           }`}
                           title={!available ? lockReasons.join(', ') : ''}
                         >
-                          {joiningQueue[raid.id] ? 'Joining...' : 'Join Queue'}
+                          {joiningQueue[raid.id] ? 'Joining...' : 'Join queue'}
                         </button>
                         {guild && (
                           <button

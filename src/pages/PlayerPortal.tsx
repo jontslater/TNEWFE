@@ -23,6 +23,7 @@ import { getItemScore } from '../utils/format';
 import { CLASS_DATA } from '../data/classData';
 import { generateBrowserSourceUrl } from '../utils/browserSource';
 import BrowserSourceTab from '../components/BrowserSourceTab';
+import ActivityLobbyPanel from '../components/ActivityLobbyPanel';
 import AuctionHousePage from './AuctionHousePage';
 import QuestsPage from './QuestsPage';
 import SocialSidebar from '../components/SocialSidebar';
@@ -49,6 +50,8 @@ export default function PlayerPortal() {
   const [showLoginReward, setShowLoginReward] = useState(false);
   const [loginRewardStatus, setLoginRewardStatus] = useState<any>(null);
   const [dungeonQueueStatus, setDungeonQueueStatus] = useState<any>(null);
+  const [lobbyRaids, setLobbyRaids] = useState<any[]>([]);
+  const queueUserId = user?.twitchId || user?.id;
   const [grantingFounderPack, setGrantingFounderPack] = useState<{ userId: string; tier: string } | null>(null);
   const [whisperRequest, setWhisperRequest] = useState<{ heroId: string; heroName: string } | null>(null);
 
@@ -155,9 +158,9 @@ export default function PlayerPortal() {
   };
 
   const checkDungeonQueue = async () => {
-    if (!user?.id) return;
+    if (!queueUserId) return;
     try {
-      const status = await dungeonAPI.getQueueStatus(user.id);
+      const status = await dungeonAPI.getQueueStatus(queueUserId);
       setDungeonQueueStatus(status);
     } catch (err) {
       // Silently fail
@@ -165,13 +168,32 @@ export default function PlayerPortal() {
   };
 
   useEffect(() => {
-    if (isAuthenticated && user?.id) {
+    if (!hero?.id) {
+      setLobbyRaids([]);
+      return;
+    }
+    let cancelled = false;
+    raidAPI
+      .getAvailableRaids(hero.id)
+      .then((data) => {
+        if (!cancelled) setLobbyRaids(data.availableRaids || []);
+      })
+      .catch(() => {
+        if (!cancelled) setLobbyRaids([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [hero?.id]);
+
+  useEffect(() => {
+    if (isAuthenticated && queueUserId) {
       checkDungeonQueue();
       // Poll every 10 seconds (reduced from 5s to minimize server load)
       const interval = setInterval(checkDungeonQueue, 10000);
       return () => clearInterval(interval);
     }
-  }, [isAuthenticated, user]);
+  }, [isAuthenticated, queueUserId]);
 
   const loadRaids = async () => {
     try {
@@ -670,6 +692,18 @@ export default function PlayerPortal() {
               ? 'lg:col-span-12'
               : 'lg:col-span-9'
           }`}>
+            {hero &&
+              queueUserId &&
+              ['raids', 'dungeon', 'browserSource'].includes(activeTab) && (
+                <ActivityLobbyPanel
+                  hero={hero}
+                  authUserId={queueUserId}
+                  twitchId={user?.twitchId}
+                  availableRaids={lobbyRaids}
+                  onDungeonQueueChange={checkDungeonQueue}
+                  showStreamerTools={activeTab === 'browserSource'}
+                />
+              )}
             {activeTab === 'hero' && (
               <HeroDashboard 
                 hero={hero} 
@@ -804,10 +838,24 @@ export default function PlayerPortal() {
                 }}
               />
             )}
-            {activeTab === 'raids' && <RaidBrowser hero={hero} userId={hero?.id || user?.id} />}
+            {activeTab === 'raids' && (
+              <RaidBrowser
+                hero={hero}
+                userId={hero?.id || user?.id}
+                authUserId={queueUserId}
+                twitchId={user?.twitchId}
+              />
+            )}
             {activeTab === 'skills' && <SkillsPage hero={hero} userId={user?.id} />}
             {activeTab === 'achievements' && <AchievementsPanel hero={hero} onUpdate={refetchHero} />}
-            {activeTab === 'dungeon' && <DungeonFinderTab hero={hero} userId={user?.id} queueStatus={dungeonQueueStatus} onQueueChange={checkDungeonQueue} />}
+            {activeTab === 'dungeon' && (
+              <DungeonFinderTab
+                hero={hero}
+                userId={queueUserId}
+                queueStatus={dungeonQueueStatus}
+                onQueueChange={checkDungeonQueue}
+              />
+            )}
             {activeTab === 'browserSource' && (
               <BrowserSourceTab 
                 userId={user?.twitchId || user?.id} 
