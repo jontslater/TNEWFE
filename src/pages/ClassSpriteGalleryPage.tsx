@@ -1,40 +1,7 @@
 import HeroSpriteJS from '../components/HeroSpriteJS';
 import { BATTLEFIELD_HERO_FACING } from '../utils/spriteFacing';
 
-const PLAYABLE_CLASSES = [
-  'guardian',
-  'paladin',
-  'warden',
-  'bloodknight',
-  'vanguard',
-  'brewmaster',
-  'cleric',
-  'atoner',
-  'druid',
-  'lightbringer',
-  'shaman',
-  'mistweaver',
-  'chronomancer',
-  'bard',
-  'berserker',
-  'crusader',
-  'assassin',
-  'reaper',
-  'bladedancer',
-  'monk',
-  'stormwarrior',
-  'hunter',
-  'mage',
-  'warlock',
-  'ranger',
-  'shadowpriest',
-  'mooncaller',
-  'stormcaller',
-  'frostmage',
-  'firemage',
-  'dragonsorcerer',
-  'necromancer',
-] as const;
+import { PLAYABLE_HERO_CLASSES } from '../data/battlefieldSpriteGalleryData';
 
 export default function ClassSpriteGalleryPage() {
   return (
@@ -50,7 +17,7 @@ export default function ClassSpriteGalleryPage() {
           gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
         }}
       >
-        {PLAYABLE_CLASSES.map((role) => (
+        {PLAYABLE_HERO_CLASSES.map((role) => (
           <div
             key={role}
             className="flex flex-col items-center rounded-lg border border-slate-700 bg-slate-900/80 p-4"

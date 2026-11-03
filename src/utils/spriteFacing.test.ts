@@ -8,9 +8,9 @@ describe('spriteFacing dragons', () => {
     expect(shouldMirrorSpriteForFacing('left', false)).toBe(true);
   });
 
-  it('elder dragon native-left sheet faces left without mirror', () => {
-    expect(getEnemyFacesLeft('Elder Dragon', 'Elder Dragon')).toBe(true);
-    expect(shouldMirrorSpriteForFacing('left', true)).toBe(false);
+  it('elder dragon sheet faces right; mirror on battlefield left', () => {
+    expect(getEnemyFacesLeft('Elder Dragon', 'Elder Dragon')).toBe(false);
+    expect(shouldMirrorSpriteForFacing('left', false)).toBe(true);
   });
 });
 

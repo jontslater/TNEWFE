@@ -1,66 +1,43 @@
-/**
- * Visual QA: heroes on the left facing right, enemies on the right facing left.
- * Uses the same sprite components, scaling, and positioning helpers as CleanBattlefieldSource.
- */
 import HeroSpriteJS from '../components/HeroSpriteJS';
 import EnemySpriteJS from '../components/EnemySpriteJS';
+import {
+  BATTLEFIELD_GALLERY_ENEMIES,
+  PLAYABLE_HERO_CLASSES,
+} from '../data/battlefieldSpriteGalleryData';
 import { getBattlefieldEnemyPosition } from '../utils/battlefieldEnemyPosition';
-import { getBattlefieldSpriteScale } from '../utils/spriteDisplayScale';
+import {
+  getBattlefieldSpriteScale,
+  SPRITE_DISPLAY_SCALE,
+} from '../utils/spriteDisplayScale';
 import {
   BATTLEFIELD_ENEMY_FACING,
   BATTLEFIELD_HERO_FACING,
 } from '../utils/spriteFacing';
 
-const DEMO_HEROES = [
-  { id: 'demo-guardian', role: 'guardian', label: 'Guardian' },
-  { id: 'demo-chronomancer', role: 'chronomancer', label: 'Chronomancer' },
-  { id: 'demo-stormwarrior', role: 'stormwarrior', label: 'Stormwarrior' },
-  { id: 'demo-mage', role: 'mage', label: 'Mage' },
-  { id: 'demo-hunter', role: 'hunter', label: 'Hunter' },
-  { id: 'demo-monk', role: 'monk', label: 'Monk' },
-] as const;
-
-const DEMO_MOBS = [
-  {
-    id: 'demo-imp',
-    enemyType: 'Imp',
-    enemyName: 'Imp',
-    label: 'Imp',
-  },
-  {
-    id: 'demo-kobold',
-    enemyType: 'Kobold Warrior',
-    enemyName: 'Kobold Warrior',
-    label: 'Kobold',
-  },
-] as const;
-
-const DEMO_DRAGON_WHELP = {
-  id: 'demo-dragon1',
-  enemyType: 'Dragon_1',
-  enemyName: 'Dragon Whelp',
-  label: 'Dragon Whelp',
-} as const;
-
-const DEMO_ELDER = {
-  id: 'demo-elder',
-  enemyType: 'Elder Dragon',
-  enemyName: 'Elder Dragon',
-  label: 'Elder Dragon',
-} as const;
-
+/**
+ * Visual QA on the real battlefield layout: all hero classes (left, facing right)
+ * and all enemy types (right, facing left), shared ground line via feet anchoring.
+ */
 export default function BattlefieldFacingPreviewPage() {
-  const whelpPos = getBattlefieldEnemyPosition(0, 1, false, DEMO_DRAGON_WHELP.enemyType, 'idle');
-  const elderPos = getBattlefieldEnemyPosition(0, 1, true, DEMO_ELDER.enemyType, 'idle');
-  const whelpScale = getBattlefieldSpriteScale({
-    enemyType: DEMO_DRAGON_WHELP.enemyType,
-    enemyName: DEMO_DRAGON_WHELP.enemyName,
-  });
+  const elderEntry = BATTLEFIELD_GALLERY_ENEMIES.find(
+    (e) => e.enemyType === 'Elder Dragon'
+  )!;
+  const elderPos = getBattlefieldEnemyPosition(
+    0,
+    1,
+    true,
+    elderEntry.enemyType,
+    'idle'
+  );
   const elderScale = getBattlefieldSpriteScale({
-    enemyType: DEMO_ELDER.enemyType,
-    enemyName: DEMO_ELDER.enemyName,
+    enemyType: elderEntry.enemyType,
+    enemyName: elderEntry.enemyName,
     isBoss: true,
   });
+
+  const standardEnemies = BATTLEFIELD_GALLERY_ENEMIES.filter(
+    (e) => e.enemyType !== 'Elder Dragon'
+  );
 
   return (
     <div
@@ -76,127 +53,128 @@ export default function BattlefieldFacingPreviewPage() {
       <div
         style={{
           position: 'absolute',
-          top: 24,
+          top: 16,
           left: '50%',
           transform: 'translateX(-50%)',
           color: 'white',
-          fontSize: 26,
+          fontSize: 22,
           fontWeight: 'bold',
           textAlign: 'center',
         }}
       >
-        Battlefield facing — heroes → right · enemies → left
+        Battlefield sprite gallery — heroes → right · enemies → left · shared baseline
       </div>
 
       <div
+        id="battlefield-hero-line"
         style={{
           position: 'absolute',
-          left: 48,
-          right: '50%',
+          left: 32,
+          right: '42%',
           bottom: 72,
           display: 'flex',
           flexDirection: 'row',
+          flexWrap: 'wrap',
           alignItems: 'flex-end',
+          alignContent: 'flex-end',
           justifyContent: 'flex-start',
-          gap: 28,
-          paddingRight: 24,
-          borderBottom: '2px solid rgba(59,130,246,0.35)',
-          minHeight: 220,
+          gap: '12px 16px',
+          paddingRight: 16,
+          borderBottom: '2px solid rgba(59,130,246,0.45)',
+          minHeight: 200,
+          maxHeight: 420,
+          overflow: 'hidden',
         }}
       >
-        {DEMO_HEROES.map((h) => (
+        {PLAYABLE_HERO_CLASSES.map((role) => (
           <div
-            key={h.id}
-            data-hero-id={h.id}
+            key={role}
+            data-hero-id={`gallery-${role}`}
             data-side="hero"
+            data-class={role}
             style={{
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
-              gap: 8,
+              gap: 4,
+              width: 72,
             }}
           >
             <HeroSpriteJS
-              heroId={h.id}
-              role={h.role}
+              heroId={`gallery-${role}`}
+              role={role}
               facing={BATTLEFIELD_HERO_FACING}
-              scale={2.5}
+              scale={SPRITE_DISPLAY_SCALE}
+              freezeIdleFrame
             />
-            <span style={{ color: '#e2e8f0', fontSize: 13, textAlign: 'center' }}>
-              {h.label}
+            <span
+              style={{
+                color: '#94a3b8',
+                fontSize: 9,
+                textAlign: 'center',
+                lineHeight: 1.1,
+              }}
+            >
+              {role}
             </span>
           </div>
         ))}
       </div>
 
       <div
+        id="battlefield-enemy-grid"
         style={{
           position: 'absolute',
-          right: 120,
+          left: '58%',
+          right: 24,
           bottom: 72,
           display: 'flex',
           flexDirection: 'row',
+          flexWrap: 'wrap',
           alignItems: 'flex-end',
-          gap: 40,
-          borderBottom: '2px solid rgba(239,68,68,0.35)',
-          minHeight: 120,
+          alignContent: 'flex-end',
+          justifyContent: 'flex-start',
+          gap: '16px 20px',
+          borderBottom: '2px solid rgba(239,68,68,0.45)',
+          minHeight: 200,
+          maxHeight: 420,
+          overflow: 'auto',
           paddingBottom: 8,
         }}
       >
-        {DEMO_MOBS.map((e) => (
+        {standardEnemies.map((e) => (
           <div
-            key={e.id}
+            key={e.enemyType}
             data-side="enemy"
-            data-enemy-id={e.id}
+            data-enemy-id={`gallery-${e.enemyType}`}
             style={{
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
-              gap: 8,
+              gap: 4,
             }}
           >
             <EnemySpriteJS
-              enemyId={e.id}
+              enemyId={`gallery-${e.enemyType}`}
               enemyType={e.enemyType}
               enemyName={e.enemyName}
               facing={BATTLEFIELD_ENEMY_FACING}
               scale={getBattlefieldSpriteScale({
+                isBoss: e.isBoss,
                 enemyType: e.enemyType,
                 enemyName: e.enemyName,
               })}
             />
-            <span style={{ color: '#e2e8f0', fontSize: 13 }}>{e.label}</span>
+            <span style={{ color: '#94a3b8', fontSize: 9, textAlign: 'center' }}>
+              {e.label}
+            </span>
           </div>
         ))}
       </div>
 
       <div
         data-side="enemy"
-        data-enemy-id={DEMO_DRAGON_WHELP.id}
-        style={{
-          position: 'absolute',
-          ...whelpPos,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          zIndex: 20,
-        }}
-      >
-        <EnemySpriteJS
-          enemyId={DEMO_DRAGON_WHELP.id}
-          enemyType={DEMO_DRAGON_WHELP.enemyType}
-          enemyName={DEMO_DRAGON_WHELP.enemyName}
-          facing={BATTLEFIELD_ENEMY_FACING}
-          scale={whelpScale}
-        />
-        <span style={{ color: '#e2e8f0', fontSize: 13, marginTop: 8 }}>
-          {DEMO_DRAGON_WHELP.label}
-        </span>
-      </div>
-
-      <div
-        data-side="enemy"
-        data-enemy-id={DEMO_ELDER.id}
+        data-enemy-id="gallery-elder-dragon"
         style={{
           position: 'absolute',
           ...elderPos,
@@ -206,17 +184,24 @@ export default function BattlefieldFacingPreviewPage() {
           zIndex: 10,
         }}
       >
-        <div style={{ width: 1200, display: 'flex', justifyContent: 'center', alignItems: 'flex-end' }}>
+        <div
+          style={{
+            width: 900,
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'flex-end',
+          }}
+        >
           <EnemySpriteJS
-            enemyId={DEMO_ELDER.id}
-            enemyType={DEMO_ELDER.enemyType}
-            enemyName={DEMO_ELDER.enemyName}
+            enemyId="gallery-elder-dragon"
+            enemyType={elderEntry.enemyType}
+            enemyName={elderEntry.enemyName}
             facing={BATTLEFIELD_ENEMY_FACING}
             scale={elderScale}
           />
         </div>
-        <span style={{ color: '#fbbf24', fontSize: 14, marginTop: 8 }}>
-          {DEMO_ELDER.label}
+        <span style={{ color: '#fbbf24', fontSize: 11, marginTop: 4 }}>
+          {elderEntry.label}
         </span>
       </div>
     </div>

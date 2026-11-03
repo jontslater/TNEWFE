@@ -1,34 +1,34 @@
 /**
  * Native idle facing per sprite (sheet faces left vs right before mirror).
- * Audited with scripts/audit-sprite-facing.mjs; manual overrides match Animation Test QA.
+ * Regenerate with: node scripts/audit-sprite-facing.mjs
  */
 import { HERO_SPRITES } from './spriteConfig';
 import { getEnemyAnimationKey } from './spriteAnimationData';
 
 /** Enemy animation registry key → native faces left on sheet */
 export const ENEMY_NATIVE_FACES_LEFT: Record<string, boolean> = {
-  adultDragon: true,
-  babyDragon: true,
+  adultDragon: false,
+  babyDragon: false,
   corruptedHighPriest: false,
   cultist: false,
-  demonLord: true,
+  demonLord: false,
   dragon1: false,
   dragon2: false,
   dragon3: false,
-  elderDragon: true,
+  elderDragon: false,
   goblin: false,
   goblinChief: false,
   gryphon: false,
-  headlessHorseman: true,
+  headlessHorseman: false,
   imp: false,
-  kobold: false,
+  kobold: true,
   lizardman: false,
-  maskedOrc: true,
+  maskedOrc: false,
   mimic: false,
-  minotaur: false,
+  minotaur: true,
   skeletonMage: false,
   werewolf: false,
-  witch: true,
+  witch: false,
 };
 
 const ENEMY_DISPLAY_TO_KEY: Record<string, keyof typeof ENEMY_NATIVE_FACES_LEFT> = {
@@ -56,36 +56,11 @@ const ENEMY_DISPLAY_TO_KEY: Record<string, keyof typeof ENEMY_NATIVE_FACES_LEFT>
   Cultist: 'cultist',
 };
 
-/**
- * Per-class native facing overrides (gallery QA). Takes precedence over pack defaults in HERO_SPRITES.
- * true = sheet faces left; mirror when hero should face right on battlefield.
- */
-export const HERO_FACES_LEFT_OVERRIDES: Record<string, boolean> = {
-  vanguard: true,
-  bloodknight: true,
-  brewmaster: true,
-  monk: true,
-  bladedancer: true,
-  assassin: true,
-  reaper: true,
-  hunter: false,
-  ranger: false,
-  mage: false,
-  frostmage: false,
-  stormcaller: false,
-  mooncaller: false,
-  cleric: false,
-  atoner: false,
-  lightbringer: false,
-  mistweaver: false,
-  bard: false,
-};
+/** Optional per-class overrides when sheet differs from pack default (prefer facesLeft on HERO_SPRITES). */
+export const HERO_FACES_LEFT_OVERRIDES: Record<string, boolean> = {};
 
 /** Per-role overrides (legacy rigs not using LuizMelo pack map) */
 export const HERO_NATIVE_FACES_LEFT: Record<string, boolean> = {
-  berserker: true,
-  crusader: true,
-  stormwarrior: true,
   druid: true,
   shaman: true,
   chronomancer: true,
@@ -93,12 +68,12 @@ export const HERO_NATIVE_FACES_LEFT: Record<string, boolean> = {
 
 export function getHeroFacesLeft(role: string): boolean {
   const key = role.toLowerCase();
+  const cfg = HERO_SPRITES[key];
+  if (cfg && typeof cfg.facesLeft === 'boolean') {
+    return cfg.facesLeft;
+  }
   if (HERO_FACES_LEFT_OVERRIDES[key] !== undefined) {
     return HERO_FACES_LEFT_OVERRIDES[key];
-  }
-  const cfg = HERO_SPRITES[key];
-  if (cfg && typeof (cfg as { facesLeft?: boolean }).facesLeft === 'boolean') {
-    return (cfg as { facesLeft: boolean }).facesLeft;
   }
   if (HERO_NATIVE_FACES_LEFT[key] !== undefined) {
     return HERO_NATIVE_FACES_LEFT[key];

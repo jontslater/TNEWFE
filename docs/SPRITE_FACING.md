@@ -32,13 +32,21 @@ Manual overrides for enemies are documented in `spriteFacingConfig.ts` (historic
 
 ## Preview routes
 
-- `/class-sprites` — all hero classes (facing right)
-- `/battlefield-facing` — heroes left + sample enemies/dragons
+- `/class-sprites` — all hero classes in a grid (facing right, idle frame 0)
+- `/battlefield-facing` — **full battlefield sprite gallery**: every playable class on a shared baseline (left) and all enemy types (right), plus Elder Dragon boss positioning
+- `/animation-test` — interactive combat sandbox (spawn heroes/enemies for manual QA)
+- `/enemy-animation-test` — all standard enemies cycling animations
 - `/dragon-test` — four dragons using battlefield enemy facing
 
-Capture screenshots:
+Regenerate hero feet / height metrics:
 
 ```bash
-node scripts/luizmelo/capture-class-gallery.mjs
-node scripts/luizmelo/capture-battlefield-facing.mjs
+node scripts/generate-hero-sprite-layout.mjs
+```
+
+Capture QA screenshots:
+
+```bash
+node scripts/capture-battlefield-sprite-qa.mjs before   # stash old sprite code first, or compare tags
+node scripts/capture-battlefield-sprite-qa.mjs after
 ```

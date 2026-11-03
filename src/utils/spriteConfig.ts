@@ -227,7 +227,7 @@ export const HERO_SPRITES: Record<string, {
   berserker: {
     sprite: '/Sprites/Heroes/HeroSprites/Dwarf Warrior 2D Pixel Art v1.2/New Version/Sprites/outline/IDLE.png',
     isAnimated: true,
-    facesLeft: true,
+    facesLeft: false,
     spriteSize: 48,
     frameCount: { idle: 10, attack: 8, hurt: 6, death: 10, run: 8 },
     animations: {
@@ -241,7 +241,7 @@ export const HERO_SPRITES: Record<string, {
   crusader: {
     sprite: '/Sprites/Heroes/HeroSprites/Dwarf Warrior 2D Pixel Art v1.2/New Version/Sprites/outline/IDLE.png',
     isAnimated: true,
-    facesLeft: true,
+    facesLeft: false,
     spriteSize: 48,
     frameCount: { idle: 10, attack: 8, hurt: 6, death: 10, run: 8 },
     animations: {
@@ -307,7 +307,7 @@ export const HERO_SPRITES: Record<string, {
   stormwarrior: {
     sprite: '/Sprites/Heroes/HeroSprites/Dwarf Warrior 2D Pixel Art v1.2/New Version/Sprites/outline/IDLE.png',
     isAnimated: true,
-    facesLeft: true,
+    facesLeft: false,
     spriteSize: 48,
     frameCount: { idle: 10, attack: 8, hurt: 6, death: 10, run: 8 },
     animations: {
