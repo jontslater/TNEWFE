@@ -1,4 +1,7 @@
-// ALL sprites are 48x48, horizontal strips.
+// Horizontal strip sprites use frame sizes from spriteSheetDimensions.generated.ts (see npm run sprites:generate).
+
+import { HERO_SPRITES } from './spriteConfig';
+import { hydrateAnimationCatalog } from './spriteSheetUtils';
 
 // Animation speed multiplier: 1.5 = 50% slower (more readable)
 // Original: 120ms per frame, New: 180ms per frame
@@ -46,12 +49,14 @@ export function getEnemyAnimationKey(enemyType: string): string {
   const result = mapping[enemyType];
   
   if (!result) {
-    console.error(`[getEnemyAnimationKey] ❌ NO MAPPING for enemyType: "${enemyType}"`);
-    console.error(`[getEnemyAnimationKey] Available mappings:`, Object.keys(mapping));
+    console.warn(`[getEnemyAnimationKey] Unknown enemyType "${enemyType}", using Imp fallback`);
+    return 'imp';
   }
   
-  return result || enemyType; // Return original if no mapping (will cause error and show us what's wrong)
+  return result;
 }
+
+export const FALLBACK_ENEMY_ANIMATION_KEY = 'imp';
 
 /**
  * Get animations for an enemy type
@@ -101,8 +106,10 @@ export function getEnemyAnimations(enemyType: string): Record<string, SpriteAnim
     }
   }
   
-  console.warn(`[getEnemyAnimations] No animations found for enemy type: "${enemyType}" (tried key: "${key}")`);
-  return null;
+  console.warn(
+    `[getEnemyAnimations] No animations for "${enemyType}" (key: "${key}"), using Imp fallback`
+  );
+  return ENEMY_ANIMATIONS[FALLBACK_ENEMY_ANIMATION_KEY] ?? null;
 }
 
 export const ENEMY_ANIMATIONS: Record<string, Record<string, SpriteAnimationData>> = {
@@ -122,17 +129,17 @@ export const ENEMY_ANIMATIONS: Record<string, Record<string, SpriteAnimationData
       spriteSheet: "/Sprites/KoboldWarrior/with_outline/ATTACK 1.png",
     },
     attack2: {
-      frameCount: 15, // TODO: Verify actual frame count from image
-      frameWidth: 48,
-      frameHeight: 48,
-      duration: 2700, // Adjusted: 15 frames * 120ms = 1800ms
+      frameCount: 5,
+      frameWidth: 148,
+      frameHeight: 96,
+      duration: 900,
       spriteSheet: "/Sprites/KoboldWarrior/with_outline/ATTACK 2.png",
     },
     attack3: {
-      frameCount: 18, // TODO: Verify actual frame count from image (was 6, likely more)
-      frameWidth: 48,
-      frameHeight: 48,
-      duration: 3240, // Adjusted: 18 frames * 120ms = 2160ms
+      frameCount: 6,
+      frameWidth: 148,
+      frameHeight: 96,
+      duration: 1080,
       spriteSheet: "/Sprites/KoboldWarrior/with_outline/ATTACK 3.png",
     },
     strongAttack: {
@@ -1070,10 +1077,10 @@ export const ENEMY_ANIMATIONS: Record<string, Record<string, SpriteAnimationData
       spriteSheet: "/Sprites/enemies/Dragon - Fully Animated/Walking/001.png",
     },
     projectile: {
-      frameCount: 6,
+      frameCount: 4,
       frameWidth: 48,
       frameHeight: 48,
-      duration: 1080, // Using pyromancer fire projectile animation
+      duration: 720,
       spriteSheet: "/Sprites/Heroes/HeroSprites/Pyromancer 2D Pixel Art/Fire_projectile.png",
     },
   },
@@ -1153,12 +1160,13 @@ export const ENEMY_ANIMATIONS: Record<string, Record<string, SpriteAnimationData
   },
 };
 
+hydrateAnimationCatalog(ENEMY_ANIMATIONS);
+
 /**
  * Hero Animation Data
  * Converted from HERO_SPRITES format to SpriteAnimationData format
  * Uses 120ms per frame for duration calculations (matches enemy animations)
  */
-import { HERO_SPRITES } from './spriteConfig';
 
 export function getHeroAnimationKey(role: string): string {
   // Heroes use role directly as key
@@ -1195,21 +1203,17 @@ function createHeroAnimations(): Record<string, Record<string, SpriteAnimationDa
   for (const [role, config] of Object.entries(HERO_SPRITES)) {
     if (!config.isAnimated || !config.frameCount || !config.animations) continue;
     
-    const spriteSize = config.spriteSize || 48;
     const animations: Record<string, SpriteAnimationData> = {};
     
     // Convert each animation
     for (const [animName, animPath] of Object.entries(config.animations)) {
       const frameCount = config.frameCount[animName as keyof typeof config.frameCount];
       if (!frameCount) continue;
-      
-      // Use per-animation frame width if specified, otherwise use spriteSize
-      const animFrameWidth = config.frameWidth?.[animName as keyof typeof config.frameWidth] || spriteSize;
-      
+
       animations[animName] = {
         frameCount,
-        frameWidth: animFrameWidth,
-        frameHeight: spriteSize,
+        frameWidth: config.spriteSize || 48,
+        frameHeight: config.spriteSize || 48,
         duration: frameCount * FRAME_TIME_MS,
         spriteSheet: animPath,
       };
@@ -1224,6 +1228,7 @@ function createHeroAnimations(): Record<string, Record<string, SpriteAnimationDa
 }
 
 export const HERO_ANIMATIONS: Record<string, Record<string, SpriteAnimationData>> = createHeroAnimations();
+hydrateAnimationCatalog(HERO_ANIMATIONS);
 
 // Hero projectile mappings
 // Spell-casting heroes (fire damage) use Baby Dragon projectile
@@ -1303,3 +1308,117 @@ export function getHeroProjectileData(heroRole: string, projectileType: 'project
   });
   return projectile || null;
 }
+
+// --- Legacy API (formerly enemySpriteConfig.ts) ---
+
+export type EnemyAnimationType =
+  | 'idle' | 'attack' | 'attack2' | 'attack3' | 'strongAttack'
+  | 'hurt' | 'death' | 'projectile' | 'projectileDiagonal'
+  | 'transformation' | 'idleHuman' | 'transition' | 'flying'
+  | 'walk' | 'run' | 'dash' | 'jump' | 'appear' | 'move'
+  | 'idleBattle' | 'walking' | 'special' | 'rise' | 'flight' | 'landing';
+
+const ENEMY_REGISTRY_DISPLAY_NAMES: Record<string, string> = {
+  kobold: 'Kobold Warrior',
+  babyDragon: 'Baby Dragon',
+  imp: 'Imp',
+  lizardman: 'Lizardman',
+  maskedOrc: 'Masked Orc',
+  werewolf: 'Werewolf',
+  skeletonMage: 'Skeleton Mage',
+  witch: 'Witch',
+  mimic: 'Mimic',
+  gryphon: 'Gryphon',
+  minotaur: 'Minotaur',
+  headlessHorseman: 'Headless Horseman',
+  adultDragon: 'Adult Dragon',
+  demonLord: 'Demon Lord',
+  elderDragon: 'Elder Dragon',
+  dragon1: 'Dragon_1',
+  dragon2: 'Dragon_2',
+  dragon3: 'Dragon_3',
+  goblin: 'Goblin',
+  goblinChief: 'Goblin Chief',
+  corruptedHighPriest: 'Corrupted High Priest',
+  cultist: 'Cultist',
+};
+
+export type LegacyEnemySpriteConfig = {
+  sprite: string;
+  isAnimated: boolean;
+  spriteSize?: number;
+  frameCount?: Partial<Record<string, number>>;
+  animations?: Partial<Record<string, string>>;
+};
+
+function buildLegacyEnemySprites(): Record<string, LegacyEnemySpriteConfig> {
+  const out: Record<string, LegacyEnemySpriteConfig> = {};
+  for (const [key, displayName] of Object.entries(ENEMY_REGISTRY_DISPLAY_NAMES)) {
+    const anims = ENEMY_ANIMATIONS[key];
+    if (!anims) continue;
+    const idle =
+      anims.idle ?? anims.idleBattle ?? (Object.values(anims)[0] as SpriteAnimationData);
+    const frameCount: Partial<Record<string, number>> = {};
+    const animations: Partial<Record<string, string>> = {};
+    for (const [animName, data] of Object.entries(anims)) {
+      frameCount[animName] = data.frameCount;
+      animations[animName] = data.spriteSheet;
+    }
+    out[displayName] = {
+      sprite: idle.spriteSheet,
+      isAnimated: true,
+      spriteSize: idle.frameWidth,
+      frameCount,
+      animations,
+    };
+  }
+  return out;
+}
+
+export const ENEMY_SPRITES: Record<string, LegacyEnemySpriteConfig> = buildLegacyEnemySprites();
+
+export function getEnemySpritePath(
+  enemyType: string,
+  animation: EnemyAnimationType = 'idle'
+): string {
+  const anims = getEnemyAnimations(enemyType);
+  const fallbackPath =
+    '/Sprites/enemies/EnemySprites/Imp 2D Pixel Art v1.2/Sprites/outline/IDLE.png';
+  if (!anims) {
+    return ENEMY_SPRITES['Imp']?.sprite ?? fallbackPath;
+  }
+  const anim = anims[animation as keyof typeof anims];
+  if (anim?.spriteSheet) return anim.spriteSheet;
+  return anims.idle?.spriteSheet ?? ENEMY_SPRITES['Imp']?.sprite ?? fallbackPath;
+}
+
+export function getEnemySpriteClass(enemyType: string): string {
+  const nameMap: Record<string, string> = {
+    'Kobold Warrior': 'kobold-sprite-container',
+    'Baby Dragon': 'baby-dragon-sprite',
+    Imp: 'imp-sprite',
+    Lizardman: 'lizardman-sprite',
+    'Masked Orc': 'masked-orc-sprite',
+    Werewolf: 'werewolf-sprite',
+    'Skeleton Mage': 'skeleton-mage-sprite',
+    Witch: 'witch-sprite',
+    Mimic: 'mimic-sprite',
+    Gryphon: 'gryphon-sprite',
+    Minotaur: 'minotaur-sprite',
+    'Headless Horseman': 'headless-horseman-sprite',
+    'Adult Dragon': 'dragon-sprite',
+    'Demon Lord': 'demon-lord-sprite',
+    'Corrupted High Priest': 'corrupted-high-priest-sprite',
+    Cultist: 'cultist-sprite',
+    Goblin: 'goblin-sprite',
+    'Goblin Chief': 'goblin-chief-sprite',
+    'Elder Dragon': 'elder-dragon-sprite',
+  };
+  return nameMap[enemyType] ?? 'enemy-sprite';
+}
+
+export function getEnemySpriteImageClass(enemyType: string): string {
+  return enemyType === 'Kobold Warrior' ? 'kobold-sprite' : 'sprite-img';
+}
+
+export { SPRITE_DISPLAY_SCALE as SPRITE_SCALE_FACTOR } from './spriteDisplayScale';

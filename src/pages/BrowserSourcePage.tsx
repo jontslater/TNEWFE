@@ -12,7 +12,7 @@ import { useBattlefieldListener } from '../hooks/useBattlefieldListener';
 import { useWebSocket } from '../hooks/useWebSocket';
 import HeroSpriteJS, { HeroSpriteJSHandle as HeroSpriteHandle } from '../components/HeroSpriteJS';
 import EnemySprite, { EnemySpriteJSHandle as EnemySpriteHandle } from '../components/EnemySpriteJS';
-import { ENEMY_SPRITES, getEnemySpriteClass, EnemyAnimationType } from '../utils/enemySpriteConfig';
+import { ENEMY_SPRITES, getEnemySpriteClass, EnemyAnimationType } from '../utils/spriteAnimationData';
 import { HERO_SPRITES } from '../utils/spriteConfig';
 import { getAnimationDuration, getHeroSpriteType, getEnemySpriteType } from '../utils/animationDurations';
 import { showScrollingCombatText, createCombatText } from '../utils/combatText';

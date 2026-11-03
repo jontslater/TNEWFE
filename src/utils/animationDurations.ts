@@ -9,7 +9,7 @@ let ENEMY_SPRITES_CACHE: any = null;
 function getEnemySprites() {
   if (!ENEMY_SPRITES_CACHE) {
     try {
-      ENEMY_SPRITES_CACHE = require('./enemySpriteConfig').ENEMY_SPRITES;
+      ENEMY_SPRITES_CACHE = require('./spriteAnimationData').ENEMY_SPRITES;
     } catch (e) {
       // If require fails (e.g., in browser), return null
       return null;

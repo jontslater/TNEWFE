@@ -13,7 +13,7 @@ import { getHeroSpriteType, getEnemySpriteType, getAnimationDuration } from './a
 import { generateEnemiesForCombat } from './enemyGeneration';
 import { getCharacterStats, calculateSkillBonuses } from './combatUtils';
 import { processDebuffs, processHpRegeneration } from './combat/buffsDebuffs';
-import { ENEMY_SPRITES } from './enemySpriteConfig';
+import { ENEMY_SPRITES } from './spriteAnimationData';
 import { createProjectile } from './projectiles';
 import { testLog } from './testLogging';
 

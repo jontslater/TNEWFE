@@ -5,6 +5,7 @@
  */
 
 import { getEnemyAnimationKey, ENEMY_ANIMATIONS, getHeroProjectileData, HERO_PROJECTILE_MAPPING } from './spriteAnimationData';
+import { SPRITE_VIEWPORT_PX } from './spriteDisplayScale';
 import { getSpellEffectFilter, getSpellEffectAnimation, SpellEffectType } from './spellEffects';
 
 /**
@@ -142,15 +143,12 @@ export function createProjectile(
   projectile.className = 'enemy-projectile';
   projectile.style.position = 'absolute';
   
-  // Scale projectile for large enemies like Elder Dragon
-  // Elder Dragon uses 725x445 frames, so scale up 48x48 projectiles
-  let projectileScale = 1;
-  if (!isHero && attackerType) {
-    const enemyKey = getEnemyAnimationKey(attackerType);
-    if (enemyKey === 'elderDragon') {
-      // Scale up projectile to be more visible for the huge dragon
-      projectileScale = 2.5; // Make it 2.5x larger (120x120 instead of 48x48)
-    }
+  // Scale projectile to a consistent on-screen size from actual frame dimensions
+  const PROJECTILE_TARGET_MAX_PX = SPRITE_VIEWPORT_PX + 8;
+  const maxFrameDim = Math.max(projectileData.frameWidth, projectileData.frameHeight);
+  let projectileScale = PROJECTILE_TARGET_MAX_PX / maxFrameDim;
+  if (!isHero && getEnemyAnimationKey(attackerType) === 'elderDragon') {
+    projectileScale *= 1.75;
   }
   
   // Apply spell effect scale multiplier (for founder pack tiers)
@@ -159,8 +157,10 @@ export function createProjectile(
     projectileScale *= spellEffectData.scale;
   }
   
-  const scaledWidth = projectileData.frameWidth * projectileScale;
-  const scaledHeight = projectileData.frameHeight * projectileScale;
+  const scaledFrameWidth = projectileData.frameWidth * projectileScale;
+  const scaledFrameHeight = projectileData.frameHeight * projectileScale;
+  const scaledWidth = scaledFrameWidth;
+  const scaledHeight = scaledFrameHeight;
   
   projectile.style.width = `${scaledWidth}px`;
   projectile.style.height = `${scaledHeight}px`;
@@ -238,7 +238,6 @@ export function createProjectile(
   const spriteSheetWidth = projectileData.frameWidth * projectileData.frameCount;
   const scaledSpriteWidth = spriteSheetWidth * projectileScale;
   const scaledSpriteHeight = projectileData.frameHeight * projectileScale;
-  
   spriteElement.style.width = `${scaledSpriteWidth}px`;
   spriteElement.style.height = `${scaledSpriteHeight}px`;
   spriteElement.style.backgroundImage = `url(${encodeURI(projectileData.spriteSheet)})`;
@@ -307,7 +306,7 @@ export function createProjectile(
     // Update frame animation (discrete frame steps)
     if (delta >= frameDuration) {
       frameIndex = (frameIndex + 1) % projectileData.frameCount;
-      const translateX = -(frameIndex * scaledWidth);
+      const translateX = -(frameIndex * scaledFrameWidth);
       
       // Force discrete transform update
       spriteElement.style.removeProperty('transform');

@@ -6,7 +6,7 @@ import React, {
   Ref,
   CSSProperties,
 } from 'react';
-import { ENEMY_SPRITES, SPRITE_SCALE_FACTOR, getEnemySpriteImageClass, EnemyAnimationType } from '../utils/enemySpriteConfig';
+import { ENEMY_SPRITES, SPRITE_SCALE_FACTOR, getEnemySpriteImageClass, EnemyAnimationType } from '../utils/spriteAnimationData';
 
 type AnimationName = EnemyAnimationType | string;
 
