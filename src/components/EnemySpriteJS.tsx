@@ -7,7 +7,8 @@ import {
   useRef,
 } from "react";
 import { useEnemyAnimator } from "../hooks/useEnemyAnimator";
-import { SPRITE_DISPLAY_SCALE } from "../utils/spriteDisplayScale";
+import { SPRITE_DISPLAY_SCALE, getEnemySpriteViewportPx } from "../utils/spriteDisplayScale";
+import { computeEnemySpriteFrameLayout } from "../utils/spriteEnemyFrameLayout";
 
 export interface EnemySpriteJSHandle {
   playAnimation: (animation: string) => void;
@@ -26,7 +27,6 @@ interface EnemySpriteJSProps {
   isTransformed?: boolean; // For Werewolf: true if transformed to werewolf form
 }
 
-const VIEWPORT = 48; // Fixed logical 48×48 (feet anchor viewport)
 
 const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
   function EnemySpriteJS(props, ref: Ref<EnemySpriteJSHandle | null>) {
@@ -40,10 +40,21 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
       scale = SPRITE_DISPLAY_SCALE,
       isTransformed = false,
     } = props;
+
+    const viewportPx = getEnemySpriteViewportPx({ enemyType, enemyName });
     
     // Goblin sprites need visible overflow to show full death animations
     const isGoblin = enemyType === 'Goblin' || enemyType === 'Goblin Chief' || 
                      enemyName === 'Goblin' || enemyName?.startsWith('Goblin');
+    const isPaddedFrameDragon =
+      enemyType === 'Dragon_1' ||
+      enemyType === 'Dragon_2' ||
+      enemyType === 'Dragon_3' ||
+      enemyType === 'Elder Dragon' ||
+      enemyName === 'Elder Dragon' ||
+      enemyName?.startsWith('Dragon Whelp') ||
+      enemyName?.startsWith('Dragon Guardian') ||
+      enemyName?.startsWith('Dragon Sentinel');
 
     // For Werewolf, use human form (idleHuman) if not transformed, werewolf form (idle) if transformed
     // For Elder Dragon, use idleBattle instead of idle
@@ -205,32 +216,14 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
       // Real sprite sheet size (only used for sprite sheets, not individual frames)
       const sheetWidth = isIndividualFrames ? frameWidth : frameWidth * frames;
 
-      //
-      // 🧠 SCALE DOWN LARGER ANIMATIONS TO FIT VIEWPORT
-      //
-      // If animation is larger than 48×48, scale it down to fit
-      // Attack (148×96) needs to be scaled down to fit in 48×48 viewport
-      // Use separate scaleX and scaleY to fill viewport without squishing
-      //
-      const scaleX = frameWidth > VIEWPORT ? VIEWPORT / frameWidth : 1;
-      const scaleY = frameHeight > VIEWPORT ? VIEWPORT / frameHeight : 1;
-      // Use separate scales to fill viewport (may cause slight distortion but prevents squishing)
-      // For most animations, scaleX and scaleY will be the same (square viewport)
+      const getFrameLayout = () =>
+        computeEnemySpriteFrameLayout(frameWidth, frameHeight, {
+          enemyType,
+          enemyName,
+          animationName: animName,
+        });
 
-      // Calculate scaled dimensions for positioning
-      const scaledFrameWidth = frameWidth * scaleX;
-      const scaledFrameHeight = frameHeight * scaleY;
-
-      //
-      // 🧠 FEET-ANCHOR OFFSET (after scaling)
-      //
-      // We want the FEET to align at the bottom of the 48px viewport.
-      //
-      // After scaling, calculate offsets to center and align feet
-      // For wider animations, center horizontally; for taller, align feet at bottom
-      //
-      const offsetY = VIEWPORT - scaledFrameHeight; // align feet at bottom (negative for larger anims)
-      const offsetX = (VIEWPORT - scaledFrameWidth) / 2; // center horizontally
+      const { scaleX, scaleY, offsetX, offsetY } = getFrameLayout();
 
       //
       // RESET STYLES
@@ -250,7 +243,11 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
       el.style.top = `${offsetY}px`;
       
       // Clip the sprite element to the viewport to prevent frame flicker
-      el.style.clipPath = `inset(0)`;
+      if (!isPaddedFrameDragon) {
+        el.style.clipPath = `inset(0)`;
+      } else {
+        el.style.removeProperty('clip-path');
+      }
       el.style.overflow = "hidden";
       el.style.transition = "none";
       el.style.animation = "none";
@@ -273,8 +270,7 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
       
       // Set initial frame immediately for ALL animations
       // This ensures animations start visible right away and prevents flicker
-      const initialScaleX = frameWidth > VIEWPORT ? VIEWPORT / frameWidth : 1;
-      const initialScaleY = frameHeight > VIEWPORT ? VIEWPORT / frameHeight : 1;
+      const { scaleX: initialScaleX, scaleY: initialScaleY } = getFrameLayout();
       
       // Define animate function first so it can be called from Promise callbacks
       const animate = (ts: number) => {
@@ -318,8 +314,7 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
 
           if (index !== lastIndex) {
             // Calculate scale for this animation (recalculate to ensure consistency)
-            const animScaleX = frameWidth > VIEWPORT ? VIEWPORT / frameWidth : 1;
-            const animScaleY = frameHeight > VIEWPORT ? VIEWPORT / frameHeight : 1;
+            const { scaleX: animScaleX, scaleY: animScaleY } = getFrameLayout();
             
             if (isIndividualFrames) {
               // For individual frames, use canvas to draw the frame
@@ -395,8 +390,7 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
                 }
               } else {
                 // For sprite sheets, ensure we're on the last frame
-                const animScaleX = frameWidth > VIEWPORT ? VIEWPORT / frameWidth : 1;
-                const animScaleY = frameHeight > VIEWPORT ? VIEWPORT / frameHeight : 1;
+                const { scaleX: animScaleX, scaleY: animScaleY } = getFrameLayout();
                 const lastFrameX = -((frames - 1) * frameWidth);
                 el.style.setProperty("transform", `scaleX(${animScaleX}) scaleY(${animScaleY}) translateX(${lastFrameX}px)`, "important");
               }
@@ -447,8 +441,7 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
             // Canvas display size should be scaled to fit VIEWPORT (48px)
             // The canvas is frameWidth x frameHeight internally, but we display it at the scaled size
             // Then the transform on the sprite element scales it further if needed, and container scales final
-            const canvasDisplayScaleX = frameWidth > VIEWPORT ? VIEWPORT / frameWidth : 1;
-            const canvasDisplayScaleY = frameHeight > VIEWPORT ? VIEWPORT / frameHeight : 1;
+            const { scaleX: canvasDisplayScaleX, scaleY: canvasDisplayScaleY } = getFrameLayout();
             canvas.style.width = `${frameWidth * canvasDisplayScaleX}px`;
             canvas.style.height = `${frameHeight * canvasDisplayScaleY}px`;
             canvas.style.position = 'absolute';
@@ -473,8 +466,7 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
             canvas.width = frameWidth;
             canvas.height = frameHeight;
             // Update display size to match scaled size
-            const canvasDisplayScaleX = frameWidth > VIEWPORT ? VIEWPORT / frameWidth : 1;
-            const canvasDisplayScaleY = frameHeight > VIEWPORT ? VIEWPORT / frameHeight : 1;
+            const { scaleX: canvasDisplayScaleX, scaleY: canvasDisplayScaleY } = getFrameLayout();
             canvas.style.width = `${frameWidth * canvasDisplayScaleX}px`;
             canvas.style.height = `${frameHeight * canvasDisplayScaleY}px`;
           }
@@ -530,7 +522,7 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
     }, [currentAnimation, onComplete]);
 
     //
-    // VIEWPORT — FIXED 48×48 for ALL animations (feet anchor)
+    // VIEWPORT — logical feet-anchor box (96px for raid dragons, 48px default)
     //
     return (
       <div
@@ -540,9 +532,9 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
         data-enemy-id={enemyId}
         style={{
           ...style,
-          width: `${VIEWPORT}px`,
-          height: `${VIEWPORT}px`,
-          overflow: isGoblin ? "visible" : "hidden", // Goblins need visible for death animations, others use hidden
+          width: `${viewportPx}px`,
+          height: `${viewportPx}px`,
+          overflow: isGoblin || isPaddedFrameDragon ? "visible" : "hidden",
           position: "relative",
           transform:
             facing === "left"
@@ -560,13 +552,13 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
             position: "absolute",
             top: 0,
             left: 0,
-            width: `${VIEWPORT}px`, // Clip to viewport width
-            height: `${VIEWPORT}px`, // Clip to viewport height
+            width: `${viewportPx}px`, // Clip to viewport width
+            height: `${viewportPx}px`, // Clip to viewport height
             transition: "none",
             animation: "none",
             backgroundRepeat: "no-repeat",
             imageRendering: "pixelated",
-            overflow: isGoblin ? "visible" : "hidden", // Goblins need visible for death animations, others use hidden
+            overflow: isGoblin || isPaddedFrameDragon ? "visible" : "hidden",
           }}
         />
       </div>

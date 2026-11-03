@@ -18,6 +18,7 @@ import EnemyDebugPage from './pages/EnemyDebugPage';
 import EnemyAnimationTestPage from './pages/EnemyAnimationTestPage';
 import AnimationTestPage from './pages/AnimationTestPage';
 import DragonAnimationTest from './pages/DragonAnimationTest';
+import DragonRaidBattlefieldPreview from './pages/DragonRaidBattlefieldPreview';
 import AchievementsPage from './pages/AchievementsPage';
 import LeaderboardsPage from './pages/LeaderboardsPage';
 import GuildManagementPage from './pages/GuildManagementPage';
@@ -69,6 +70,7 @@ function App() {
         <Route path="/enemy-animation-test" element={<EnemyAnimationTestPage />} />
         <Route path="/animation-test" element={<AnimationTestPage />} />
         <Route path="/dragon-test" element={<DragonAnimationTest />} />
+        <Route path="/dragon-raid-preview" element={<DragonRaidBattlefieldPreview />} />
         <Route path="/achievements" element={<AchievementsPage />} />
         <Route path="/leaderboards" element={<LeaderboardsPage />} />
         <Route path="/guild" element={<GuildManagementPage />} />
