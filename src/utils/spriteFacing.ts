@@ -26,15 +26,28 @@ export function shouldMirrorSpriteForFacing(
   return facesLeft !== (desiredFacing === 'left');
 }
 
+export function shouldMirrorWithOverride(
+  desiredFacing: ScreenFacing,
+  facesLeft: boolean,
+  flipOverride?: boolean
+): boolean {
+  const base = shouldMirrorSpriteForFacing(desiredFacing, facesLeft);
+  return flipOverride ? !base : base;
+}
+
 export function getSpriteContainerTransform(
   scale: number,
   desiredFacing: ScreenFacing,
-  facesLeft: boolean = DEFAULT_NATIVE_FACES_LEFT
+  facesLeft: boolean = DEFAULT_NATIVE_FACES_LEFT,
+  options?: { flip?: boolean; scaleMultiplier?: number }
 ): string {
-  if (shouldMirrorSpriteForFacing(desiredFacing, facesLeft)) {
-    return `scale(${scale}) scaleX(-1)`;
+  const flip = options?.flip === true;
+  const scaleMult = options?.scaleMultiplier ?? 1;
+  const finalScale = scale * scaleMult;
+  if (shouldMirrorWithOverride(desiredFacing, facesLeft, flip)) {
+    return `scale(${finalScale}) scaleX(-1)`;
   }
-  return `scale(${scale})`;
+  return `scale(${finalScale})`;
 }
 
 /** User/streamer preference overrides default battlefield facing per role or enemy name. */

@@ -9,39 +9,70 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '..');
 
 function shouldMirror(desiredFacing, facesLeft) {
-  return facesLeft === (desiredFacing === 'right');
+  return facesLeft !== (desiredFacing === 'left');
 }
 
-function parseOverrides() {
+function parseHeroFacesLeftMaps() {
   const src = fs.readFileSync(
     path.join(repoRoot, 'src/utils/spriteFacingConfig.ts'),
     'utf8'
   );
-  const block = src.match(
-    /export const HERO_FACES_LEFT_OVERRIDES[^=]*=\s*\{([^}]+)\}/s
-  )?.[1];
-  const native = src.match(
-    /export const HERO_NATIVE_FACES_LEFT[^=]*=\s*\{([^}]+)\}/s
-  )?.[1];
-  const parse = (text) => {
+  const heroConfig = fs.readFileSync(
+    path.join(repoRoot, 'src/utils/spriteConfig.ts'),
+    'utf8'
+  );
+  const luiz = fs.readFileSync(
+    path.join(repoRoot, 'src/utils/luizmeloHeroSpriteConfig.ts'),
+    'utf8'
+  );
+  const parseBoolMap = (text) => {
     const out = {};
     if (!text) return out;
-    for (const m of text.matchAll(/([\w-]+):\s*(true|false)/g)) {
-      out[m[1]] = m[2] === 'true';
+    for (const m of text.matchAll(/(?:'([^']+)'|([\w-]+)):\s*(true|false)/g)) {
+      out[m[1] || m[2]] = m[3] === 'true';
     }
     return out;
   };
-  return { overrides: parse(block), native: parse(native) };
+  const packFaces = parseBoolMap(
+    luiz.match(/LUIZ_PACK_FACES_LEFT[^=]*=\s*\{([^}]+)\}/s)?.[1]
+  );
+  const native = parseBoolMap(
+    src.match(/HERO_NATIVE_FACES_LEFT[^=]*=\s*\{([^}]+)\}/s)?.[1]
+  );
+  const overrides = parseBoolMap(
+    src.match(/HERO_FACES_LEFT_OVERRIDES[^=]*=\s*\{([^}]+)\}/s)?.[1]
+  );
+  const perRole = {};
+  const roleStarts = [...heroConfig.matchAll(/\n  ([\w-]+): \{/g)];
+  for (let i = 0; i < roleStarts.length; i++) {
+    const role = roleStarts[i][1];
+    const start = roleStarts[i].index;
+    const end = i + 1 < roleStarts.length ? roleStarts[i + 1].index : heroConfig.length;
+    const block = heroConfig.slice(start, end);
+    const fl = block.match(/facesLeft:\s*(true|false)/);
+    if (fl) perRole[role] = fl[1] === 'true';
+  }
+  for (const role of [...luiz.matchAll(/^\s{2}([\w-]+):\s*luizHero/gm)].map((x) => x[1])) {
+    const blockMatch = luiz.match(
+      new RegExp(`\\n  ${role}:\\s*luizHero\\([\\s\\S]*?\\),`, 'm')
+    );
+    const packDir = blockMatch?.[0].match(/luizHero\(\s*'([^']+)'/)?.[1];
+    if (packDir && packFaces[packDir] !== undefined) {
+      perRole[role] = packFaces[packDir];
+    }
+  }
+  return { perRole, native, overrides };
 }
 
 function getHeroFacesLeft(role, maps) {
   const key = role.toLowerCase();
+  if (maps.perRole[key] !== undefined) return maps.perRole[key];
   if (maps.overrides[key] !== undefined) return maps.overrides[key];
   if (maps.native[key] !== undefined) return maps.native[key];
   return false;
 }
 
-const maps = parseOverrides();
+const maps = parseHeroFacesLeftMaps();
 
 const PLAYABLE = [
   'guardian', 'paladin', 'warden', 'bloodknight', 'vanguard', 'brewmaster',

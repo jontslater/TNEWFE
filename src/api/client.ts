@@ -1622,6 +1622,22 @@ export const battlefieldAPI = {
   }
 };
 
+// Global sprite overrides (Firestore config/spriteOverrides)
+export const spriteOverridesAPI = {
+  async get(): Promise<import('../utils/spriteRuntimeOverrides').SpriteOverridesDocument> {
+    const response = await apiClient.get('/api/config/sprite-overrides');
+    return response.data;
+  },
+
+  async save(payload: {
+    heroes: Record<string, import('../utils/spriteRuntimeOverrides').SpriteRuntimeOverride>;
+    enemies: Record<string, import('../utils/spriteRuntimeOverrides').SpriteRuntimeOverride>;
+  }) {
+    const response = await apiClient.put('/api/config/sprite-overrides', payload);
+    return response.data;
+  },
+};
+
 // Achievement API
 export const achievementAPI = {
   async getAllAchievements(category?: string) {

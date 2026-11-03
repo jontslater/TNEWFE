@@ -32,13 +32,34 @@ Manual overrides for enemies are documented in `spriteFacingConfig.ts` (historic
 
 ## Preview routes
 
-- `/class-sprites` — all hero classes (facing right)
-- `/battlefield-facing` — heroes left + sample enemies/dragons
+- `/class-sprites` — all hero classes in a grid (facing right, idle frame 0)
+- `/battlefield-facing` — **full battlefield sprite gallery**: every playable class on a shared baseline (left) and all enemy types (right), plus Elder Dragon boss positioning
+- `/animation-test` — interactive combat sandbox (spawn heroes/enemies for manual QA)
+- `/enemy-animation-test` — all standard enemies cycling animations
 - `/dragon-test` — four dragons using battlefield enemy facing
 
-Capture screenshots:
+## Global runtime overrides (editor)
+
+Firestore document: **`config/spriteOverrides`** (via backend).
+
+| Method | Path | Auth |
+|--------|------|------|
+| GET | `/api/config/sprite-overrides` | Public |
+| PUT | `/api/config/sprite-overrides` | JWT + admin (`theneverendingwar`, `tehchno`, or `SPRITE_OVERRIDE_ADMIN_LOGINS`) |
+
+Each entry (hero role or enemy type key):
+
+- `flip?: boolean` — XOR mirror on top of `facesLeft` + battlefield facing
+- `scaleMultiplier?: number` — multiply display scale (0.25–3)
+- `offsetY?: number` — nudge feet in logical px (−48…48)
+
+Editor: **`/battlefield-facing`** (Save / Export JSON). Live **`CleanBattlefieldSource`** polls overrides ~every 90s.
+
+Regenerate hero feet metrics: `node scripts/generate-hero-sprite-layout.mjs`
+
+Capture QA screenshots:
 
 ```bash
-node scripts/luizmelo/capture-class-gallery.mjs
-node scripts/luizmelo/capture-battlefield-facing.mjs
+node scripts/capture-battlefield-sprite-qa.mjs before   # stash old sprite code first, or compare tags
+node scripts/capture-battlefield-sprite-qa.mjs after
 ```

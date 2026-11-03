@@ -14,6 +14,8 @@ import {
   type ScreenFacing,
 } from "../utils/spriteFacing";
 import { getHeroFacesLeft } from "../utils/spriteFacingConfig";
+import { computeHeroSpriteFrameLayout } from "../utils/spriteHeroFrameLayout";
+import type { SpriteRuntimeOverride } from "../utils/spriteRuntimeOverrides";
 
 export interface HeroSpriteJSHandle {
   playAnimation: (animation: string) => void;
@@ -34,6 +36,8 @@ interface HeroSpriteJSProps {
   freezeIdleFrame?: boolean;
   style?: CSSProperties;
   scale?: number;
+  /** Global/runtime overrides from config/spriteOverrides */
+  runtimeOverride?: SpriteRuntimeOverride;
   shield?: number;
   enrageActive?: boolean;
   abilityEffect?: 'backstab' | 'deathStrike' | 'holyStrike' | null; // Temporary ability visual effect
@@ -52,6 +56,7 @@ const HeroSpriteJS = forwardRef<HeroSpriteJSHandle, HeroSpriteJSProps>(
       freezeIdleFrame = false,
       style,
       scale = SPRITE_DISPLAY_SCALE,
+      runtimeOverride,
       shield = 0,
       enrageActive = false,
       abilityEffect = null,
@@ -136,20 +141,16 @@ const HeroSpriteJS = forwardRef<HeroSpriteJSHandle, HeroSpriteJSProps>(
           }
           const el = spriteRef.current;
           if (!el || !currentAnimation) return;
-          const uniformScale =
-            currentAnimation.frameWidth > VIEWPORT ||
-            currentAnimation.frameHeight > VIEWPORT
-              ? VIEWPORT /
-                Math.max(
-                  currentAnimation.frameWidth,
-                  currentAnimation.frameHeight
-                )
-              : 1;
+          const frozen = computeHeroSpriteFrameLayout(
+            currentAnimation.frameWidth,
+            currentAnimation.frameHeight,
+            role
+          );
           applyStripFrame(
             el,
             0,
-            uniformScale,
-            uniformScale,
+            frozen.scaleX,
+            frozen.scaleY,
             currentAnimation.frameWidth
           );
         },
@@ -184,31 +185,23 @@ const HeroSpriteJS = forwardRef<HeroSpriteJSHandle, HeroSpriteJSProps>(
       // Real sprite sheet size
       const sheetWidth = frameWidth * frames;
 
-      // Scale uniformly so every hero fits the viewport with consistent height
-      const uniformScale =
-        frameWidth > VIEWPORT || frameHeight > VIEWPORT
-          ? VIEWPORT / Math.max(frameWidth, frameHeight)
-          : 1;
-      const scaleX = uniformScale;
-      const scaleY = uniformScale;
+      const {
+        scaleX,
+        scaleY,
+        offsetX,
+        offsetY,
+      } = computeHeroSpriteFrameLayout(frameWidth, frameHeight, role);
 
-      // Calculate scaled dimensions for positioning
       const scaledFrameWidth = frameWidth * scaleX;
       const scaledFrameHeight = frameHeight * scaleY;
-
-      // FEET-ANCHOR OFFSET (after scaling)
-      // Adjust offsetY based on sprite role - Dwarf Warrior sprites may need different alignment
-      const isDwarfWarrior = ['berserker', 'crusader', 'stormwarrior'].includes(role.toLowerCase());
-      const verticalOffset = isDwarfWarrior ? 5 : 0; // Move Dwarf Warrior sprites down slightly to align with others
-      const offsetY = VIEWPORT - scaledFrameHeight + verticalOffset; // align feet at bottom
-      const offsetX = (VIEWPORT - scaledFrameWidth) / 2; // center horizontally
 
       // Update glow wrapper position and size to match visible frame area
       // Clip to frame dimensions so filter only affects visible sprite, not full sheet width
       if (glowWrapperRef.current) {
         const glowWrapper = glowWrapperRef.current;
+        const layoutNudge = runtimeOverride?.offsetY ?? 0;
         glowWrapper.style.left = `${offsetX}px`;
-        glowWrapper.style.top = `${offsetY}px`;
+        glowWrapper.style.top = `${offsetY + layoutNudge}px`;
         glowWrapper.style.width = `${scaledFrameWidth}px`;
         glowWrapper.style.height = `${scaledFrameHeight}px`;
         // Clip wrapper to frame so filter only affects visible area
@@ -246,9 +239,7 @@ const HeroSpriteJS = forwardRef<HeroSpriteJSHandle, HeroSpriteJSProps>(
 
       // Set initial frame (frame 0) immediately for all animations
       // This ensures animations start visible right away and prevents scrolling
-      const initialScaleX = uniformScale;
-      const initialScaleY = uniformScale;
-      el.style.setProperty("transform", `scaleX(${initialScaleX}) scaleY(${initialScaleY}) translateX(0px)`, "important");
+      el.style.setProperty("transform", `scaleX(${scaleX}) scaleY(${scaleY}) translateX(0px)`, "important");
       lastIndex = 0; // Start at frame 0
       void el.offsetWidth; // Force reflow
 
@@ -277,8 +268,8 @@ const HeroSpriteJS = forwardRef<HeroSpriteJSHandle, HeroSpriteJSProps>(
 
           if (index !== lastIndex) {
             // Calculate scale for this animation (recalculate to ensure consistency)
-            const animScaleX = uniformScale;
-            const animScaleY = uniformScale;
+            const animScaleX = scaleX;
+            const animScaleY = scaleY;
             
             // CRITICAL: Translate by actual frameWidth (unscaled)
             // Transform order: scaleX() scaleY() translateX() applies translateX first (unscaled), then scales
@@ -321,7 +312,7 @@ const HeroSpriteJS = forwardRef<HeroSpriteJSHandle, HeroSpriteJSProps>(
       return () => {
         if (rafRef.current) cancelAnimationFrame(rafRef.current);
       };
-    }, [currentAnimation, onComplete, freezeIdleFrame, role]);
+    }, [currentAnimation, onComplete, freezeIdleFrame, role, runtimeOverride?.offsetY]);
 
     // Calculate final scale with animated enrage multiplier
     const finalScale = scale * enrageScale;
@@ -361,7 +352,11 @@ const HeroSpriteJS = forwardRef<HeroSpriteJSHandle, HeroSpriteJSProps>(
           transform: getSpriteContainerTransform(
             finalScale,
             facing,
-            nativeFacesLeft
+            nativeFacesLeft,
+            {
+              flip: runtimeOverride?.flip,
+              scaleMultiplier: runtimeOverride?.scaleMultiplier,
+            }
           ),
           transformOrigin: "bottom center",
           imageRendering: "pixelated",

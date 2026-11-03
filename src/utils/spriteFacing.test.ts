@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { shouldMirrorSpriteForFacing } from './spriteFacing';
+import { shouldMirrorSpriteForFacing, shouldMirrorWithOverride } from './spriteFacing';
 import { getEnemyFacesLeft } from './spriteFacingConfig';
 
 describe('spriteFacing dragons', () => {
@@ -8,9 +8,9 @@ describe('spriteFacing dragons', () => {
     expect(shouldMirrorSpriteForFacing('left', false)).toBe(true);
   });
 
-  it('elder dragon native-left sheet faces left without mirror', () => {
-    expect(getEnemyFacesLeft('Elder Dragon', 'Elder Dragon')).toBe(true);
-    expect(shouldMirrorSpriteForFacing('left', true)).toBe(false);
+  it('elder dragon sheet faces right; mirror on battlefield left', () => {
+    expect(getEnemyFacesLeft('Elder Dragon', 'Elder Dragon')).toBe(false);
+    expect(shouldMirrorSpriteForFacing('left', false)).toBe(true);
   });
 });
 
@@ -18,5 +18,10 @@ describe('shouldMirrorSpriteForFacing', () => {
   it('mirrors native-left heroes toward screen-right', () => {
     expect(shouldMirrorSpriteForFacing('right', true)).toBe(true);
     expect(shouldMirrorSpriteForFacing('right', false)).toBe(false);
+  });
+
+  it('flip override inverts mirror', () => {
+    expect(shouldMirrorWithOverride('right', false, true)).toBe(true);
+    expect(shouldMirrorWithOverride('right', false, false)).toBe(false);
   });
 });

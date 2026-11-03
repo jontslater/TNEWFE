@@ -10,10 +10,11 @@ import { useEnemyAnimator } from "../hooks/useEnemyAnimator";
 import { SPRITE_DISPLAY_SCALE, getEnemySpriteViewportPx } from "../utils/spriteDisplayScale";
 import { computeEnemySpriteFrameLayout } from "../utils/spriteEnemyFrameLayout";
 import {
-  shouldMirrorSpriteForFacing,
+  shouldMirrorWithOverride,
   type ScreenFacing,
 } from "../utils/spriteFacing";
 import { getEnemyFacesLeft } from "../utils/spriteFacingConfig";
+import type { SpriteRuntimeOverride } from "../utils/spriteRuntimeOverrides";
 
 export interface EnemySpriteJSHandle {
   playAnimation: (animation: string) => void;
@@ -31,6 +32,7 @@ interface EnemySpriteJSProps {
   facesLeft?: boolean;
   style?: CSSProperties;
   scale?: number;
+  runtimeOverride?: SpriteRuntimeOverride;
   isTransformed?: boolean; // For Werewolf: true if transformed to werewolf form
 }
 
@@ -74,6 +76,7 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
       facesLeft: facesLeftProp,
       style,
       scale = SPRITE_DISPLAY_SCALE,
+      runtimeOverride,
       isTransformed = false,
     } = props;
 
@@ -107,7 +110,13 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
     const defaultAnim = getDefaultAnimation();
     const nativeFacesLeft =
       facesLeftProp ?? getEnemyFacesLeft(enemyType, enemyName);
-    const mirrorFacing = shouldMirrorSpriteForFacing(facing, nativeFacesLeft);
+    const mirrorFacing = shouldMirrorWithOverride(
+      facing,
+      nativeFacesLeft,
+      runtimeOverride?.flip
+    );
+    const displayScale = scale * (runtimeOverride?.scaleMultiplier ?? 1);
+    const layoutNudgeY = runtimeOverride?.offsetY ?? 0;
 
     // Use enemyType for sprite lookup (not enemyName, which may have numbers like "Goblin 1")
     const { currentAnimation, playAnimation, onComplete } = useEnemyAnimator({
@@ -288,7 +297,7 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
         el.style.width = `${frameWidth}px`;
         el.style.height = `${frameHeight}px`;
         el.style.left = `${offsetX}px`;
-        el.style.top = `${offsetY}px`;
+        el.style.top = `${offsetY + layoutNudgeY}px`;
       } else {
         applySheetFrame(startFrame);
       }
@@ -533,7 +542,7 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
       return () => {
         if (rafRef.current) cancelAnimationFrame(rafRef.current);
       };
-    }, [currentAnimation, onComplete, isGoblin, isPaddedFrameDragon, enemyType, enemyName, enemyId, viewportPx]);
+    }, [currentAnimation, onComplete, isGoblin, isPaddedFrameDragon, enemyType, enemyName, enemyId, viewportPx, layoutNudgeY]);
 
     //
     // VIEWPORT — logical feet-anchor box (96px for raid dragons, 48px default)
@@ -549,7 +558,7 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
           width: `${viewportPx}px`,
           height: `${viewportPx}px`,
           position: "relative",
-          transform: `scale(${scale})`,
+          transform: `scale(${displayScale})`,
           transformOrigin: "bottom center",
           imageRendering: "pixelated",
         }}
