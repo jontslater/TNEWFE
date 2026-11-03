@@ -47,10 +47,12 @@ Frame metrics in config: `frameWidth: 725`, `frameHeight: 445`. Durations are to
 
 ### Render health (manual check)
 
-On **`/dragon-test`**, Elder Dragon **`idleBattle`** at **12×** scale displays the full red dragon with wings/tail (canvas sequence). Frame counts match on-disk file counts. No references to mis-sized horizontal strips for this boss.
+On **`/dragon-test`**, after **~140 PNGs** preload for `idleBattle`, the boss draws to a **725×445 canvas** scaled through the 48px viewport at **`scale={12}`** (same as raid bosses). Screenshots: `docs/screenshots/dragon-boss/`.
 
 **Caveats**
 
+- **Preload latency:** first paint waits for all frames in the active animation to load (140+ network requests for `idleBattle`).
+- **Viewport clipping:** `EnemySpriteJS` keeps a **48×48** logical box with **`overflow: hidden`** on the inner sprite layer; at 12× scale most of the dragon is painted outside that box. Raid UI wraps bosses in a **1200px `overflow: visible`** container (`CleanBattlefieldSource.tsx`), but clipping may still affect how much of the tail/wings show unless the sprite component allows visible overflow for large bosses (similar to goblin death anims).
 - Very large frame counts (death **301** frames) mean long death animations in combat.
 - `public/Sprites/enemies/ElderDragon.png` is a **legacy static PNG** and is **not referenced** anywhere in TS/TSX (unused).
 

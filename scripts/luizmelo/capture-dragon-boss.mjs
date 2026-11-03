@@ -14,9 +14,12 @@ fs.mkdirSync(outDir, { recursive: true });
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
 await page.goto(`${baseUrl}/dragon-test`, { waitUntil: 'networkidle', timeout: 120000 });
-await page.waitForTimeout(2500);
 
-const elder = page.locator('[data-test-elder-dragon]');
+// Elder Dragon preloads every PNG in idleBattle (~140 frames) before first paint
+await page.waitForSelector('[data-test-elder-dragon] canvas', { timeout: 120000 });
+await page.waitForTimeout(1500);
+
+const elder = page.locator('#battle-enemy-test-elder-dragon');
 await elder.screenshot({ path: path.join(outDir, 'elder-dragon-idle-battle.png') });
 
 const whelp = page.locator('[data-test-dragon]');
