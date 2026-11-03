@@ -7,9 +7,10 @@ export function getCleanBattlefieldUrl(twitchId: string, options?: { darkMode?: 
 
 export function openCleanBattlefield(twitchId: string, options?: { darkMode?: boolean; newTab?: boolean }) {
   const url = getCleanBattlefieldUrl(twitchId, options);
-  if (options?.newTab !== false) {
-    window.open(url, '_blank', 'noopener,noreferrer');
-  } else {
+  const sameTab = options?.newTab === false;
+  if (sameTab) {
     window.location.href = url;
+    return;
   }
+  window.open(url, '_blank', 'noopener,noreferrer');
 }
