@@ -51,12 +51,16 @@ export default function SkillsPage({ hero, userId }: SkillsPageProps) {
     }
   };
 
-  // Calculate expected skill points based on level
+  // Calculate expected skill points based on level (matches backend skills.js)
   const calculateExpectedPoints = (level: number) => {
-    if (level < 6) return 0;
-    // Points at: 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30
-    const pointLevels = [6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30];
-    return pointLevels.filter(l => level >= l).length;
+    const FIRST = 6;
+    const MAX = 100;
+    if (level < FIRST) return 0;
+    let count = 0;
+    for (let l = FIRST; l <= Math.min(level, MAX); l += 2) {
+      count++;
+    }
+    return count;
   };
 
   // Calculate points spent in skills

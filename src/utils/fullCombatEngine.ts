@@ -7,6 +7,10 @@
  */
 
 import { resolveCombat as resolveCombatSimple, startCombat as startCombatSimple } from './combat/combatEngine';
+import { calculateMaxXp as computeMaxXpForLevel } from '../game/economy/progression';
+import { GOLD_SHOP_ITEMS, AUTO_BUY_ATTEMPT_CHANCE, AUTO_BUY_MIN_HEALTH_POTIONS } from '../game/economy/shop';
+import { computeHeroDebuffResistance } from '../game/economy/gearScore';
+import { LEGACY_ENGINE_LOOT_WEIGHTS } from '../game/economy/lootTables';
 // Note: checkCombatVictory is implemented in this file, not imported
 import { AdventureEngine } from './adventureEngine';
 import { getHeroSpriteType, getEnemySpriteType, getAnimationDuration } from './animationDurations';
@@ -77,13 +81,19 @@ export const DEBUFFS: Record<string, any> = {
 export const EQUIPMENT_SLOTS = ['weapon', 'armor', 'accessory', 'helm', 'cloak', 'gloves', 'ring1', 'ring2', 'boots'];
 export const TANK_EQUIPMENT_SLOTS = ['weapon', 'armor', 'accessory', 'shield', 'helm', 'cloak', 'gloves', 'ring1', 'ring2', 'boots'];
 
-// Shop items - matches Electron app line 17248-17253
-export const SHOP_ITEMS: Record<string, { name: string; cost: number; description: string; type: string }> = {
-  healthpotion: { name: 'Health Potion', cost: 10, description: 'Auto-heal when HP < 30%', type: 'potion' },
-  xpboost: { name: 'XP Boost Scroll', cost: 25, description: '+50% XP for 5min combat time', type: 'buff' },
-  attackbuff: { name: 'Sharpening Stone', cost: 50, description: '+10% ATK for 10min combat time', type: 'buff' },
-  defensebuff: { name: 'Armor Polish', cost: 50, description: '+10% DEF for 10min combat time', type: 'buff' }
-};
+// Shop items — canonical prices in src/game/economy/shop.ts (matches backend)
+export const SHOP_ITEMS: Record<string, { name: string; cost: number; description: string; type: string }> =
+  Object.fromEntries(
+    Object.entries(GOLD_SHOP_ITEMS).map(([key, item]) => [
+      key,
+      {
+        name: item.name,
+        cost: item.cost,
+        description: item.description,
+        type: item.type,
+      },
+    ])
+  );
 
 // Gathering chances - matches Electron app lines 9186-9191
 export const HERB_GATHER_CHANCES = {
@@ -1263,11 +1273,11 @@ export class FullCombatEngine {
     }
     
     // Random chance to buy (30% each check) - matches Electron app line 4552
-    if (Math.random() > 0.3) return;
+    if (Math.random() > AUTO_BUY_ATTEMPT_CHANCE) return;
     
-    // Prioritize potions when low on stock (updated price) - matches Electron app lines 4555-4561
-    if (hero.gold >= 10 && (!hero.potions || hero.potions.health < 2)) {
-      hero.gold -= 10;
+    const potionCost = GOLD_SHOP_ITEMS.healthpotion.cost;
+    if (hero.gold >= potionCost && (!hero.potions || hero.potions.health < AUTO_BUY_MIN_HEALTH_POTIONS)) {
+      hero.gold -= potionCost;
       if (!hero.potions) hero.potions = { health: 0 };
       hero.potions.health++;
       this.log('loot', `🛒 ${username} bought Health Potion from the merchant! (${hero.potions.health} potions)`);
@@ -1280,9 +1290,9 @@ export class FullCombatEngine {
     
     // Buy random buff if enough gold (updated prices) - matches Electron app lines 4564-4576
     const affordableBuffs: string[] = [];
-    if (hero.gold >= 25) affordableBuffs.push('xpboost');
-    if (hero.gold >= 50) affordableBuffs.push('attackbuff');
-    if (hero.gold >= 50) affordableBuffs.push('defensebuff');
+    if (hero.gold >= GOLD_SHOP_ITEMS.xpboost.cost) affordableBuffs.push('xpboost');
+    if (hero.gold >= GOLD_SHOP_ITEMS.attackbuff.cost) affordableBuffs.push('attackbuff');
+    if (hero.gold >= GOLD_SHOP_ITEMS.defensebuff.cost) affordableBuffs.push('defensebuff');
     
     if (affordableBuffs.length > 0) {
       const buffChoice = affordableBuffs[Math.floor(Math.random() * affordableBuffs.length)];
@@ -1390,9 +1400,7 @@ export class FullCombatEngine {
    * Calculate maxXp for a given level (matches backend polynomial formula)
    */
   private calculateMaxXp(level: number): number {
-    if (level <= 1) return 100;
-    // Polynomial growth: 40 * level² + 300 * level - 240 (matches backend)
-    return Math.floor(40 * level * level + 300 * level - 240);
+    return computeMaxXpForLevel(level);
   }
 
   private levelUpHero(hero: Hero) {
@@ -1766,27 +1774,9 @@ export class FullCombatEngine {
    * Extracted from IdleDnD/game.js:9975
    */
   private getDebuffResistance(target: Hero | Enemy): number {
-    // For heroes
     if ((target as Hero).role) {
-      const hero = target as Hero;
-      // Base resistance from defense (1% per 5 defense)
-      const defenseResist = Math.min(0.3, (hero.defense || 0) / 500);
-      // Level resistance (1% per 2 levels)
-      const levelResist = Math.min(0.25, (hero.level || 0) / 200);
-      // Gear score resistance (1% per 50 gear score)
-      let gearScore = 0;
-      if (hero.equipment) {
-        Object.values(hero.equipment).forEach((item: any) => {
-          if (item) {
-            gearScore += (item.attack || 0) + (item.defense || 0) + (item.hp || 0);
-          }
-        });
-      }
-      const gearResist = Math.min(0.2, gearScore / 5000);
-      
-      return Math.min(0.7, defenseResist + levelResist + gearResist); // Max 70% resistance
-    } 
-    // For enemies
+      return computeHeroDebuffResistance(target as Hero);
+    }
     else {
       const enemy = target as Enemy;
       // Enemies have base 10% resistance, bosses have 25%
@@ -3321,19 +3311,18 @@ export class FullCombatEngine {
       const randomHero = aliveHeroes[Math.floor(Math.random() * aliveHeroes.length)];
       if (randomHero) {
         // Generate equipment item with proper name and rarity
-        const rarities = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
-        const rarityWeights = [0.5, 0.3, 0.15, 0.04, 0.01]; // Common is most likely
         const rand = Math.random();
-        let rarityIndex = 0;
         let cumulative = 0;
-        for (let i = 0; i < rarityWeights.length; i++) {
-          cumulative += rarityWeights[i];
+        let rarity = LEGACY_ENGINE_LOOT_WEIGHTS[0].rarity;
+        for (const entry of LEGACY_ENGINE_LOOT_WEIGHTS) {
+          cumulative += entry.weight;
           if (rand <= cumulative) {
-            rarityIndex = i;
+            rarity = entry.rarity;
             break;
           }
         }
-        const rarity = rarities[rarityIndex];
+        const rarityOrder = ['common', 'uncommon', 'rare', 'epic', 'legendary'] as const;
+        const rarityIndex = rarityOrder.indexOf(rarity as (typeof rarityOrder)[number]);
         
         // Generate item name based on rarity
         const itemNames = {

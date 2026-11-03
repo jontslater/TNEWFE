@@ -4,7 +4,7 @@
  * This is separate from the full combat engine to avoid conflicts
  */
 
-import { calculateDebuffDamageModifiers } from './debuffSystem';
+import { applyDefenseMitigation } from '../game/stats/mitigation';
 import { calculateBuffModifiers } from './buffSystem';
 import { calculateEquipmentBonuses } from './equipmentBonuses';
 
@@ -71,14 +71,7 @@ export function calculateDamage(
   }
   
   // Percentage-based damage reduction with minimum damage guarantee
-  // Formula: damage / (1 + defense / 250)
-  // This means: 250 defense = 50% reduction, 500 defense = 66% reduction
-  // Minimum 25% of original damage always gets through
-  const damageAfterDefense = finalDamage / (1 + finalDefense / 250);
-  const minDamage = Math.max(1, finalDamage * 0.25); // At least 25% of damage
-  const actualDamage = Math.max(minDamage, Math.floor(damageAfterDefense));
-  
-  return actualDamage;
+  return applyDefenseMitigation(finalDamage, finalDefense);
 }
 
 /**

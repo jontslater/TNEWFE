@@ -42,6 +42,15 @@ import {
   applyStatDamageReduction,
   getCritDamageMultiplier,
 } from '../game/stats';
+import {
+  calculateMaxXp,
+  processLevelUps,
+} from '../game/economy/progression';
+import {
+  getFounderGoldMultiplier,
+  sumGoldFromEnemies,
+  sumXpFromEnemies,
+} from '../game/economy/rewards';
 
 // Hero type (with full gear support)
 interface Hero {
@@ -463,7 +472,7 @@ export default function CleanBattlefieldSource() {
           if (!joinTime || hero.isDead) return hero; // Skip dead heroes
           
           const hoursOnBattlefield = (Date.now() - joinTime) / (1000 * 60 * 60);
-          const baseRestedXP = Math.floor((hero.maxXp || 100) * Math.min(hoursOnBattlefield * 0.01, 0.5));
+          const baseRestedXP = Math.floor((hero.maxXp || calculateMaxXp(hero.level || 1)) * Math.min(hoursOnBattlefield * 0.01, 0.5));
           
           // Chat activity bonus (if user chatted in last hour)
           const lastChat = lastChatTime.current.get(hero.id);
@@ -1039,7 +1048,7 @@ export default function CleanBattlefieldSource() {
                 hp: data.hp || 100,
                 maxHp: data.maxHp || 100,
                 xp: data.xp || 0,
-                maxXp: data.maxXp || 100,
+                maxXp: data.maxXp || calculateMaxXp(data.level || 1),
                 attack: data.attack || 0,
                 defense: data.defense || 0,
                 currentBattlefieldId: data.currentBattlefieldId,
@@ -1389,7 +1398,7 @@ export default function CleanBattlefieldSource() {
                 hp: data.hp || 100,
                 maxHp: data.maxHp || 100,
                 xp: data.xp || 0,
-                maxXp: data.maxXp || 100,
+                maxXp: data.maxXp || calculateMaxXp(data.level || 1),
                 attack: data.attack || 0,
                 defense: data.defense || 0,
                 currentBattlefieldId: data.currentBattlefieldId,
@@ -1946,7 +1955,7 @@ export default function CleanBattlefieldSource() {
               data.xp = 0;
             }
             if (data.maxXp !== undefined) {
-              data.maxXp = 100; // Level 1 maxXp
+              data.maxXp = calculateMaxXp(1);
             }
           } else if (firebaseLevel < 1) {
             console.warn(`[Firebase Load] ⚠️ Prestiged hero ${data.name || 'Hero'} has level ${firebaseLevel}, forcing to 1.`);
@@ -1967,7 +1976,7 @@ export default function CleanBattlefieldSource() {
           hp: data.hp || 100,
           maxHp: data.maxHp || 100,
           xp: data.xp || 0,
-          maxXp: data.maxXp || 100,
+          maxXp: data.maxXp || calculateMaxXp(data.level || 1),
           attack: data.attack || 0,
           defense: data.defense || 0,
           currentBattlefieldId: data.currentBattlefieldId,
@@ -2085,7 +2094,7 @@ export default function CleanBattlefieldSource() {
                     firebaseHero.xp = 0;
                   }
                   if (firebaseHero.maxXp !== undefined) {
-                    firebaseHero.maxXp = 100; // Level 1 maxXp
+                    firebaseHero.maxXp = calculateMaxXp(1);
                   }
                 }
                 // Also ensure level is at least 1 for prestiged heroes
@@ -2168,7 +2177,7 @@ export default function CleanBattlefieldSource() {
                     firebaseHero.xp = 0;
                   }
                   if (firebaseHero.maxXp !== undefined) {
-                    firebaseHero.maxXp = 100; // Level 1 maxXp
+                    firebaseHero.maxXp = calculateMaxXp(1);
                   }
                 }
                 if (firebaseLevel < 1) {
@@ -2270,7 +2279,7 @@ export default function CleanBattlefieldSource() {
         hp: 100 + avgLevel * 20,
         maxHp: 100 + avgLevel * 20,
         xp: 0,
-        maxXp: 100 + avgLevel * 10,
+        maxXp: calculateMaxXp(Math.max(1, Math.floor(avgLevel))),
         attack: avgLevel * 5,
         defense: avgLevel * 2,
         isDead: false
@@ -6226,7 +6235,7 @@ export default function CleanBattlefieldSource() {
         }
         
         // Calculate total XP from defeated enemies (with difficulty bonus above 100%)
-        let totalXP = currentEnemies.reduce((sum, enemy) => sum + (enemy.xp || enemy.level * 10), 0);
+        let totalXP = sumXpFromEnemies(currentEnemies);
         
         // Loot quality bonus above 100% difficulty
         if (difficultyModifier > 1.0) {
@@ -6238,22 +6247,7 @@ export default function CleanBattlefieldSource() {
         console.log(`[Combat] Granting ${totalXP} base XP to all heroes (before XP Boost buff)`);
         
         // Calculate total gold from defeated enemies (enemy.xp / 10 per kill)
-        let totalBaseGold = currentEnemies.reduce((sum, enemy) => {
-          const enemyXP = enemy.xp || enemy.level * 10;
-          return sum + Math.floor(enemyXP / 10);
-        }, 0);
-        
-        // Helper function to get founder pack gold multiplier
-        const getFounderGoldMultiplier = (founderPackTier: string | null | undefined): number => {
-          if (!founderPackTier) return 1.0; // No founder pack = 100% (no bonus)
-          const multipliers: Record<string, number> = {
-            'bronze': 1.10,  // +10% gold
-            'silver': 1.20,  // +20% gold
-            'gold': 1.30,    // +30% gold
-            'platinum': 1.50 // +50% gold
-          };
-          return multipliers[founderPackTier.toLowerCase()] || 1.0;
-        };
+        let totalBaseGold = sumGoldFromEnemies(currentEnemies);
         
         // Track XP gains and level ups (for SCT outside setState)
         const xpResults: Array<{heroId: string; name: string; xp: number; leveledUp: boolean; oldLevel?: number; newLevel?: number; isDead: boolean}> = [];
@@ -6272,7 +6266,11 @@ export default function CleanBattlefieldSource() {
             }
             
             const newXP = (hero.xp || 0) + xpToGrant;
-            const maxXP = hero.maxXp || (100 + hero.level * 10);
+            const levelProgress = processLevelUps(
+              hero.level || 1,
+              newXP,
+              hero.maxXp || calculateMaxXp(hero.level || 1),
+            );
             
             // Calculate gold with founder pack multiplier
             const founderTier = (hero as any).founderPackTier || null;
@@ -6293,7 +6291,13 @@ export default function CleanBattlefieldSource() {
             
             // Apply gold to hero
             const newGold = (hero.gold || 0) + goldToGrant;
-            let newHero = { ...hero, xp: newXP, gold: newGold };
+            let newHero = {
+              ...hero,
+              xp: levelProgress.xp,
+              maxXp: levelProgress.maxXp,
+              level: levelProgress.level,
+              gold: newGold,
+            };
             
             // Track XP and gold changes for sync
             trackHeroStatChange(hero.id, {
@@ -6313,46 +6317,28 @@ export default function CleanBattlefieldSource() {
             // Check for level up (CRITICAL: Cap at level 100)
             const MAX_LEVEL = 100;
             const currentLevel = hero.level || 1;
-            if (newXP >= maxXP && currentLevel < MAX_LEVEL) {
-              const newLevel = Math.min(currentLevel + 1, MAX_LEVEL);
-              // Use polynomial formula for maxXP (matching backend)
-              const calculateMaxXp = (level: number): number => {
-                if (level <= 1) return 100;
-                return Math.floor(40 * level * level + 300 * level - 240);
-              };
-              const newMaxXP = calculateMaxXp(newLevel);
-              
+            if (levelProgress.leveledUp && currentLevel < MAX_LEVEL) {
               result.leveledUp = true;
-              result.oldLevel = hero.level;
-              result.newLevel = newLevel;
-              
-              // IMPORTANT: Recalculate ALL stats from new level + equipment (keeps it consistent!)
-              const leveledHero = {
-                ...hero,
-                level: newLevel,
-                xp: newXP - maxXP, // Carry over excess XP
-                maxXp: newMaxXP
-              };
-              
-              // Recalculate stats (includes level-based stats + gear)
-              newHero = calculateHeroStats(leveledHero);
-              
-              // Preserve current HP ratio (don't full heal on level up)
-              const hpRatio = hero.hp / hero.maxHp;
+              result.oldLevel = currentLevel;
+              result.newLevel = levelProgress.level;
+
+              newHero = calculateHeroStats(newHero);
+
+              const hpRatio = hero.maxHp > 0 ? hero.hp / hero.maxHp : 1;
               newHero.hp = Math.floor(newHero.maxHp * hpRatio);
-              newHero.xp = leveledHero.xp;
-              newHero.maxXp = leveledHero.maxXp;
-              
-              // Track level up and stat changes for sync
-              // When leveling up, XP should be set to absolute value (excess XP), not a delta
-              // This prevents sync conflicts where delta calculation causes incorrect XP values
+
+              if (levelProgress.skillPointsGained > 0) {
+                newHero.skillPoints =
+                  (hero.skillPoints || 0) + levelProgress.skillPointsGained;
+              }
+
               trackHeroStatChange(hero.id, {
-                level: newLevel,
+                level: levelProgress.level,
                 maxHp: newHero.maxHp,
                 attack: newHero.attack,
                 defense: newHero.defense,
-                hp: newHero.hp
-                // Don't track XP delta here - we'll sync absolute XP value when level changes in sync function
+                hp: newHero.hp,
+                skillPoints: newHero.skillPoints,
               });
             }
             
@@ -7015,6 +7001,9 @@ export default function CleanBattlefieldSource() {
               if (hero.maxXp !== undefined) {
                 updateData.maxXp = hero.maxXp;
               }
+              if (hero.skillPoints !== undefined) {
+                updateData.skillPoints = hero.skillPoints;
+              }
               const prestigeLevel = (hero as any).prestigeLevel || 0;
               const MAX_LEVEL = 100;
               let newLevel = changes.level;
@@ -7032,7 +7021,7 @@ export default function CleanBattlefieldSource() {
                 newLevel = 1;
                 // Also reset XP to 0 for prestiged heroes that somehow got > 100
                 updateData.xp = 0;
-                updateData.maxXp = 100; // Initial level 1 maxXp
+                updateData.maxXp = calculateMaxXp(1);
               }
               
               // Only sync level if it's valid
@@ -7050,7 +7039,7 @@ export default function CleanBattlefieldSource() {
                 // CRITICAL: Cap XP at maxXp for level 100
                 const MAX_LEVEL = 100;
                 if ((hero.level || 1) >= MAX_LEVEL) {
-                  const maxXpForLevel100 = hero.maxXp || 100000; // Fallback
+                  const maxXpForLevel100 = hero.maxXp || calculateMaxXp(100);
                   newXP = Math.min(newXP, maxXpForLevel100);
                 }
                 
@@ -8054,7 +8043,7 @@ export default function CleanBattlefieldSource() {
       const updated = current.map(hero => {
         if (hero.id === targetHero.id) {
           const newLevel = hero.level + 1;
-          const newMaxXP = 100 + newLevel * 10;
+          const newMaxXP = calculateMaxXp(newLevel);
           
           console.log(`[Level Up] ✨ ${hero.name} TEST level up! ${hero.level} → ${newLevel}`);
           
@@ -8374,7 +8363,7 @@ export default function CleanBattlefieldSource() {
               }}>
                 {/* XP Fill */}
                 <div style={{
-                  width: `${Math.min(100, ((hero.xp || 0) / (hero.maxXp || 100)) * 100)}%`,
+                  width: `${Math.min(100, ((hero.xp || 0) / (hero.maxXp || calculateMaxXp(hero.level || 1))) * 100)}%`,
                   height: '100%',
                   background: 'linear-gradient(90deg, #3b82f6 0%, #8b5cf6 100%)',
                   transition: 'width 0.3s ease'
@@ -8831,7 +8820,7 @@ export default function CleanBattlefieldSource() {
               }}>
                 {/* XP Fill */}
                 <div style={{
-                  width: `${Math.min(100, ((hero.xp || 0) / (hero.maxXp || 100)) * 100)}%`,
+                  width: `${Math.min(100, ((hero.xp || 0) / (hero.maxXp || calculateMaxXp(hero.level || 1))) * 100)}%`,
                   height: '100%',
                   background: 'linear-gradient(90deg, #3b82f6 0%, #8b5cf6 100%)',
                   transition: 'width 0.3s ease'
@@ -9334,7 +9323,7 @@ export default function CleanBattlefieldSource() {
             }}>
               {/* XP Fill */}
               <div style={{
-                width: `${Math.min(100, ((hero.xp || 0) / (hero.maxXp || 100)) * 100)}%`,
+                width: `${Math.min(100, ((hero.xp || 0) / (hero.maxXp || calculateMaxXp(hero.level || 1))) * 100)}%`,
                 height: '100%',
                 background: 'linear-gradient(90deg, #3b82f6 0%, #8b5cf6 100%)',
                 transition: 'width 0.3s ease'

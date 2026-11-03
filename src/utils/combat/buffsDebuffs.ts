@@ -5,6 +5,7 @@
 
 import { Hero, Enemy, Debuff } from './types';
 import { DEBUFFS } from '../fullCombatEngine';
+import { computeHeroDebuffResistance } from '../../game/economy/gearScore';
 import { CombatCallbacks } from './types';
 import { BUFF_TYPES } from '../buffSystem';
 import { applyHealing, absorbShieldDamage } from './healing';
@@ -260,25 +261,8 @@ export function processDebuffs(
  * Calculate debuff resistance chance
  */
 export function getDebuffResistance(target: Hero | Enemy): number {
-  // For heroes
   if ((target as Hero).role) {
-    const hero = target as Hero;
-    // Base resistance from defense (1% per 5 defense)
-    const defenseResist = Math.min(0.3, (hero.defense || 0) / 500);
-    // Level resistance (1% per 2 levels)
-    const levelResist = Math.min(0.25, (hero.level || 0) / 200);
-    // Gear score resistance (simplified)
-    let gearScore = 0;
-    if (hero.equipment) {
-      Object.values(hero.equipment).forEach((item: any) => {
-        if (item) {
-          gearScore += (item.attack || 0) + (item.defense || 0) + (item.hp || 0);
-        }
-      });
-    }
-    const gearResist = Math.min(0.2, gearScore / 5000);
-
-    return Math.min(0.7, defenseResist + levelResist + gearResist); // Max 70% resistance
+    return computeHeroDebuffResistance(target as Hero);
   }
   // For enemies
   else {

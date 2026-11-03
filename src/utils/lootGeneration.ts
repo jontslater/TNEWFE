@@ -6,15 +6,10 @@
 
 import { Item } from '../types/Hero';
 
-// Loot rarity drop chances
-const LOOT_RARITIES = {
-  common: { dropChance: 0.60, statMultiplier: 1.0, color: '#9ca3af' },
-  uncommon: { dropChance: 0.25, statMultiplier: 1.3, color: '#10b981' },
-  rare: { dropChance: 0.10, statMultiplier: 1.6, color: '#3b82f6' },
-  epic: { dropChance: 0.04, statMultiplier: 2.0, color: '#a855f7' },
-  legendary: { dropChance: 0.01, statMultiplier: 2.5, color: '#f59e0b' },
-  mythic: { dropChance: 0.001, statMultiplier: 4.0, color: '#ef4444' } // Red color for mythic
-};
+// Loot rarity drop chances — canonical table in src/game/economy/lootTables.ts
+import { LOOT_RARITIES } from '../game/economy/lootTables';
+
+export { LOOT_RARITIES };
 
 // Equipment slots by category
 const EQUIPMENT_SLOTS = ['weapon', 'armor', 'accessory', 'helm', 'cloak', 'gloves', 'ring1', 'ring2', 'boots'];

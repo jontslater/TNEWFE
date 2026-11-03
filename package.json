@@ -13,7 +13,8 @@
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "test": "vitest run",
     "test:watch": "vitest",
-    "sim:ttk": "vitest run src/game/stats/enemyCombatScaling.test.ts -t \"before/after\""
+    "sim:ttk": "vitest run src/game/stats/enemyCombatScaling.test.ts -t \"before/after\"",
+    "sim:economy": "vitest run src/game/economy/"
   },
   "dependencies": {
     "@stripe/stripe-js": "^8.5.3",
