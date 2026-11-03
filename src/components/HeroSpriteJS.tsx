@@ -19,6 +19,8 @@ export interface HeroSpriteJSHandle {
   playAnimation: (animation: string) => void;
   setSpriteImage: (url: string) => void;
   getCurrentAnimation: () => string;
+  /** Hold strip on first frame (gallery / screenshots) */
+  freezeIdleFrame: () => void;
 }
 
 interface HeroSpriteJSProps {
@@ -28,6 +30,8 @@ interface HeroSpriteJSProps {
   facing?: ScreenFacing;
   /** Override native sheet facing from config */
   facesLeft?: boolean;
+  /** When true, idle stays on frame 0 (class gallery screenshots) */
+  freezeIdleFrame?: boolean;
   style?: CSSProperties;
   scale?: number;
   shield?: number;
@@ -45,6 +49,7 @@ const HeroSpriteJS = forwardRef<HeroSpriteJSHandle, HeroSpriteJSProps>(
       className,
       facing = "right",
       facesLeft: facesLeftProp,
+      freezeIdleFrame = false,
       style,
       scale = SPRITE_DISPLAY_SCALE,
       shield = 0,
@@ -61,7 +66,10 @@ const HeroSpriteJS = forwardRef<HeroSpriteJSHandle, HeroSpriteJSProps>(
     const glowWrapperRef = useRef<HTMLDivElement>(null);
     const rafRef = useRef<number | null>(null);
     const containerRef = useRef<HTMLDivElement>(null);
+    const freezeFrameRef = useRef(false);
     const [enrageScale, setEnrageScale] = useState(1.0);
+
+    freezeFrameRef.current = freezeIdleFrame;
 
     const hasShield = shield > 0;
 
@@ -94,6 +102,25 @@ const HeroSpriteJS = forwardRef<HeroSpriteJSHandle, HeroSpriteJSProps>(
       requestAnimationFrame(animate);
     }, [enrageActive]);
 
+    const applyStripFrame = (
+      el: HTMLDivElement,
+      index: number,
+      animScaleX: number,
+      animScaleY: number,
+      fw: number
+    ) => {
+      const x = -(index * fw);
+      el.style.removeProperty("transform");
+      void el.offsetWidth;
+      el.style.setProperty(
+        "transform",
+        `scaleX(${animScaleX}) scaleY(${animScaleY}) translateX(${x}px)`,
+        "important"
+      );
+      el.style.transformOrigin = "top left";
+      void el.offsetWidth;
+    };
+
     // External API
     useImperativeHandle(
       ref,
@@ -101,6 +128,31 @@ const HeroSpriteJS = forwardRef<HeroSpriteJSHandle, HeroSpriteJSProps>(
         playAnimation,
         setSpriteImage: () => {},
         getCurrentAnimation: () => currentAnimation?.name || "idle",
+        freezeIdleFrame: () => {
+          freezeFrameRef.current = true;
+          if (rafRef.current) {
+            cancelAnimationFrame(rafRef.current);
+            rafRef.current = null;
+          }
+          const el = spriteRef.current;
+          if (!el || !currentAnimation) return;
+          const uniformScale =
+            currentAnimation.frameWidth > VIEWPORT ||
+            currentAnimation.frameHeight > VIEWPORT
+              ? VIEWPORT /
+                Math.max(
+                  currentAnimation.frameWidth,
+                  currentAnimation.frameHeight
+                )
+              : 1;
+          applyStripFrame(
+            el,
+            0,
+            uniformScale,
+            uniformScale,
+            currentAnimation.frameWidth
+          );
+        },
       }),
       [currentAnimation, playAnimation]
     );
@@ -261,11 +313,15 @@ const HeroSpriteJS = forwardRef<HeroSpriteJSHandle, HeroSpriteJSProps>(
       };
 
       rafRef.current = requestAnimationFrame(animate);
+      if (freezeIdleFrame || freezeFrameRef.current) {
+        if (rafRef.current) cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
 
       return () => {
         if (rafRef.current) cancelAnimationFrame(rafRef.current);
       };
-    }, [currentAnimation, onComplete]);
+    }, [currentAnimation, onComplete, freezeIdleFrame, role]);
 
     // Calculate final scale with animated enrage multiplier
     const finalScale = scale * enrageScale;

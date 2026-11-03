@@ -33,3 +33,4 @@ dist-ssr
 scripts/luizmelo/vendor/
 scripts/luizmelo/vendor-zips/
 .env.production
+tmp-facing-verify/

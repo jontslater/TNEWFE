@@ -1,4 +1,5 @@
 import HeroSpriteJS from '../components/HeroSpriteJS';
+import { BATTLEFIELD_HERO_FACING } from '../utils/spriteFacing';
 
 const PLAYABLE_CLASSES = [
   'guardian',
@@ -60,7 +61,8 @@ export default function ClassSpriteGalleryPage() {
                 heroId={`gallery-${role}`}
                 role={role}
                 scale={2.5}
-                facing="right"
+                facing={BATTLEFIELD_HERO_FACING}
+                freezeIdleFrame
               />
             </div>
             <span className="text-sm font-medium capitalize text-slate-200">{role}</span>

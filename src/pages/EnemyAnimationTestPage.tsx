@@ -173,8 +173,7 @@ export default function EnemyAnimationTestPage() {
                       enemyId={`test-${enemyName.toLowerCase().replace(/\s+/g, '-')}`}
                       enemyType={enemyName}
                       enemyName={enemyName}
-                      spriteUrl=""
-                      facing="left"
+                      facing={BATTLEFIELD_ENEMY_FACING}
                       scale={2.5}
                     />
                   ) : (

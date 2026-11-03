@@ -3,7 +3,7 @@
  */
 const ROOT = '/Sprites/Heroes/HeroSprites/LuizMelo';
 
-/** Native idle facing per LuizMelo pack (audit: scripts/audit-sprite-facing.mjs) */
+/** Native idle facing per LuizMelo pack (gallery QA + audit-sprite-facing.mjs) */
 const LUIZ_PACK_FACES_LEFT: Record<string, boolean> = {
   'Hero Knight': false,
   'Medieval Warrior': true,

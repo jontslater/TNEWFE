@@ -13,7 +13,14 @@
 | `src/utils/spriteFacingConfig.ts` | Per-enemy `ENEMY_NATIVE_FACES_LEFT`; `getHeroFacesLeft` / `getEnemyFacesLeft` |
 | `src/utils/spriteConfig.ts` + `luizmeloHeroSpriteConfig.ts` | Optional `facesLeft` on hero entries (LuizMelo packs set from pack map) |
 | `HeroSpriteJS` / `EnemySpriteJS` | Apply container transform with `transformOrigin: bottom center` (feet anchor) |
-| `CleanBattlefieldSource` | Passes desired facing via `getFacingDirection(..., 'hero' \| 'enemy')` |
+| `ClassSpriteGalleryPage` | `BATTLEFIELD_HERO_FACING` + `freezeIdleFrame` (idle frame 0 for screenshots) |
+
+Per-class native facing uses `HERO_FACES_LEFT_OVERRIDES` (LuizMelo bodies) and `HERO_NATIVE_FACES_LEFT` (legacy rigs). Regenerate overrides with gallery QA:
+
+```bash
+node scripts/verify-hero-gallery-transform.mjs
+node scripts/audit-sprite-facing.mjs
+```
 
 Native sheet orientation is audited with:
 
