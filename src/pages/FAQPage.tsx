@@ -52,7 +52,11 @@ export default function FAQPage() {
 
             <div>
               <h3 className="text-xl font-bold text-white mb-2">Multiple Characters</h3>
-              <p>You can create multiple characters! Use <code className="bg-gray-900 px-2 py-1 rounded text-green-400">!join [class]</code> again to create another character. Use <code className="bg-gray-900 px-2 py-1 rounded text-green-400">!heroes</code> to see all your characters and <code className="bg-gray-900 px-2 py-1 rounded text-green-400">!join [number]</code> to switch between them.</p>
+              <p>
+                Use <code className="bg-gray-900 px-2 py-1 rounded text-green-400">!join [class]</code> to create another character,{' '}
+                <code className="bg-gray-900 px-2 py-1 rounded text-green-400">!hero [number]</code> to switch active heroes, and{' '}
+                <code className="bg-gray-900 px-2 py-1 rounded text-green-400">!heroes</code> to list your roster.
+              </p>
             </div>
           </div>
         </div>
@@ -269,13 +273,13 @@ export default function FAQPage() {
               <div>
                 <h3 className="text-xl font-bold text-white mb-2">Character Commands</h3>
                 <div className="space-y-2 text-gray-300">
-                  <div><code className="bg-gray-900 px-2 py-1 rounded text-green-400">!join [class]</code> - Create a new character or join with existing</div>
-                  <div><code className="bg-gray-900 px-2 py-1 rounded text-green-400">!join [number]</code> - Switch to a different character (use !heroes to see numbers)</div>
-                  <div><code className="bg-gray-900 px-2 py-1 rounded text-green-400">!leave</code> - Leave the battlefield (saves your progress)</div>
+                  <div><code className="bg-gray-900 px-2 py-1 rounded text-green-400">!join [class]</code> - Create a character or enter the battlefield</div>
+                  <div><code className="bg-gray-900 px-2 py-1 rounded text-green-400">!hero [number]</code> - Switch active character (see !heroes for numbers)</div>
+                  <div><code className="bg-gray-900 px-2 py-1 rounded text-green-400">!auto</code> - Toggle auto-combat</div>
+                  <div><code className="bg-gray-900 px-2 py-1 rounded text-green-400">!leave</code> - Leave the battlefield (progress is saved)</div>
                   <div><code className="bg-gray-900 px-2 py-1 rounded text-green-400">!heroes</code> - List all your characters</div>
                   <div><code className="bg-gray-900 px-2 py-1 rounded text-green-400">!stats</code> or <code className="bg-gray-900 px-2 py-1 rounded text-green-400">!s</code> - View your character stats</div>
                   <div><code className="bg-gray-900 px-2 py-1 rounded text-green-400">!gear</code> or <code className="bg-gray-900 px-2 py-1 rounded text-green-400">!g</code> - View your equipped gear</div>
-                  <div><code className="bg-gray-900 px-2 py-1 rounded text-green-400">!classes</code> - View all available classes</div>
                 </div>
               </div>
             </div>
@@ -397,8 +401,10 @@ export default function FAQPage() {
               <div>
                 <h3 className="text-xl font-bold text-white mb-2">Quest Commands</h3>
                 <div className="space-y-2 text-gray-300">
-                  <div><code className="bg-gray-900 px-2 py-1 rounded text-green-400">!quest</code> - View your current quests</div>
-                  <div><code className="bg-gray-900 px-2 py-1 rounded text-green-400">!claim</code> - Claim completed quest rewards</div>
+                  <div>
+                    <code className="bg-gray-900 px-2 py-1 rounded text-green-400">!quest</code> - Opens quest info on{' '}
+                    <a href="/portal" className="text-purple-400 underline">the Portal</a> (view, track, and claim quests there)
+                  </div>
                   <div><code className="bg-gray-900 px-2 py-1 rounded text-green-400">!tokens</code> - Check your token balance</div>
                 </div>
               </div>
@@ -417,7 +423,8 @@ export default function FAQPage() {
               <h3 className="text-lg font-bold text-yellow-400 mb-3">Progression Tips</h3>
               <ul className="space-y-2 text-sm text-gray-300">
                 <li>• Complete quests to earn tokens and XP</li>
-                <li>• Claim quest rewards in the Portal</li>
+                <li>• View and claim quest rewards in the Portal (Quests tab)</li>
+                <li>• On the battlefield, completed quests auto-claim during sync</li>
                 <li>• Tokens can be used in the shop</li>
                 <li>• Level up to unlock new abilities</li>
                 <li>• Higher levels = better gear drops</li>
@@ -466,7 +473,7 @@ export default function FAQPage() {
                   <div><code className="bg-gray-900 px-2 py-1 rounded text-green-400">!auto</code> - Toggle auto-combat mode</div>
                   <div><code className="bg-gray-900 px-2 py-1 rounded text-green-400">!skills</code> - View your character's skills</div>
                   <div><code className="bg-gray-900 px-2 py-1 rounded text-green-400">!leaderboard</code> - View top players</div>
-                  <div><code className="bg-gray-900 px-2 py-1 rounded text-green-400">!help</code> - Show all available commands</div>
+                  <div><code className="bg-gray-900 px-2 py-1 rounded text-green-400">!help</code> - Core chat commands (!join, !hero, !auto, !leave)</div>
                 </div>
               </div>
 
@@ -515,11 +522,10 @@ export default function FAQPage() {
               <div className="font-bold text-white mb-2">Character</div>
               <div className="space-y-1 text-gray-300">
                 <div>!join [class]</div>
+                <div>!hero [number]</div>
+                <div>!auto</div>
                 <div>!leave</div>
-                <div>!stats (!s)</div>
-                <div>!gear (!g)</div>
                 <div>!heroes</div>
-                <div>!classes</div>
               </div>
             </div>
             <div>
@@ -536,8 +542,7 @@ export default function FAQPage() {
             <div>
               <div className="font-bold text-white mb-2">Other</div>
               <div className="space-y-1 text-gray-300">
-                <div>!quest</div>
-                <div>!claim</div>
+                <div>!quest → Portal</div>
                 <div>!shop</div>
                 <div>!tokens</div>
                 <div>!raid</div>

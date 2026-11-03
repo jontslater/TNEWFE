@@ -181,17 +181,20 @@ export default function RaidBrowser({ raids: propRaids, worldBoss: propWorldBoss
   }, [activeRaid]);
 
   const handleJoinWorldBoss = async () => {
-    // Use hero.id (document ID) if available, otherwise fall back to userId/user.id
-    const targetUserId = hero?.id || userId || user?.id;
-    if (!targetUserId || !worldBoss || !hero) return;
-    
+    const twitchUserId =
+      (hero as { twitchUserId?: string; twitchId?: string })?.twitchUserId ||
+      (hero as { twitchId?: string })?.twitchId ||
+      user?.twitchId;
+    if (!twitchUserId || !hero?.id || !worldBoss) return;
+
     try {
       await raidAPI.joinWorldBoss(
-        worldBoss.id, 
-        targetUserId, 
-        hero?.name || user?.twitchUsername || 'Unknown', 
-        hero?.level || heroLevel, 
-        hero?.role || 'berserker'
+        worldBoss.id,
+        twitchUserId,
+        hero?.name || user?.twitchUsername || 'Unknown',
+        hero?.level || heroLevel,
+        hero?.role || 'berserker',
+        hero.id
       );
       alert('Joined world boss event!');
       fetchWorldBoss(); // Refresh to show updated participant count

@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { questAPI } from '../api/client';
-import { useAuth } from '../hooks/useAuth';
 import { QuestSet, QuestWithProgress, PlayerQuestProgress } from '../types/Quest';
-const QuestsPage: React.FC = () => {
-  const { user } = useAuth();
+
+interface QuestsPageProps {
+  heroId?: string | null;
+}
+
+const QuestsPage: React.FC<QuestsPageProps> = ({ heroId }) => {
   const [activeTab, setActiveTab] = useState<'daily' | 'weekly' | 'monthly'>('daily');
   const [dailyQuests, setDailyQuests] = useState<QuestSet | null>(null);
   const [weeklyQuests, setWeeklyQuests] = useState<QuestSet | null>(null);
@@ -14,16 +17,25 @@ const QuestsPage: React.FC = () => {
 
   useEffect(() => {
     loadQuests();
-  }, [user]);
+  }, [heroId]);
 
   const loadQuests = async () => {
+    if (!heroId) {
+      setDailyQuests(null);
+      setWeeklyQuests(null);
+      setMonthlyQuests(null);
+      setProgress(null);
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
       const [daily, weekly, monthly, playerProgress] = await Promise.all([
-        questAPI.getDailyQuests(),
-        questAPI.getWeeklyQuests(),
-        questAPI.getMonthlyQuests(),
-        user?.twitchId ? questAPI.getPlayerProgress(user.twitchId) : null
+        questAPI.getDailyQuests(heroId),
+        questAPI.getWeeklyQuests(heroId),
+        questAPI.getMonthlyQuests(heroId),
+        questAPI.getPlayerProgress(heroId),
       ]);
 
       setDailyQuests(daily);
@@ -38,11 +50,11 @@ const QuestsPage: React.FC = () => {
   };
 
   const handleClaimQuest = async (questId: string, type: 'daily' | 'weekly' | 'monthly') => {
-    if (!user?.twitchId) return;
+    if (!heroId) return;
 
     try {
       setClaiming(questId);
-      await questAPI.claimQuestReward(user.twitchId, questId, type);
+      await questAPI.claimQuestReward(heroId, questId, type);
       
       // Reload progress
       await loadQuests();
@@ -54,11 +66,11 @@ const QuestsPage: React.FC = () => {
   };
 
   const handleClaimBonus = async (type: 'daily' | 'weekly' | 'monthly') => {
-    if (!user?.twitchId) return;
+    if (!heroId) return;
 
     try {
       setClaiming(`${type}-bonus`);
-      await questAPI.claimCompletionBonus(user.twitchId, type);
+      await questAPI.claimCompletionBonus(heroId, type);
       
       // Reload progress
       await loadQuests();
@@ -70,11 +82,11 @@ const QuestsPage: React.FC = () => {
   };
 
   const handleClaimAll = async () => {
-    if (!user?.twitchId) return;
+    if (!heroId) return;
 
     try {
       setClaiming('claim-all');
-      await questAPI.claimAllQuests(user.twitchId, activeTab);
+      await questAPI.claimAllQuests(heroId, activeTab);
       
       // Reload progress
       await loadQuests();

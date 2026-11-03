@@ -1146,12 +1146,20 @@ export const raidAPI = {
     return response.data.worldBoss;
   },
   
-  async joinWorldBoss(bossId: string, userId: string, username: string, heroLevel: number, heroRole: string): Promise<{success: boolean}> {
-    const response = await apiClient.post(`/api/worldboss/${bossId}/join`, { 
-      userId, 
-      username, 
-      heroLevel, 
-      heroRole 
+  async joinWorldBoss(
+    bossId: string,
+    userId: string,
+    username: string,
+    heroLevel: number,
+    heroRole: string,
+    heroId: string
+  ): Promise<{ success: boolean }> {
+    const response = await apiClient.post(`/api/worldboss/${bossId}/join`, {
+      userId,
+      username,
+      heroLevel,
+      heroRole,
+      heroId,
     });
     return response.data;
   },
@@ -1294,52 +1302,61 @@ export const authAPI = {
   }
 };
 
-// Quest API
+// Quest API — routes use Firestore hero document id (heroId), not Twitch user id
 export const questAPI = {
-  async getDailyQuests() {
-    const response = await apiClient.get('/api/quests/daily');
-    return response.data;
-  },
-  
-  async getWeeklyQuests() {
-    const response = await apiClient.get('/api/quests/weekly');
-    return response.data;
-  },
-  
-  async getMonthlyQuests() {
-    const response = await apiClient.get('/api/quests/monthly');
-    return response.data;
-  },
-  
-  async getPlayerProgress(userId: string) {
-    const response = await apiClient.get(`/api/quests/${userId}/progress`);
-    return response.data;
-  },
-  
-  async updateQuestProgress(userId: string, questId: string, progress: number) {
-    const response = await apiClient.post(`/api/quests/${userId}/update/${questId}`, { progress });
-    return response.data;
-  },
-  
-  async claimQuestReward(userId: string, questId: string, type: 'daily' | 'weekly' | 'monthly') {
-    const response = await apiClient.post(`/api/quests/${userId}/claim/${questId}`, { type });
-    return response.data;
-  },
-  
-  async claimCompletionBonus(userId: string, type: 'daily' | 'weekly' | 'monthly') {
-    const response = await apiClient.post(`/api/quests/${userId}/claim-bonus/${type}`);
-    return response.data;
-  },
-  
-  async claimAllQuests(userId: string, type?: 'daily' | 'weekly' | 'monthly') {
-    const response = await apiClient.post(`/api/quests/claim-all/${userId}`, { type });
+  async getDailyQuests(heroId?: string) {
+    const response = await apiClient.get('/api/quests/daily', {
+      params: heroId ? { heroId } : undefined,
+    });
     return response.data;
   },
 
-  async updateQuestProgressBatch(userId: string, updates: Array<{ trackingKey: string; type: 'daily' | 'weekly' | 'monthly'; increment: number }>) {
-    const response = await apiClient.post(`/api/quests/${userId}/update-batch`, { updates });
+  async getWeeklyQuests(heroId?: string) {
+    const response = await apiClient.get('/api/quests/weekly', {
+      params: heroId ? { heroId } : undefined,
+    });
     return response.data;
-  }
+  },
+
+  async getMonthlyQuests(heroId?: string) {
+    const response = await apiClient.get('/api/quests/monthly', {
+      params: heroId ? { heroId } : undefined,
+    });
+    return response.data;
+  },
+
+  async getPlayerProgress(heroId: string) {
+    const response = await apiClient.get(`/api/quests/${heroId}/progress`);
+    return response.data;
+  },
+
+  async updateQuestProgress(heroId: string, questId: string, progress: number) {
+    const response = await apiClient.post(`/api/quests/${heroId}/update/${questId}`, { progress });
+    return response.data;
+  },
+
+  async claimQuestReward(heroId: string, questId: string, type: 'daily' | 'weekly' | 'monthly') {
+    const response = await apiClient.post(`/api/quests/${heroId}/claim/${questId}`, { type });
+    return response.data;
+  },
+
+  async claimCompletionBonus(heroId: string, type: 'daily' | 'weekly' | 'monthly') {
+    const response = await apiClient.post(`/api/quests/${heroId}/claim-bonus/${type}`);
+    return response.data;
+  },
+
+  async claimAllQuests(heroId: string, type?: 'daily' | 'weekly' | 'monthly') {
+    const response = await apiClient.post(`/api/quests/claim-all/${heroId}`, { type });
+    return response.data;
+  },
+
+  async updateQuestProgressBatch(
+    heroId: string,
+    updates: Array<{ trackingKey: string; type: 'daily' | 'weekly' | 'monthly'; increment: number }>
+  ) {
+    const response = await apiClient.post(`/api/quests/${heroId}/update-batch`, { updates });
+    return response.data;
+  },
 };
 
 // Skills API

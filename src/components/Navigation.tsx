@@ -1,60 +1,111 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { loginWithTwitch } from '../utils/twitchOAuth';
 import logo from '../Logos/TheNeverEndingWarLogo.png';
 import { useHeroListener } from '../hooks/useHeroListener';
 import { questAPI } from '../api/client';
+import { getStoredSelectedHeroId } from '../utils/selectedHeroStorage';
 
-// Cache quest templates - these don't change frequently
-let questCache: { daily: any; weekly: any; monthly: any; timestamp: number } | null = null;
+// Cache quest templates per hero tier — keyed by hero doc id
+const questCacheByHero = new Map<
+  string,
+  { daily: unknown; weekly: unknown; monthly: unknown; timestamp: number }
+>();
 const QUEST_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
-async function getCachedQuests() {
-  const now = Date.now();
-  
-  // Return cached quests if still valid
-  if (questCache && (now - questCache.timestamp) < QUEST_CACHE_DURATION) {
-    return {
-      daily: questCache.daily,
-      weekly: questCache.weekly,
-      monthly: questCache.monthly
-    };
+async function getCachedQuests(heroId: string | null) {
+  if (!heroId) {
+    return { daily: null, weekly: null, monthly: null };
   }
-  
-  // Fetch fresh quests and cache them
+
+  const now = Date.now();
+  const cached = questCacheByHero.get(heroId);
+  if (cached && now - cached.timestamp < QUEST_CACHE_DURATION) {
+    return { daily: cached.daily, weekly: cached.weekly, monthly: cached.monthly };
+  }
+
   const [daily, weekly, monthly] = await Promise.all([
-    questAPI.getDailyQuests(),
-    questAPI.getWeeklyQuests(),
-    questAPI.getMonthlyQuests()
+    questAPI.getDailyQuests(heroId),
+    questAPI.getWeeklyQuests(heroId),
+    questAPI.getMonthlyQuests(heroId),
   ]);
-  
-  questCache = { daily, weekly, monthly, timestamp: now };
+
+  questCacheByHero.set(heroId, { daily, weekly, monthly, timestamp: now });
   return { daily, weekly, monthly };
 }
 
 export default function Navigation() {
   const navigate = useNavigate();
   const { isAuthenticated, user, logout } = useAuth();
-  const { questProgress, getUnclaimedQuestCount } = useHeroListener(user?.id || null);
-  const [unclaimedQuestsCount, setUnclaimedQuestsCount] = useState(0);
-  const [questTemplates, setQuestTemplates] = useState<{ daily: any; weekly: any; monthly: any } | null>(null);
+  const twitchUserId = user?.twitchId || user?.id || null;
+  const [selectedHeroDocId, setSelectedHeroDocId] = useState<string | null>(() =>
+    getStoredSelectedHeroId(twitchUserId)
+  );
 
-  // Load quest templates once on mount
   useEffect(() => {
-    getCachedQuests().then(quests => {
+    setSelectedHeroDocId(getStoredSelectedHeroId(twitchUserId));
+  }, [twitchUserId]);
+
+  useEffect(() => {
+    if (!twitchUserId) return;
+
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === `selectedHeroId_${twitchUserId}`) {
+        setSelectedHeroDocId(event.newValue);
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, [twitchUserId]);
+
+  // Same-tab hero picker updates (storage event only fires across tabs)
+  useEffect(() => {
+    if (!twitchUserId) return;
+    const interval = setInterval(() => {
+      const stored = getStoredSelectedHeroId(twitchUserId);
+      setSelectedHeroDocId((prev) => (prev === stored ? prev : stored));
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [twitchUserId]);
+
+  const { questProgress, getUnclaimedQuestCount } = useHeroListener(selectedHeroDocId);
+  const [unclaimedQuestsCount, setUnclaimedQuestsCount] = useState(0);
+  const [questTemplates, setQuestTemplates] = useState<{
+    daily: unknown;
+    weekly: unknown;
+    monthly: unknown;
+  } | null>(null);
+
+  const loadQuestTemplates = useCallback(async (heroId: string | null) => {
+    if (!heroId) {
+      setQuestTemplates(null);
+      return;
+    }
+    try {
+      const quests = await getCachedQuests(heroId);
       setQuestTemplates(quests);
-    });
+    } catch (err) {
+      console.error('[Navigation] Failed to load quest templates:', err);
+      setQuestTemplates(null);
+    }
   }, []);
 
-  // Calculate unclaimed count when quest progress or templates change
+  useEffect(() => {
+    loadQuestTemplates(selectedHeroDocId);
+  }, [selectedHeroDocId, loadQuestTemplates]);
+
   useEffect(() => {
     if (!questProgress || !questTemplates) {
       setUnclaimedQuestsCount(0);
       return;
     }
 
-    const count = getUnclaimedQuestCount(questTemplates.daily, questTemplates.weekly, questTemplates.monthly);
+    const count = getUnclaimedQuestCount(
+      questTemplates.daily,
+      questTemplates.weekly,
+      questTemplates.monthly
+    );
     setUnclaimedQuestsCount(count);
   }, [questProgress, questTemplates, getUnclaimedQuestCount]);
 
