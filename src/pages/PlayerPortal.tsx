@@ -14,7 +14,6 @@ import InventoryManager from '../components/InventoryManager';
 import CraftingStation from '../components/CraftingStation';
 import LoginRewardModal from '../components/LoginRewardModal';
 import AchievementsPanel from '../components/AchievementsPanel';
-import BattlefieldQuickAccess from '../components/BattlefieldQuickAccess';
 import { loginWithTwitch } from '../utils/twitchOAuth';
 import { Hero } from '../types/Hero';
 import SkillsPage from './SkillsPage';
@@ -406,12 +405,12 @@ export default function PlayerPortal() {
       <div className="bg-gray-800 border-b border-gray-700">
         <div className="container mx-auto px-2 sm:px-4">
           <nav
-            className="flex gap-1 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            className="flex flex-wrap gap-x-1 gap-y-0 pb-1"
             aria-label="Portal sections"
           >
             <button
               onClick={() => setActiveTab('hero')}
-              className={`shrink-0 px-4 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 min-h-[44px] text-sm sm:text-base ${
+              className={`px-3 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 min-h-[44px] text-sm sm:text-base ${
                 activeTab === 'hero'
                   ? 'text-blue-400 border-blue-400'
                   : 'text-gray-400 border-transparent hover:text-gray-300'
@@ -420,8 +419,19 @@ export default function PlayerPortal() {
               Hero
             </button>
             <button
+              onClick={() => setActiveTab('browserSource')}
+              className={`px-3 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 min-h-[44px] text-sm sm:text-base ring-1 ring-cyan-700/40 sm:ring-0 ${
+                activeTab === 'browserSource'
+                  ? 'text-cyan-400 border-cyan-400'
+                  : 'text-cyan-300/90 border-transparent hover:text-cyan-200 sm:text-gray-400 sm:hover:text-gray-300'
+              }`}
+            >
+              <span className="sm:hidden font-bold">Battlefield</span>
+              <span className="hidden sm:inline">Browser Source</span>
+            </button>
+            <button
               onClick={() => setActiveTab('inventory')}
-              className={`shrink-0 px-4 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 min-h-[44px] text-sm sm:text-base ${
+              className={`px-3 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 min-h-[44px] text-sm sm:text-base ${
                 activeTab === 'inventory'
                   ? 'text-yellow-400 border-yellow-400'
                   : 'text-gray-400 border-transparent hover:text-gray-300'
@@ -431,7 +441,7 @@ export default function PlayerPortal() {
             </button>
             <button
               onClick={() => setActiveTab('profession')}
-              className={`shrink-0 px-4 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 min-h-[44px] text-sm sm:text-base ${
+              className={`px-3 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 min-h-[44px] text-sm sm:text-base ${
                 activeTab === 'profession'
                   ? 'text-green-400 border-green-400'
                   : 'text-gray-400 border-transparent hover:text-gray-300'
@@ -441,7 +451,7 @@ export default function PlayerPortal() {
             </button>
             <button
               onClick={() => setActiveTab('guild')}
-              className={`shrink-0 px-4 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 min-h-[44px] text-sm sm:text-base ${
+              className={`px-3 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 min-h-[44px] text-sm sm:text-base ${
                 activeTab === 'guild'
                   ? 'text-purple-400 border-purple-400'
                   : 'text-gray-400 border-transparent hover:text-gray-300'
@@ -451,7 +461,7 @@ export default function PlayerPortal() {
             </button>
             <button
               onClick={() => setActiveTab('raids')}
-              className={`shrink-0 px-4 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 min-h-[44px] text-sm sm:text-base ${
+              className={`px-3 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 min-h-[44px] text-sm sm:text-base ${
                 activeTab === 'raids'
                   ? 'text-red-400 border-red-400'
                   : 'text-gray-400 border-transparent hover:text-gray-300'
@@ -461,7 +471,7 @@ export default function PlayerPortal() {
             </button>
             <button
               onClick={() => setActiveTab('skills')}
-              className={`shrink-0 px-4 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 min-h-[44px] text-sm sm:text-base ${
+              className={`px-3 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 min-h-[44px] text-sm sm:text-base ${
                 activeTab === 'skills'
                   ? 'text-indigo-400 border-indigo-400'
                   : 'text-gray-400 border-transparent hover:text-gray-300'
@@ -471,7 +481,7 @@ export default function PlayerPortal() {
             </button>
             <button
               onClick={() => setActiveTab('achievements')}
-              className={`shrink-0 px-4 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 min-h-[44px] text-sm sm:text-base ${
+              className={`px-3 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 min-h-[44px] text-sm sm:text-base ${
                 activeTab === 'achievements'
                   ? 'text-amber-400 border-amber-400'
                   : 'text-gray-400 border-transparent hover:text-gray-300'
@@ -481,7 +491,7 @@ export default function PlayerPortal() {
             </button>
             <button
               onClick={() => setActiveTab('dungeon')}
-              className={`shrink-0 px-4 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 relative min-h-[44px] text-sm sm:text-base ${
+              className={`px-3 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 relative min-h-[44px] text-sm sm:text-base ${
                 activeTab === 'dungeon'
                   ? 'text-orange-400 border-orange-400'
                   : 'text-gray-400 border-transparent hover:text-gray-300'
@@ -493,19 +503,8 @@ export default function PlayerPortal() {
               )}
             </button>
             <button
-              onClick={() => setActiveTab('browserSource')}
-              className={`shrink-0 px-4 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 min-h-[44px] text-sm sm:text-base ${
-                activeTab === 'browserSource'
-                  ? 'text-cyan-400 border-cyan-400'
-                  : 'text-gray-400 border-transparent hover:text-gray-300'
-              }`}
-            >
-              <span className="lg:hidden">Battlefield</span>
-              <span className="hidden lg:inline">Browser Source</span>
-            </button>
-            <button
               onClick={() => setActiveTab('auction')}
-              className={`shrink-0 px-4 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 min-h-[44px] text-sm sm:text-base ${
+              className={`px-3 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 min-h-[44px] text-sm sm:text-base ${
                 activeTab === 'auction'
                   ? 'text-emerald-400 border-emerald-400'
                   : 'text-gray-400 border-transparent hover:text-gray-300'
@@ -515,7 +514,7 @@ export default function PlayerPortal() {
             </button>
             <button
               onClick={() => setActiveTab('quests')}
-              className={`shrink-0 px-4 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 relative min-h-[44px] text-sm sm:text-base ${
+              className={`px-3 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 relative min-h-[44px] text-sm sm:text-base ${
                 activeTab === 'quests'
                   ? 'text-orange-400 border-orange-400'
                   : 'text-gray-400 border-transparent hover:text-gray-300'
@@ -525,7 +524,7 @@ export default function PlayerPortal() {
             </button>
             <button
               onClick={() => setActiveTab('prestige')}
-              className={`shrink-0 px-4 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 min-h-[44px] text-sm sm:text-base ${
+              className={`px-3 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 min-h-[44px] text-sm sm:text-base ${
                 activeTab === 'prestige'
                   ? 'text-amber-400 border-amber-400'
                   : 'text-gray-400 border-transparent hover:text-gray-300'
@@ -536,7 +535,7 @@ export default function PlayerPortal() {
             {isAdmin && (
               <button
                 onClick={() => setActiveTab('allHeroes')}
-                className={`shrink-0 px-4 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 min-h-[44px] text-sm sm:text-base ${
+                className={`px-3 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 min-h-[44px] text-sm sm:text-base ${
                   activeTab === 'allHeroes'
                     ? 'text-pink-400 border-pink-400'
                     : 'text-gray-400 border-transparent hover:text-gray-300'
@@ -719,9 +718,7 @@ export default function PlayerPortal() {
                 />
               )}
             {activeTab === 'hero' && (
-              <>
-                <BattlefieldQuickAccess twitchId={user?.twitchId} />
-                <HeroDashboard 
+              <HeroDashboard 
                 hero={hero} 
                 onHeroUpdate={async (updatedHero: Hero) => {
                   // Update the current hero if it's the one being updated
@@ -744,7 +741,6 @@ export default function PlayerPortal() {
                   }
                 }}
               />
-              </>
             )}
         {activeTab === 'inventory' && (
           <InventoryManager 

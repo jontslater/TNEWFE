@@ -1412,11 +1412,11 @@ export const skillsAPI = {
     const encoded = encodeURIComponent(heroId);
     return withSkillsRouteFallback(
       async () => {
-        const response = await apiClient.get(`/api/heroes/${encoded}/skills`);
+        const response = await apiClient.get(`/api/skills/${encoded}`);
         return response.data;
       },
       async () => {
-        const response = await apiClient.get(`/api/skills/${encoded}`);
+        const response = await apiClient.get(`/api/heroes/${encoded}/skills`);
         return response.data;
       }
     );
@@ -1426,11 +1426,11 @@ export const skillsAPI = {
     const encoded = encodeURIComponent(heroId);
     return withSkillsRouteFallback(
       async () => {
-        const response = await apiClient.post(`/api/heroes/${encoded}/skills/allocate`, { skillId });
+        const response = await apiClient.post(`/api/skills/${encoded}/allocate`, { skillId });
         return response.data;
       },
       async () => {
-        const response = await apiClient.post(`/api/skills/${encoded}/allocate`, { skillId });
+        const response = await apiClient.post(`/api/heroes/${encoded}/skills/allocate`, { skillId });
         return response.data;
       }
     );
