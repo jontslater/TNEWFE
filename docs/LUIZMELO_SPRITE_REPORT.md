@@ -40,7 +40,7 @@ All five CC0 packs were downloaded successfully via itch.io’s free purchase fl
 
 ## Frame slicing
 
-Hero animations now derive **frame width = sheet width ÷ frame count** and **frame height = sheet height** using baked metrics from `scripts/luizmelo/build-hero-sprites.mjs` → `src/utils/heroSpriteSheetMetrics.generated.ts`, applied in `createHeroAnimations()` in `spriteAnimationData.ts`. `HeroSpriteJS` scales uniformly to the 48px viewport so on-screen height stays consistent.
+Strip heroes (including LuizMelo paths in `spriteConfig.ts`) use placeholder frame sizes in `createHeroAnimations()`, then **`hydrateAnimationCatalog(HERO_ANIMATIONS)`** applies real dimensions from `npm run sprites:generate` → `src/utils/spriteSheetDimensions.generated.ts` (includes LuizMelo sheets via `scripts/luizmelo/generated-metrics.json`, same pipeline as PR #5 / main @ `342d74c`). On the battlefield, **`SPRITE_DISPLAY_SCALE`** / **`getBattlefieldSpriteScale`** in `spriteDisplayScale.ts` keep hero viewport height consistent in `HeroSpriteJS`.
 
 **Wizard idle:** itch.io lists 4 idle frames; the shipped sheet is 1386×190 and divides evenly at **6×231px** (matching run/attack frame width). Build uses 6 idle frames; see `packDefinitions.json` note.
 
