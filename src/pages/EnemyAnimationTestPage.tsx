@@ -6,6 +6,7 @@
 import { useState, useEffect, useRef } from 'react';
 import EnemySpriteJS, { EnemySpriteJSHandle } from '../components/EnemySpriteJS';
 import { getEnemyAnimationKey, ENEMY_ANIMATIONS } from '../utils/spriteAnimationData';
+import { BATTLEFIELD_ENEMY_FACING } from '../utils/spriteFacing';
 
 const ALL_ENEMIES = [
   'Kobold Warrior',
@@ -172,8 +173,7 @@ export default function EnemyAnimationTestPage() {
                       enemyId={`test-${enemyName.toLowerCase().replace(/\s+/g, '-')}`}
                       enemyType={enemyName}
                       enemyName={enemyName}
-                      spriteUrl=""
-                      facing="left"
+                      facing={BATTLEFIELD_ENEMY_FACING}
                       scale={2.5}
                     />
                   ) : (

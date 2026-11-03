@@ -37,6 +37,10 @@ import {
   type ScreenFacing,
 } from '../utils/spriteFacing';
 import {
+  resolveBattlefieldFacing,
+  type ScreenFacing,
+} from '../utils/spriteFacing';
+import {
   applyHeroCombatStats,
   applyRewardBonus,
   applyStatDamageReduction,
@@ -194,6 +198,8 @@ export default function CleanBattlefieldSource() {
   
   // Dark mode support - check URL parameter
   const darkMode = searchParams.get('darkMode') === 'true' || searchParams.get('dark') === '1';
+  /** Static raid boss layout for PR screenshots (no Firebase instance). */
+  const qaRaidLayout = searchParams.get('qaRaidLayout') === '1';
   
   // Inject CSS animation for SCT floating text
   useEffect(() => {
@@ -519,6 +525,45 @@ export default function CleanBattlefieldSource() {
   // Listen for active instances (dungeons/raids)
   // Works for both authenticated users and browser sources (using battlefieldId)
   const { activeInstance, loading: instanceLoading } = useActiveInstanceListener(twitchIdForListener);
+
+  useEffect(() => {
+    if (!qaRaidLayout) return;
+    setFadeOpacity(1);
+    setIsTransitioning(false);
+    setGameMode('raid');
+    setCurrentInstanceId('qa-raid-screenshot');
+    setInstanceData({
+      id: 'qa-raid-screenshot',
+      raidId: 'elder-dragon-raid',
+      difficulty: 'normal',
+      currentWave: 4,
+      waves: 5,
+      waveEnemies: [],
+      participants: [
+        {
+          heroId: 'qa-guardian',
+          userId: 'qa-user',
+          username: 'QA Guardian',
+          class: 'guardian',
+          role: 'guardian',
+          level: 50,
+          hp: 8000,
+          maxHp: 8000,
+          attack: 120,
+          defense: 60,
+        },
+      ],
+      boss: {
+        name: 'Elder Dragon',
+        hp: 800000,
+        maxHp: 800000,
+        level: 50,
+        attack: 250,
+        defense: 120,
+        xp: 15000,
+      },
+    });
+  }, [qaRaidLayout]);
   
   // Listen for queue status if user's hero is in queue
   useEffect(() => {
@@ -873,6 +918,7 @@ export default function CleanBattlefieldSource() {
   
   // Mode detection: Switch between idle/dungeon/raid based on activeInstance (WITH FADE TRANSITION)
   useEffect(() => {
+    if (qaRaidLayout) return;
     if (!activeInstance) return;
     
     const switchToMode = async (newMode: 'idle' | 'dungeon' | 'raid', instanceId?: string) => {
@@ -8586,11 +8632,11 @@ export default function CleanBattlefieldSource() {
     // Raid setup useEffect already populated them with ONLY raid participants
     
     return (
-      <div style={{ 
+      <div className="clean-battlefield-page" style={{ 
         width: '1920px', 
         height: '1080px', 
         position: 'relative', 
-        backgroundColor: 'transparent', 
+        background: darkMode ? '#1a1a1a' : 'transparent', 
         overflow: 'hidden', 
         fontFamily: 'Arial, sans-serif',
         opacity: fadeOpacity,

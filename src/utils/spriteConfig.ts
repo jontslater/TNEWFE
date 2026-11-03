@@ -1,8 +1,12 @@
+import { LUIZMELO_HERO_ENTRIES } from './luizmeloHeroSpriteConfig';
+
 // Hero Sprite Mappings - Matches game.js HERO_SPRITES
 export const HERO_SPRITES: Record<string, {
   sprite: string;
   isAnimated: boolean;
   spriteSize?: number;
+  /** True when idle art faces the left side of the frame (see spriteFacing.ts) */
+  facesLeft?: boolean;
   frameCount?: { idle: number; attack: number; hurt: number; death: number; rangedAttack?: number; projectile?: number; walk?: number; run?: number };
   frameWidth?: { idle?: number; attack?: number; hurt?: number; death?: number; rangedAttack?: number; projectile?: number; walk?: number; run?: number }; // Optional per-animation frame widths
   animations?: {
@@ -129,6 +133,7 @@ export const HERO_SPRITES: Record<string, {
   druid: {
     sprite: '/Sprites/Heroes/HeroSprites/Wizard 2D Pixel Art v2.0/Sprites/with_outline/IDLE.png',
     isAnimated: true,
+    facesLeft: true,
     spriteSize: 48,
     frameCount: { idle: 6, attack: 9, hurt: 4, death: 6, rangedAttack: 10, projectile: 5, walk: 4 },
     animations: {
@@ -159,6 +164,7 @@ export const HERO_SPRITES: Record<string, {
   shaman: {
     sprite: '/Sprites/Heroes/HeroSprites/Wizard 2D Pixel Art v2.0/Sprites/with_outline/IDLE.png',
     isAnimated: true,
+    facesLeft: true,
     spriteSize: 48,
     frameCount: { idle: 6, attack: 9, hurt: 4, death: 6, rangedAttack: 10, projectile: 5, walk: 4 },
     animations: {
@@ -189,6 +195,7 @@ export const HERO_SPRITES: Record<string, {
   chronomancer: {
     sprite: '/Sprites/Heroes/HeroSprites/Wizard 2D Pixel Art v2.0/Sprites/with_outline/IDLE.png',
     isAnimated: true,
+    facesLeft: true,
     spriteSize: 48,
     frameCount: { idle: 6, attack: 9, hurt: 4, death: 6, rangedAttack: 10, projectile: 5, walk: 4 },
     animations: {
@@ -220,6 +227,7 @@ export const HERO_SPRITES: Record<string, {
   berserker: {
     sprite: '/Sprites/Heroes/HeroSprites/Dwarf Warrior 2D Pixel Art v1.2/New Version/Sprites/outline/IDLE.png',
     isAnimated: true,
+    facesLeft: true,
     spriteSize: 48,
     frameCount: { idle: 10, attack: 8, hurt: 6, death: 10, run: 8 },
     animations: {
@@ -233,6 +241,7 @@ export const HERO_SPRITES: Record<string, {
   crusader: {
     sprite: '/Sprites/Heroes/HeroSprites/Dwarf Warrior 2D Pixel Art v1.2/New Version/Sprites/outline/IDLE.png',
     isAnimated: true,
+    facesLeft: true,
     spriteSize: 48,
     frameCount: { idle: 10, attack: 8, hurt: 6, death: 10, run: 8 },
     animations: {
@@ -298,6 +307,7 @@ export const HERO_SPRITES: Record<string, {
   stormwarrior: {
     sprite: '/Sprites/Heroes/HeroSprites/Dwarf Warrior 2D Pixel Art v1.2/New Version/Sprites/outline/IDLE.png',
     isAnimated: true,
+    facesLeft: true,
     spriteSize: 48,
     frameCount: { idle: 10, attack: 8, hurt: 6, death: 10, run: 8 },
     animations: {
@@ -477,7 +487,8 @@ export const HERO_SPRITES: Record<string, {
       hurt: '/Sprites/Heroes/HeroSprites/Pyromancer 2D Pixel Art/Sprites/HURT.png',
       death: '/Sprites/Heroes/HeroSprites/Pyromancer 2D Pixel Art/Sprites/DEATH.png'
     }
-  }
+  },
+  ...LUIZMELO_HERO_ENTRIES,
 };
 
 export function getHeroSpritePath(role: string, animation: 'idle' | 'attack' | 'hurt' | 'death' = 'idle'): string {

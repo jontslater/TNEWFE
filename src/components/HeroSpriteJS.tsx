@@ -9,18 +9,29 @@ import {
 } from "react";
 import { useHeroAnimator } from "../hooks/useHeroAnimator";
 import { SPRITE_DISPLAY_SCALE } from "../utils/spriteDisplayScale";
+import {
+  getSpriteContainerTransform,
+  type ScreenFacing,
+} from "../utils/spriteFacing";
+import { getHeroFacesLeft } from "../utils/spriteFacingConfig";
 
 export interface HeroSpriteJSHandle {
   playAnimation: (animation: string) => void;
   setSpriteImage: (url: string) => void;
   getCurrentAnimation: () => string;
+  /** Hold strip on first frame (gallery / screenshots) */
+  freezeIdleFrame: () => void;
 }
 
 interface HeroSpriteJSProps {
   heroId: string;
   role: string;
   className?: string;
-  facing?: "left" | "right";
+  facing?: ScreenFacing;
+  /** Override native sheet facing from config */
+  facesLeft?: boolean;
+  /** When true, idle stays on frame 0 (class gallery screenshots) */
+  freezeIdleFrame?: boolean;
   style?: CSSProperties;
   scale?: number;
   shield?: number;
@@ -37,6 +48,8 @@ const HeroSpriteJS = forwardRef<HeroSpriteJSHandle, HeroSpriteJSProps>(
       role,
       className,
       facing = "right",
+      facesLeft: facesLeftProp,
+      freezeIdleFrame = false,
       style,
       scale = SPRITE_DISPLAY_SCALE,
       shield = 0,
@@ -53,7 +66,10 @@ const HeroSpriteJS = forwardRef<HeroSpriteJSHandle, HeroSpriteJSProps>(
     const glowWrapperRef = useRef<HTMLDivElement>(null);
     const rafRef = useRef<number | null>(null);
     const containerRef = useRef<HTMLDivElement>(null);
+    const freezeFrameRef = useRef(false);
     const [enrageScale, setEnrageScale] = useState(1.0);
+
+    freezeFrameRef.current = freezeIdleFrame;
 
     const hasShield = shield > 0;
 
@@ -86,6 +102,25 @@ const HeroSpriteJS = forwardRef<HeroSpriteJSHandle, HeroSpriteJSProps>(
       requestAnimationFrame(animate);
     }, [enrageActive]);
 
+    const applyStripFrame = (
+      el: HTMLDivElement,
+      index: number,
+      animScaleX: number,
+      animScaleY: number,
+      fw: number
+    ) => {
+      const x = -(index * fw);
+      el.style.removeProperty("transform");
+      void el.offsetWidth;
+      el.style.setProperty(
+        "transform",
+        `scaleX(${animScaleX}) scaleY(${animScaleY}) translateX(${x}px)`,
+        "important"
+      );
+      el.style.transformOrigin = "top left";
+      void el.offsetWidth;
+    };
+
     // External API
     useImperativeHandle(
       ref,
@@ -93,6 +128,31 @@ const HeroSpriteJS = forwardRef<HeroSpriteJSHandle, HeroSpriteJSProps>(
         playAnimation,
         setSpriteImage: () => {},
         getCurrentAnimation: () => currentAnimation?.name || "idle",
+        freezeIdleFrame: () => {
+          freezeFrameRef.current = true;
+          if (rafRef.current) {
+            cancelAnimationFrame(rafRef.current);
+            rafRef.current = null;
+          }
+          const el = spriteRef.current;
+          if (!el || !currentAnimation) return;
+          const uniformScale =
+            currentAnimation.frameWidth > VIEWPORT ||
+            currentAnimation.frameHeight > VIEWPORT
+              ? VIEWPORT /
+                Math.max(
+                  currentAnimation.frameWidth,
+                  currentAnimation.frameHeight
+                )
+              : 1;
+          applyStripFrame(
+            el,
+            0,
+            uniformScale,
+            uniformScale,
+            currentAnimation.frameWidth
+          );
+        },
       }),
       [currentAnimation, playAnimation]
     );
@@ -124,9 +184,13 @@ const HeroSpriteJS = forwardRef<HeroSpriteJSHandle, HeroSpriteJSProps>(
       // Real sprite sheet size
       const sheetWidth = frameWidth * frames;
 
-      // Scale to fit 48x48
-      const scaleX = frameWidth > VIEWPORT ? VIEWPORT / frameWidth : 1;
-      const scaleY = frameHeight > VIEWPORT ? VIEWPORT / frameHeight : 1;
+      // Scale uniformly so every hero fits the viewport with consistent height
+      const uniformScale =
+        frameWidth > VIEWPORT || frameHeight > VIEWPORT
+          ? VIEWPORT / Math.max(frameWidth, frameHeight)
+          : 1;
+      const scaleX = uniformScale;
+      const scaleY = uniformScale;
 
       // Calculate scaled dimensions for positioning
       const scaledFrameWidth = frameWidth * scaleX;
@@ -134,7 +198,7 @@ const HeroSpriteJS = forwardRef<HeroSpriteJSHandle, HeroSpriteJSProps>(
 
       // FEET-ANCHOR OFFSET (after scaling)
       // Adjust offsetY based on sprite role - Dwarf Warrior sprites may need different alignment
-      const isDwarfWarrior = ['berserker', 'crusader', 'assassin', 'reaper', 'bladedancer', 'monk', 'stormwarrior', 'hunter'].includes(role.toLowerCase());
+      const isDwarfWarrior = ['berserker', 'crusader', 'stormwarrior'].includes(role.toLowerCase());
       const verticalOffset = isDwarfWarrior ? 5 : 0; // Move Dwarf Warrior sprites down slightly to align with others
       const offsetY = VIEWPORT - scaledFrameHeight + verticalOffset; // align feet at bottom
       const offsetX = (VIEWPORT - scaledFrameWidth) / 2; // center horizontally
@@ -182,8 +246,8 @@ const HeroSpriteJS = forwardRef<HeroSpriteJSHandle, HeroSpriteJSProps>(
 
       // Set initial frame (frame 0) immediately for all animations
       // This ensures animations start visible right away and prevents scrolling
-      const initialScaleX = frameWidth > VIEWPORT ? VIEWPORT / frameWidth : 1;
-      const initialScaleY = frameHeight > VIEWPORT ? VIEWPORT / frameHeight : 1;
+      const initialScaleX = uniformScale;
+      const initialScaleY = uniformScale;
       el.style.setProperty("transform", `scaleX(${initialScaleX}) scaleY(${initialScaleY}) translateX(0px)`, "important");
       lastIndex = 0; // Start at frame 0
       void el.offsetWidth; // Force reflow
@@ -213,8 +277,8 @@ const HeroSpriteJS = forwardRef<HeroSpriteJSHandle, HeroSpriteJSProps>(
 
           if (index !== lastIndex) {
             // Calculate scale for this animation (recalculate to ensure consistency)
-            const animScaleX = frameWidth > VIEWPORT ? VIEWPORT / frameWidth : 1;
-            const animScaleY = frameHeight > VIEWPORT ? VIEWPORT / frameHeight : 1;
+            const animScaleX = uniformScale;
+            const animScaleY = uniformScale;
             
             // CRITICAL: Translate by actual frameWidth (unscaled)
             // Transform order: scaleX() scaleY() translateX() applies translateX first (unscaled), then scales
@@ -249,16 +313,21 @@ const HeroSpriteJS = forwardRef<HeroSpriteJSHandle, HeroSpriteJSProps>(
       };
 
       rafRef.current = requestAnimationFrame(animate);
+      if (freezeIdleFrame || freezeFrameRef.current) {
+        if (rafRef.current) cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
 
       return () => {
         if (rafRef.current) cancelAnimationFrame(rafRef.current);
       };
-    }, [currentAnimation, onComplete]);
+    }, [currentAnimation, onComplete, freezeIdleFrame, role]);
 
     // Calculate final scale with animated enrage multiplier
     const finalScale = scale * enrageScale;
+    const nativeFacesLeft = facesLeftProp ?? getHeroFacesLeft(role);
     
-    // Combat glow filter - applies to wrapper (for ability effects only)
+    // Combat glow filter
     // Shield/enrage are handled by browser source wrapper
     const getCombatGlowFilter = () => {
       const filters = [];
@@ -289,10 +358,11 @@ const HeroSpriteJS = forwardRef<HeroSpriteJSHandle, HeroSpriteJSProps>(
           overflow: "visible", // Allow effects to extend beyond sprite bounds
           position: "relative",
           paddingBottom: hasShield ? "4px" : "0px", // Allow space for glow at bottom
-          transform:
-            facing === "left"
-              ? `scale(${finalScale}) scaleX(-1)`
-              : `scale(${finalScale})`,
+          transform: getSpriteContainerTransform(
+            finalScale,
+            facing,
+            nativeFacesLeft
+          ),
           transformOrigin: "bottom center",
           imageRendering: "pixelated",
         }}

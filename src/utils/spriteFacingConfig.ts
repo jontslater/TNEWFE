@@ -56,20 +56,53 @@ const ENEMY_DISPLAY_TO_KEY: Record<string, keyof typeof ENEMY_NATIVE_FACES_LEFT>
   Cultist: 'cultist',
 };
 
-/** Wizard v2.0 healer/caster rig faces left natively */
-const HERO_ROLES_FACES_LEFT = new Set([
-  'druid',
-  'shaman',
-  'chronomancer',
-]);
+/**
+ * Per-class native facing overrides (gallery QA). Takes precedence over pack defaults in HERO_SPRITES.
+ * true = sheet faces left; mirror when hero should face right on battlefield.
+ */
+export const HERO_FACES_LEFT_OVERRIDES: Record<string, boolean> = {
+  vanguard: true,
+  bloodknight: true,
+  brewmaster: true,
+  monk: true,
+  bladedancer: true,
+  assassin: true,
+  reaper: true,
+  hunter: false,
+  ranger: false,
+  mage: false,
+  frostmage: false,
+  stormcaller: false,
+  mooncaller: false,
+  cleric: false,
+  atoner: false,
+  lightbringer: false,
+  mistweaver: false,
+  bard: false,
+};
+
+/** Per-role overrides (legacy rigs not using LuizMelo pack map) */
+export const HERO_NATIVE_FACES_LEFT: Record<string, boolean> = {
+  berserker: true,
+  crusader: true,
+  stormwarrior: true,
+  druid: true,
+  shaman: true,
+  chronomancer: true,
+};
 
 export function getHeroFacesLeft(role: string): boolean {
   const key = role.toLowerCase();
+  if (HERO_FACES_LEFT_OVERRIDES[key] !== undefined) {
+    return HERO_FACES_LEFT_OVERRIDES[key];
+  }
   const cfg = HERO_SPRITES[key];
   if (cfg && typeof (cfg as { facesLeft?: boolean }).facesLeft === 'boolean') {
     return (cfg as { facesLeft: boolean }).facesLeft;
   }
-  if (HERO_ROLES_FACES_LEFT.has(key)) return true;
+  if (HERO_NATIVE_FACES_LEFT[key] !== undefined) {
+    return HERO_NATIVE_FACES_LEFT[key];
+  }
   return false;
 }
 

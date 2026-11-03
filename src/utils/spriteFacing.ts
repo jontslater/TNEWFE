@@ -23,7 +23,7 @@ export function shouldMirrorSpriteForFacing(
   desiredFacing: ScreenFacing,
   facesLeft: boolean
 ): boolean {
-  return facesLeft === (desiredFacing === 'right');
+  return facesLeft !== (desiredFacing === 'left');
 }
 
 export function getSpriteContainerTransform(

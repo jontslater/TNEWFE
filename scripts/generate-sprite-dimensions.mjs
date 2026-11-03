@@ -118,6 +118,24 @@ function resolveStripDimensions(spriteSheet, configuredFrameCount, pngWidth, png
   };
 }
 
+function parseLuizMeloMetricsEntries() {
+  /** @type {{ spriteSheet: string; frameCount: number }[]} */
+  const entries = [];
+  const metricsPath = path.join(ROOT, 'scripts/luizmelo/generated-metrics.json');
+  if (!fs.existsSync(metricsPath)) return entries;
+  const metrics = JSON.parse(fs.readFileSync(metricsPath, 'utf8'));
+  for (const [spriteSheet, metric] of Object.entries(metrics)) {
+    if (
+      metric &&
+      typeof metric === 'object' &&
+      typeof metric.frameCount === 'number'
+    ) {
+      entries.push({ spriteSheet, frameCount: metric.frameCount });
+    }
+  }
+  return entries;
+}
+
 function collectEntries() {
   const animData = fs.readFileSync(
     path.join(ROOT, 'src/utils/spriteAnimationData.ts'),
@@ -131,6 +149,10 @@ function collectEntries() {
     map.set(`${e.spriteSheet}|${e.frameCount}`, e);
   }
   for (const e of parseHeroStripEntries(heroConfig)) {
+    if (isIndividualFrameSheet(e.spriteSheet)) continue;
+    map.set(`${e.spriteSheet}|${e.frameCount}`, e);
+  }
+  for (const e of parseLuizMeloMetricsEntries()) {
     if (isIndividualFrameSheet(e.spriteSheet)) continue;
     map.set(`${e.spriteSheet}|${e.frameCount}`, e);
   }

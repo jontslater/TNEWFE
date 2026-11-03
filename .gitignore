@@ -28,4 +28,9 @@ dist-ssr
 # Environment
 .env
 .env.local
+
+# LuizMelo itch vendor trees (regenerate via npm run sprites:luizmelo:download)
+scripts/luizmelo/vendor/
+scripts/luizmelo/vendor-zips/
 .env.production
+tmp-facing-verify/

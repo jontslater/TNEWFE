@@ -10,7 +10,7 @@ import { useEnemyAnimator } from "../hooks/useEnemyAnimator";
 import { SPRITE_DISPLAY_SCALE, getEnemySpriteViewportPx } from "../utils/spriteDisplayScale";
 import { computeEnemySpriteFrameLayout } from "../utils/spriteEnemyFrameLayout";
 import {
-  getSpriteContainerTransform,
+  shouldMirrorSpriteForFacing,
   type ScreenFacing,
 } from "../utils/spriteFacing";
 import { getEnemyFacesLeft } from "../utils/spriteFacingConfig";
@@ -32,6 +32,34 @@ interface EnemySpriteJSProps {
   style?: CSSProperties;
   scale?: number;
   isTransformed?: boolean; // For Werewolf: true if transformed to werewolf form
+}
+
+/** Clip to viewport; goblin death may extend below */
+function spriteClipOverflow(
+  isGoblin: boolean,
+  _isPaddedFrameDragon: boolean
+): Pick<CSSProperties, "overflow" | "overflowX" | "overflowY"> {
+  if (isGoblin) {
+    return { overflowX: "hidden", overflowY: "visible" };
+  }
+  return { overflow: "hidden" };
+}
+
+function applySpriteClipOverflow(
+  el: HTMLElement,
+  isGoblin: boolean,
+  isPaddedFrameDragon: boolean
+) {
+  const clip = spriteClipOverflow(isGoblin, isPaddedFrameDragon);
+  el.style.removeProperty("overflow");
+  el.style.removeProperty("overflow-x");
+  el.style.removeProperty("overflow-y");
+  if (clip.overflow) {
+    el.style.overflow = clip.overflow;
+  } else {
+    if (clip.overflowX) el.style.overflowX = clip.overflowX;
+    if (clip.overflowY) el.style.overflowY = clip.overflowY;
+  }
 }
 
 
@@ -77,6 +105,10 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
     };
 
     const defaultAnim = getDefaultAnimation();
+    const nativeFacesLeft =
+      facesLeftProp ?? getEnemyFacesLeft(enemyType, enemyName);
+    const mirrorFacing = shouldMirrorSpriteForFacing(facing, nativeFacesLeft);
+
     // Use enemyType for sprite lookup (not enemyName, which may have numbers like "Goblin 1")
     const { currentAnimation, playAnimation, onComplete } = useEnemyAnimator({
       enemyName: enemyType || enemyName, // Prefer enemyType for sprite lookup
@@ -233,22 +265,33 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
 
       const { scaleX, scaleY, offsetX, offsetY } = getFrameLayout();
 
+      const applySheetFrame = (index: number) => {
+        const layout = getFrameLayout();
+        el.style.width = `${viewportPx}px`;
+        el.style.height = `${viewportPx}px`;
+        el.style.left = "0px";
+        el.style.top = "0px";
+        el.style.backgroundSize = `${sheetWidth * layout.scaleX}px ${frameHeight * layout.scaleY}px`;
+        el.style.backgroundPosition = `${layout.offsetX - index * frameWidth * layout.scaleX}px ${layout.offsetY}px`;
+        el.style.removeProperty("transform");
+        el.style.transformOrigin = "top left";
+      };
+
+      const isTransformation = animName === 'transformation' && enemyName === 'Werewolf';
+      const startFrame = isTransformation ? 1 : 0;
+      const effectiveFrames = isTransformation ? frames - 1 : frames;
+
       //
       // RESET STYLES
       //
-      // Use actual (unscaled) dimensions for the element
-      // The transform scale will handle the visual scaling
       if (isIndividualFrames) {
-        // For individual frames, element size is just one frame
         el.style.width = `${frameWidth}px`;
         el.style.height = `${frameHeight}px`;
+        el.style.left = `${offsetX}px`;
+        el.style.top = `${offsetY}px`;
       } else {
-        // For sprite sheets, element size is full sheet width
-        el.style.width = `${sheetWidth}px`;
-        el.style.height = `${frameHeight}px`;
+        applySheetFrame(startFrame);
       }
-      el.style.left = `${offsetX}px`;
-      el.style.top = `${offsetY}px`;
       
       // Clip the sprite element to the viewport to prevent frame flicker
       if (!isPaddedFrameDragon) {
@@ -256,7 +299,7 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
       } else {
         el.style.removeProperty('clip-path');
       }
-      el.style.overflow = "hidden";
+      applySpriteClipOverflow(el, isGoblin, isPaddedFrameDragon);
       el.style.transition = "none";
       el.style.animation = "none";
       el.style.setProperty("transition", "none", "important");
@@ -270,15 +313,6 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
       let lastFrameTime = 0;
 
       const frameTime = duration / frames;
-      
-      // Special case: Werewolf transformation starts from frame 1 (skip frame 0 which is already transformed)
-      const isTransformation = animName === 'transformation' && enemyName === 'Werewolf';
-      const startFrame = isTransformation ? 1 : 0;
-      const effectiveFrames = isTransformation ? frames - 1 : frames; // Use frames 1-7 instead of 0-7
-      
-      // Set initial frame immediately for ALL animations
-      // This ensures animations start visible right away and prevents flicker
-      const { scaleX: initialScaleX, scaleY: initialScaleY } = getFrameLayout();
       
       // Define animate function first so it can be called from Promise callbacks
       const animate = (ts: number) => {
@@ -321,9 +355,6 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
           lastFrameTime = ts - (delta % frameTime); // Preserve timing accuracy
 
           if (index !== lastIndex) {
-            // Calculate scale for this animation (recalculate to ensure consistency)
-            const { scaleX: animScaleX, scaleY: animScaleY } = getFrameLayout();
-            
             if (isIndividualFrames) {
               // For individual frames, use canvas to draw the frame
               const canvas = (el as any).__canvas as HTMLCanvasElement;
@@ -342,24 +373,7 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
                 }
               }
             } else {
-              // For sprite sheets, translate to the correct frame
-              // CRITICAL: Translate by actual frameWidth (unscaled)
-              // Transform order: scaleX() scaleY() translateX() applies translateX first (unscaled), then scales
-              const x = -(index * frameWidth);
-              
-              // CRITICAL: Force discrete transform update with no interpolation
-              // Remove any existing transform first to prevent interpolation
-              el.style.removeProperty("transform");
-              el.style.removeProperty("-webkit-transform");
-              el.style.removeProperty("-moz-transform");
-              el.style.removeProperty("-ms-transform");
-              el.style.removeProperty("-o-transform");
-              // Force reflow
-              void el.offsetWidth;
-              // Now set the new transform with separate scaleX and scaleY
-              el.style.transition = "none";
-              el.style.setProperty("transition", "none", "important");
-              el.style.setProperty("transform", `scaleX(${animScaleX}) scaleY(${animScaleY}) translateX(${x}px)`, "important");
+              applySheetFrame(index);
             }
             el.style.transformOrigin = "top left";
             // Force reflow again to commit transform immediately
@@ -397,10 +411,7 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
                   }
                 }
               } else {
-                // For sprite sheets, ensure we're on the last frame
-                const { scaleX: animScaleX, scaleY: animScaleY } = getFrameLayout();
-                const lastFrameX = -((frames - 1) * frameWidth);
-                el.style.setProperty("transform", `scaleX(${animScaleX}) scaleY(${animScaleY}) translateX(${lastFrameX}px)`, "important");
+                applySheetFrame(frames - 1);
               }
               
               // Mark death animation as complete to prevent restart
@@ -506,14 +517,9 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
         // Return early - animation will start after preload completes
         return;
       } else {
-        // For sprite sheets, use the full sheet and translate to the correct frame
         el.style.backgroundImage = `url(${encodeURI(sheet)})`;
         el.style.backgroundRepeat = "no-repeat";
-        el.style.backgroundPosition = "0 0";
-        el.style.backgroundSize = `${sheetWidth}px ${frameHeight}px`;
-        const initialX = -(startFrame * frameWidth);
-        el.style.setProperty("transform", `scaleX(${initialScaleX}) scaleY(${initialScaleY}) translateX(${initialX}px)`, "important");
-        el.style.transformOrigin = "top left";
+        applySheetFrame(startFrame);
         lastIndex = startFrame;
         
         // Force reflows to ensure browser has processed the background image and transform
@@ -527,10 +533,7 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
       return () => {
         if (rafRef.current) cancelAnimationFrame(rafRef.current);
       };
-    }, [currentAnimation, onComplete]);
-
-    const nativeFacesLeft =
-      facesLeftProp ?? getEnemyFacesLeft(enemyType, enemyName);
+    }, [currentAnimation, onComplete, isGoblin, isPaddedFrameDragon, enemyType, enemyName, enemyId, viewportPx]);
 
     //
     // VIEWPORT — logical feet-anchor box (96px for raid dragons, 48px default)
@@ -545,30 +548,48 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
           ...style,
           width: `${viewportPx}px`,
           height: `${viewportPx}px`,
-          overflow: isGoblin || isPaddedFrameDragon ? "visible" : "hidden",
           position: "relative",
-          transform: getSpriteContainerTransform(scale, facing, nativeFacesLeft),
-          transformOrigin: "bottom center", // FEET anchor
+          transform: `scale(${scale})`,
+          transformOrigin: "bottom center",
           imageRendering: "pixelated",
         }}
       >
         <div
-          ref={spriteRef}
-          id={`enemy-sprite-${enemyId}`}
-          className="enemy-sprite"
           style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            width: `${viewportPx}px`, // Clip to viewport width
-            height: `${viewportPx}px`, // Clip to viewport height
-            transition: "none",
-            animation: "none",
-            backgroundRepeat: "no-repeat",
-            imageRendering: "pixelated",
-            overflow: isGoblin || isPaddedFrameDragon ? "visible" : "hidden",
+            width: "100%",
+            height: "100%",
+            position: "relative",
+            ...spriteClipOverflow(isGoblin, isPaddedFrameDragon),
           }}
-        />
+        >
+          <div
+            style={{
+              width: "100%",
+              height: "100%",
+              position: "relative",
+              transform: mirrorFacing ? "scaleX(-1)" : undefined,
+              transformOrigin: "bottom center",
+            }}
+          >
+            <div
+              ref={spriteRef}
+              id={`enemy-sprite-${enemyId}`}
+              className="enemy-sprite"
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                width: `${viewportPx}px`,
+                height: `${viewportPx}px`,
+                transition: "none",
+                animation: "none",
+                backgroundRepeat: "no-repeat",
+                imageRendering: "pixelated",
+                overflow: "hidden",
+              }}
+            />
+          </div>
+        </div>
       </div>
     );
   }
