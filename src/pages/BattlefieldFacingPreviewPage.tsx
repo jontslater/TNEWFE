@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import HeroSpriteJS from '../components/HeroSpriteJS';
 import EnemySpriteJS from '../components/EnemySpriteJS';
 import { BattlefieldLayoutPreviewStrip } from '../components/BattlefieldLayoutPreviewStrip';
@@ -24,10 +24,19 @@ import {
   getEnemyEditorPreviewScale,
   getHeroEditorPreviewScale,
 } from '../utils/editorPreviewScale';
+import { formatSpriteOverrideSaveError } from '../utils/formatSpriteOverrideSaveError';
+import {
+  clearSpriteOverrideEditorDraft,
+  loadSpriteOverrideEditorDraft,
+  saveSpriteOverrideEditorDraft,
+} from '../utils/spriteOverrideEditorDraft';
+import { loginWithTwitch } from '../utils/twitchOAuth';
 import './BattlefieldFacingEditor.css';
 
+const EDITOR_RETURN_PATH = '/battlefield-facing';
+
 export default function BattlefieldFacingPreviewPage() {
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, logout } = useAuth();
   const canSave = canEditSpriteOverrides(user);
   const { overrides: remote, loading, reload } = useSpriteRuntimeOverrides();
 
@@ -35,17 +44,36 @@ export default function BattlefieldFacingPreviewPage() {
   const [localEnemies, setLocalEnemies] = useState<Record<string, SpriteRuntimeOverride>>({});
   const [dirty, setDirty] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const [sessionExpired, setSessionExpired] = useState(false);
   const [saving, setSaving] = useState(false);
+  const initializedRef = useRef(false);
 
   useEffect(() => {
-    if (loading || dirty) return;
+    if (loading || initializedRef.current) return;
+    initializedRef.current = true;
+
+    const draft = loadSpriteOverrideEditorDraft();
+    if (draft) {
+      setLocalHeroes(draft.heroes);
+      setLocalEnemies(draft.enemies);
+      setDirty(true);
+      setStatus('Restored unsaved draft from this browser.');
+      return;
+    }
+
     setLocalHeroes(remote.heroes || {});
     setLocalEnemies(remote.enemies || {});
-  }, [loading, dirty, remote.heroes, remote.enemies, remote.updatedAt]);
+  }, [loading, remote.heroes, remote.enemies]);
+
+  useEffect(() => {
+    if (!dirty) return;
+    saveSpriteOverrideEditorDraft(localHeroes, localEnemies);
+  }, [dirty, localHeroes, localEnemies]);
 
   const payload = buildExportPayload(localHeroes, localEnemies);
 
   const updateHero = useCallback((role: string, next: SpriteRuntimeOverride | undefined) => {
+    setSessionExpired(false);
     setLocalHeroes((prev) => {
       const copy = { ...prev };
       if (next) copy[role] = next;
@@ -56,6 +84,7 @@ export default function BattlefieldFacingPreviewPage() {
   }, []);
 
   const updateEnemy = useCallback((key: string, next: SpriteRuntimeOverride | undefined) => {
+    setSessionExpired(false);
     setLocalEnemies((prev) => {
       const copy = { ...prev };
       if (next) copy[key] = next;
@@ -65,25 +94,32 @@ export default function BattlefieldFacingPreviewPage() {
     setDirty(true);
   }, []);
 
+  const handleLogin = () => {
+    loginWithTwitch(EDITOR_RETURN_PATH);
+  };
+
   const handleSave = async () => {
     if (!canSave) {
+      setSessionExpired(false);
       setStatus('Sign in as theneverendingwar or tehchno to save.');
       return;
     }
     setSaving(true);
     setStatus(null);
+    setSessionExpired(false);
     try {
       await spriteOverridesAPI.save(payload);
       setDirty(false);
+      clearSpriteOverrideEditorDraft();
       setStatus('Saved to Firestore config/spriteOverrides.');
       await reload();
     } catch (e: unknown) {
-      const err = e as { response?: { data?: { message?: string; error?: string } } };
-      setStatus(
-        err.response?.data?.message ||
-          err.response?.data?.error ||
-          'Save failed — is /api/config/sprite-overrides deployed?'
-      );
+      const { message, sessionExpired: expired } = formatSpriteOverrideSaveError(e);
+      setStatus(message);
+      setSessionExpired(expired);
+      if (expired) {
+        logout();
+      }
     } finally {
       setSaving(false);
     }
@@ -126,9 +162,17 @@ export default function BattlefieldFacingPreviewPage() {
       </header>
 
       {(status || loading) && (
-        <div className="bfe-status">
+        <div
+          className={sessionExpired ? 'bfe-status bfe-status--error' : 'bfe-status'}
+          role={sessionExpired ? 'alert' : undefined}
+        >
           {loading ? 'Loading overrides…' : status}
-          {remote.updatedBy && !loading && (
+          {sessionExpired && (
+            <button type="button" className="bfe-btn bfe-btn--primary bfe-status-login" onClick={handleLogin}>
+              Log in
+            </button>
+          )}
+          {remote.updatedBy && !loading && !sessionExpired && (
             <span style={{ marginLeft: 12, color: '#64748b' }}>Last: {remote.updatedBy}</span>
           )}
         </div>

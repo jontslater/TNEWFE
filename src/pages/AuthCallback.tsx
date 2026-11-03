@@ -77,6 +77,14 @@ export default function AuthCallback() {
           // Continue to home even if check fails
         }
 
+        // Redirect after login (preserve editor return path when set)
+        const returnPath = sessionStorage.getItem('auth_return_path');
+        if (returnPath) {
+          sessionStorage.removeItem('auth_return_path');
+          navigate(returnPath);
+          return;
+        }
+
         // Redirect to portal (user has heroes)
         navigate('/portal');
       } catch (err) {

@@ -1,4 +1,8 @@
 import axios from 'axios';
+import {
+  shouldApplyGlobalAuthFailureHandling,
+  shouldRedirectToHomeAfterAuthFailure,
+} from './globalAuthErrorHandling';
 import { Hero } from '../types/Hero';
 import { Guild } from '../types/Guild';
 import { Raid, WorldBoss } from '../types/Raid';
@@ -28,15 +32,16 @@ apiClient.interceptors.request.use((config) => {
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
-    // Handle 401/403 errors globally
-    if (error.response?.status === 401 || error.response?.status === 403) {
-      // Clear invalid token
+    const status = error.response?.status;
+    const skipAuthRedirect = error.config?.skipAuthRedirect;
+
+    if (
+      shouldApplyGlobalAuthFailureHandling({ status, skipAuthRedirect })
+    ) {
       localStorage.removeItem('auth_token');
-      // Only redirect if not already on auth callback or home page
       const currentPath = window.location.pathname;
-      if (currentPath !== '/' && !currentPath.includes('/auth/callback')) {
+      if (shouldRedirectToHomeAfterAuthFailure(currentPath)) {
         console.warn('Authentication token expired or invalid. Redirecting to home...');
-        // Use setTimeout to avoid navigation during render
         setTimeout(() => {
           window.location.href = '/';
         }, 100);
@@ -1633,7 +1638,9 @@ export const spriteOverridesAPI = {
     heroes: Record<string, import('../utils/spriteRuntimeOverrides').SpriteRuntimeOverride>;
     enemies: Record<string, import('../utils/spriteRuntimeOverrides').SpriteRuntimeOverride>;
   }) {
-    const response = await apiClient.put('/api/config/sprite-overrides', payload);
+    const response = await apiClient.put('/api/config/sprite-overrides', payload, {
+      skipAuthRedirect: true,
+    });
     return response.data;
   },
 };

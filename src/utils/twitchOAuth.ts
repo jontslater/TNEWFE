@@ -8,7 +8,7 @@ const REDIRECT_URI = import.meta.env.VITE_TWITCH_REDIRECT_URI || window.location
 /**
  * Initiates Twitch OAuth flow by redirecting to Twitch authorization page
  */
-export function loginWithTwitch() {
+export function loginWithTwitch(returnPath?: string) {
   if (!TWITCH_CLIENT_ID) {
     console.error('VITE_TWITCH_CLIENT_ID is not configured in environment variables');
     alert('Twitch login is not configured. Please set VITE_TWITCH_CLIENT_ID in your .env file.');
@@ -20,6 +20,9 @@ export function loginWithTwitch() {
   
   // Store state in sessionStorage for verification
   sessionStorage.setItem('twitch_oauth_state', state);
+  if (returnPath) {
+    sessionStorage.setItem('auth_return_path', returnPath);
+  }
   console.log('🔑 Generated OAuth state:', state);
 
   const authUrl = new URL('https://id.twitch.tv/oauth2/authorize');
