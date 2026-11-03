@@ -14,12 +14,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "sim:ttk": "vitest run src/game/stats/enemyCombatScaling.test.ts -t \"before/after\"",
-<<<<<<< HEAD
-    "sim:economy": "vitest run src/game/economy/"
-=======
+    "sim:economy": "vitest run src/game/economy/",
     "sprites:luizmelo:download": "node scripts/luizmelo/download-packs.mjs",
     "sprites:luizmelo:build": "node scripts/luizmelo/build-hero-sprites.mjs"
->>>>>>> ae738c8 (Add LuizMelo CC0 hero sprites with per-class bodies and palette variants)
   },
   "dependencies": {
     "@stripe/stripe-js": "^8.5.3",
