@@ -33,14 +33,22 @@ interface EnemySpriteJSProps {
   style?: CSSProperties;
   scale?: number;
   runtimeOverride?: SpriteRuntimeOverride;
-  isTransformed?: boolean; // For Werewolf: true if transformed to werewolf form
+  /** Hold idle on frame 0 (editor cards) */
+  freezeIdleFrame?: boolean;
+  /** Clip goblin/death overflow to viewport (editor preview boxes) */
+  forceViewportClip?: boolean;
+  isTransformed?: boolean;
 }
 
 /** Clip to viewport; goblin death may extend below */
 function spriteClipOverflow(
   isGoblin: boolean,
-  _isPaddedFrameDragon: boolean
+  _isPaddedFrameDragon: boolean,
+  forceViewportClip?: boolean
 ): Pick<CSSProperties, "overflow" | "overflowX" | "overflowY"> {
+  if (forceViewportClip) {
+    return { overflow: "hidden" };
+  }
   if (isGoblin) {
     return { overflowX: "hidden", overflowY: "visible" };
   }
@@ -50,9 +58,10 @@ function spriteClipOverflow(
 function applySpriteClipOverflow(
   el: HTMLElement,
   isGoblin: boolean,
-  isPaddedFrameDragon: boolean
+  isPaddedFrameDragon: boolean,
+  forceViewportClip?: boolean
 ) {
-  const clip = spriteClipOverflow(isGoblin, isPaddedFrameDragon);
+  const clip = spriteClipOverflow(isGoblin, isPaddedFrameDragon, forceViewportClip);
   el.style.removeProperty("overflow");
   el.style.removeProperty("overflow-x");
   el.style.removeProperty("overflow-y");
@@ -77,6 +86,8 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
       style,
       scale = SPRITE_DISPLAY_SCALE,
       runtimeOverride,
+      freezeIdleFrame = false,
+      forceViewportClip = false,
       isTransformed = false,
     } = props;
 
@@ -265,11 +276,14 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
       // Real sprite sheet size (only used for sprite sheets, not individual frames)
       const sheetWidth = isIndividualFrames ? frameWidth : frameWidth * frames;
 
+      const editorCardPreview = freezeIdleFrame && forceViewportClip;
+
       const getFrameLayout = () =>
         computeEnemySpriteFrameLayout(frameWidth, frameHeight, {
           enemyType,
           enemyName,
           animationName: animName,
+          editorCardPreview,
         });
 
       const { scaleX, scaleY, offsetX, offsetY } = getFrameLayout();
@@ -303,12 +317,12 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
       }
       
       // Clip the sprite element to the viewport to prevent frame flicker
-      if (!isPaddedFrameDragon) {
+      if (!isPaddedFrameDragon || forceViewportClip) {
         el.style.clipPath = `inset(0)`;
       } else {
         el.style.removeProperty('clip-path');
       }
-      applySpriteClipOverflow(el, isGoblin, isPaddedFrameDragon);
+      applySpriteClipOverflow(el, isGoblin, isPaddedFrameDragon, forceViewportClip);
       el.style.transition = "none";
       el.style.animation = "none";
       el.style.setProperty("transition", "none", "important");
@@ -395,12 +409,19 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
         // For looping animations, always continue
         // For non-looping, continue until we reach the last frame
         if (loop) {
-          // Looping animations (idle, walk, run, etc.) always continue
-          rafRef.current = requestAnimationFrame(animate);
+          if (!freezeIdleFrame) {
+            rafRef.current = requestAnimationFrame(animate);
+          } else {
+            rafRef.current = null;
+          }
         } else {
           // Non-looping animations stop at the last frame
           if (lastIndex < frames - 1) {
-            rafRef.current = requestAnimationFrame(animate);
+            if (!freezeIdleFrame) {
+              rafRef.current = requestAnimationFrame(animate);
+            } else {
+              rafRef.current = null;
+            }
           } else {
             rafRef.current = null;
             // For death animations, stay on last frame and don't call onComplete (prevents transition back to idle)
@@ -519,8 +540,10 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
           void el.offsetWidth;
           void el.offsetHeight;
           
-          // Start animation after preload
-          rafRef.current = requestAnimationFrame(animate);
+          // Start animation after preload (unless frozen on idle frame 0)
+          if (!freezeIdleFrame) {
+            rafRef.current = requestAnimationFrame(animate);
+          }
         });
         
         // Return early - animation will start after preload completes
@@ -536,13 +559,27 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
         void el.offsetHeight;
         
         // Start animation for sprite sheets
-        rafRef.current = requestAnimationFrame(animate);
+        if (!freezeIdleFrame) {
+          rafRef.current = requestAnimationFrame(animate);
+        }
       }
 
       return () => {
         if (rafRef.current) cancelAnimationFrame(rafRef.current);
       };
-    }, [currentAnimation, onComplete, isGoblin, isPaddedFrameDragon, enemyType, enemyName, enemyId, viewportPx, layoutNudgeY]);
+    }, [
+      currentAnimation,
+      onComplete,
+      isGoblin,
+      isPaddedFrameDragon,
+      enemyType,
+      enemyName,
+      enemyId,
+      viewportPx,
+      layoutNudgeY,
+      freezeIdleFrame,
+      forceViewportClip,
+    ]);
 
     //
     // VIEWPORT — logical feet-anchor box (96px for raid dragons, 48px default)
@@ -568,7 +605,7 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
             width: "100%",
             height: "100%",
             position: "relative",
-            ...spriteClipOverflow(isGoblin, isPaddedFrameDragon),
+            ...spriteClipOverflow(isGoblin, isPaddedFrameDragon, forceViewportClip),
           }}
         >
           <div

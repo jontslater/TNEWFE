@@ -61,3 +61,26 @@ export const BATTLEFIELD_GALLERY_ENEMIES = [
   { enemyType: 'Dragon_3', enemyName: 'Dragon Sentinel', label: 'Dragon Sentinel', isBoss: false },
   { enemyType: 'Elder Dragon', enemyName: 'Elder Dragon', label: 'Elder Dragon', isBoss: true },
 ] as const;
+
+export const GALLERY_STANDARD_ENEMIES = BATTLEFIELD_GALLERY_ENEMIES.filter((e) => !e.isBoss);
+
+export const GALLERY_BOSS_ENEMIES = BATTLEFIELD_GALLERY_ENEMIES.filter((e) => e.isBoss);
+
+export const STRIP_PREVIEW_HEROES = [
+  'vanguard',
+  'mage',
+  'bard',
+  'berserker',
+  'hunter',
+  'cleric',
+  'monk',
+  'paladin',
+] as const;
+
+export const STRIP_PREVIEW_ENEMIES = [
+  { enemyType: 'Kobold Warrior', enemyName: 'Kobold Warrior', label: 'Kobold', isBoss: false as const },
+  { enemyType: 'Masked Orc', enemyName: 'Masked Orc', label: 'Orc', isBoss: false as const },
+  { enemyType: 'Imp', enemyName: 'Imp', label: 'Imp', isBoss: false as const },
+  { enemyType: 'Dragon_1', enemyName: 'Dragon Whelp', label: 'Whelp', isBoss: false as const },
+  { enemyType: 'Elder Dragon', enemyName: 'Elder Dragon', label: 'Elder', isBoss: true as const },
+];

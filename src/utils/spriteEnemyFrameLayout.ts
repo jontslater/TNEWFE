@@ -55,10 +55,16 @@ export function computeEnemySpriteFrameLayout(
     enemyType?: string;
     enemyName?: string;
     animationName?: string;
+    /** Editor card previews: fit full frame with feet on floor (no bbox pan) */
+    editorCardPreview?: boolean;
   }
 ): SpriteFrameLayout {
-  const { enemyType, enemyName, animationName = 'idle' } = options;
+  const { enemyType, enemyName, animationName = 'idle', editorCardPreview } = options;
   const viewportPx = getEnemySpriteViewportPx({ enemyType, enemyName });
+
+  if (editorCardPreview) {
+    return defaultFrameLayout(frameWidth, frameHeight, viewportPx);
+  }
 
   if (isRaidWaveDragonType(enemyType, enemyName)) {
     const contentTop = getRaidWaveDragonContentTop(animationName);
