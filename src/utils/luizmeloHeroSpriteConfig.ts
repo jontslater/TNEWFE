@@ -224,6 +224,7 @@ export const LUIZMELO_HERO_ENTRIES: Record<string, HeroSpriteConfigEntry> = {
   lightbringer: luizHero('Wizard', 'wizard-holy', WIZARD_FILES, WIZARD_FRAMES, {
     projectile: { path: WIZARD_V2_PROJECTILE, frames: 5 },
   }),
+  // INTERIM: replace with chierit "Water Priestess FULL" when Jonathan drops assets (see docs/PENDING_PURCHASED_ASSETS.md).
   mistweaver: luizHero('Wizard', 'wizard-holy', WIZARD_FILES, WIZARD_FRAMES, {
     projectile: { path: WIZARD_V2_PROJECTILE, frames: 5 },
   }),

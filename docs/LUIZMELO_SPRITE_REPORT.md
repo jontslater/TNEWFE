@@ -32,7 +32,9 @@ All five CC0 packs were downloaded successfully via itch.io’s free purchase fl
 | stormcaller | Wizard **storm** tint | |
 | mooncaller | Wizard **moon** tint | |
 | ranger | Huntress (base) | Same rig as hunter; ranged identity via gameplay |
-| cleric, atoner, lightbringer, mistweaver | Wizard **holy/gold** tint + v2 projectile | |
+| cleric, atoner, lightbringer | Wizard **holy/gold** tint + v2 projectile | |
+| **mistweaver** | Wizard **holy/gold** tint + v2 projectile (**interim**) | **Reserved → chierit Water Priestess** when zips imported ([`PENDING_PURCHASED_ASSETS.md`](./PENDING_PURCHASED_ASSETS.md)) |
+| **tidecaller** | *(not in game yet)* | **Reserved → chierit Water Priestess** (or variant) if class is added |
 | druid, shaman, chronomancer | Wizard v2.0 (unchanged) | |
 | bard | Wizard **bard purple** tint + v2 projectile | **Commission candidate** — no lute/performance set in CC0 packs |
 
