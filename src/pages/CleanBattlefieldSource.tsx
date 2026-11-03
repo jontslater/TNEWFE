@@ -34,8 +34,8 @@ import { createMusicalNoteEffect } from '../utils/musicalNoteEffects';
 import { getBattlefieldSpriteScale } from '../utils/spriteDisplayScale';
 import { getBattlefieldEnemyPosition } from '../utils/battlefieldEnemyPosition';
 import {
-  resolveBattlefieldFacing,
-  type ScreenFacing,
+  resolveEnemyFacingForSpriteOverride,
+  resolveHeroFacingForSpriteOverride,
 } from '../utils/spriteFacing';
 import {
   applyHeroCombatStats,
@@ -2297,14 +2297,6 @@ export default function CleanBattlefieldSource() {
       });
   }, [twitchId, user?.id]);
 
-  // Desired screen facing (prefs override; mirror uses facesLeft in spriteFacingConfig)
-  const getFacingDirection = (
-    roleOrEnemyName: string,
-    side: 'hero' | 'enemy'
-  ): ScreenFacing => {
-    return resolveBattlefieldFacing(side, facingPreferences[roleOrEnemyName]);
-  };
-
   const runtimeHeroOverride = (role: string) =>
     globalSpriteOverrides.heroes[role?.toLowerCase?.() ?? role];
 
@@ -2316,6 +2308,20 @@ export default function CleanBattlefieldSource() {
       return globalSpriteOverrides.enemies[enemyName];
     }
     return undefined;
+  };
+
+  const heroFacingForSprite = (role: string) =>
+    resolveHeroFacingForSpriteOverride(
+      facingPreferences[role],
+      !!runtimeHeroOverride(role)
+    );
+
+  const enemyFacingForSprite = (enemyType?: string, enemyName?: string) => {
+    const prefKey = enemyType || enemyName || '';
+    return resolveEnemyFacingForSpriteOverride(
+      facingPreferences[prefKey],
+      !!runtimeEnemyOverride(enemyType, enemyName)
+    );
   };
 
   // Toggle test healer
@@ -8481,7 +8487,7 @@ export default function CleanBattlefieldSource() {
                   ref={getHeroSpriteRef(hero.id)}
                   heroId={hero.id}
                   role={hero.role}
-                  facing={getFacingDirection(hero.role, 'hero')}
+                  facing={heroFacingForSprite(hero.role)}
                   scale={3.0}
                   shield={0}
                   runtimeOverride={runtimeHeroOverride(hero.role)}
@@ -8583,7 +8589,7 @@ export default function CleanBattlefieldSource() {
                   enemyId={enemy.id}
                   enemyType={enemy.enemyType || enemy.name}
                   enemyName={enemy.name}
-                  facing={getFacingDirection(enemy.enemyType || enemy.name, 'enemy')}
+                  facing={enemyFacingForSprite(enemy.enemyType || enemy.name, enemy.name)}
                   scale={getBattlefieldSpriteScale({ isBoss: enemy.isBoss, enemyType: enemy.enemyType, enemyName: enemy.name })}
                   runtimeOverride={runtimeEnemyOverride(enemy.enemyType, enemy.name)}
                 />
@@ -8943,7 +8949,7 @@ export default function CleanBattlefieldSource() {
                   ref={getHeroSpriteRef(hero.id)}
                   heroId={hero.id}
                   role={hero.role}
-                  facing={getFacingDirection(hero.role, 'hero')}
+                  facing={heroFacingForSprite(hero.role)}
                   scale={3.0} // Same scale as idle
                   shield={0}
                   auraEffect={hero.auraEffect as any}
@@ -9056,7 +9062,7 @@ export default function CleanBattlefieldSource() {
                       enemyId={enemy.id}
                       enemyType={enemy.enemyType || mappedType}
                       enemyName={enemy.name}
-                      facing={getFacingDirection(enemy.enemyType || mappedType, 'enemy')}
+                      facing={enemyFacingForSprite(enemy.enemyType || mappedType, enemy.name)}
                       scale={finalScale}
                       runtimeOverride={runtimeEnemyOverride(enemy.enemyType || mappedType, enemy.name)}
                     />
@@ -9446,7 +9452,7 @@ export default function CleanBattlefieldSource() {
                 ref={getHeroSpriteRef(hero.id)}
                 heroId={hero.id}
                 role={hero.role}
-                facing={getFacingDirection(hero.role, 'hero')}
+                facing={heroFacingForSprite(hero.role)}
                 scale={3.0}
                 shield={0}
                 runtimeOverride={runtimeHeroOverride(hero.role)}
@@ -9545,7 +9551,7 @@ export default function CleanBattlefieldSource() {
                     enemyId={enemy.id}
                     enemyType={enemy.enemyType || enemy.name}
                     enemyName={enemy.name}
-                    facing={getFacingDirection(enemy.enemyType || enemy.name, 'enemy')}
+                    facing={enemyFacingForSprite(enemy.enemyType, enemy.name)}
                     scale={finalScale}
                     isTransformed={enemy.isTransformed || false}
                     runtimeOverride={runtimeEnemyOverride(enemy.enemyType, enemy.name)}
