@@ -57,3 +57,7 @@ If itch.io download automation breaks, place extracted folders under `scripts/lu
 - `Wizard Pack/` — Idle.png, Run.png, Attack1.png, Attack2.png, Hit.png, Death.png
 
 Then run `npm run sprites:luizmelo:build`.
+
+## Related: giant dragon raid boss
+
+See **`docs/GIANT_DRAGON_BOSS_REPORT.md`** for Elder Dragon (`Dragon - Fully Animated`, 725×445 per-frame PNGs), raid wave `Dragon_1/2/3` strips, wiring, and screenshots.
