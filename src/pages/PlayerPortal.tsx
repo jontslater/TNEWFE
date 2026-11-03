@@ -14,6 +14,7 @@ import InventoryManager from '../components/InventoryManager';
 import CraftingStation from '../components/CraftingStation';
 import LoginRewardModal from '../components/LoginRewardModal';
 import AchievementsPanel from '../components/AchievementsPanel';
+import BattlefieldQuickAccess from '../components/BattlefieldQuickAccess';
 import { loginWithTwitch } from '../utils/twitchOAuth';
 import { Hero } from '../types/Hero';
 import SkillsPage from './SkillsPage';
@@ -74,8 +75,13 @@ export default function PlayerPortal() {
     // Also check URL query params
     const params = new URLSearchParams(location.search);
     const tabParam = params.get('tab');
-    if (tabParam && ['hero', 'inventory', 'profession', 'guild', 'raids', 'skills', 'dungeon', 'browserSource', 'achievements', 'allHeroes', 'auction', 'quests', 'prestige'].includes(tabParam)) {
-      setActiveTab(tabParam as any);
+    const normalizedTab =
+      tabParam === 'battlefield' ? 'browserSource' : tabParam;
+    if (
+      normalizedTab &&
+      ['hero', 'inventory', 'profession', 'guild', 'raids', 'skills', 'dungeon', 'browserSource', 'achievements', 'allHeroes', 'auction', 'quests', 'prestige'].includes(normalizedTab)
+    ) {
+      setActiveTab(normalizedTab as any);
     }
     
     // Handle guild invite link
@@ -494,7 +500,8 @@ export default function PlayerPortal() {
                   : 'text-gray-400 border-transparent hover:text-gray-300'
               }`}
             >
-              Browser Source
+              <span className="lg:hidden">Battlefield</span>
+              <span className="hidden lg:inline">Browser Source</span>
             </button>
             <button
               onClick={() => setActiveTab('auction')}
@@ -712,7 +719,9 @@ export default function PlayerPortal() {
                 />
               )}
             {activeTab === 'hero' && (
-              <HeroDashboard 
+              <>
+                <BattlefieldQuickAccess twitchId={user?.twitchId} />
+                <HeroDashboard 
                 hero={hero} 
                 onHeroUpdate={async (updatedHero: Hero) => {
                   // Update the current hero if it's the one being updated
@@ -735,6 +744,7 @@ export default function PlayerPortal() {
                   }
                 }}
               />
+              </>
             )}
         {activeTab === 'inventory' && (
           <InventoryManager 
@@ -853,7 +863,7 @@ export default function PlayerPortal() {
                 twitchId={user?.twitchId}
               />
             )}
-            {activeTab === 'skills' && <SkillsPage hero={hero} userId={user?.id} />}
+            {activeTab === 'skills' && <SkillsPage hero={hero} heroId={hero.id} />}
             {activeTab === 'achievements' && <AchievementsPanel hero={hero} onUpdate={refetchHero} />}
             {activeTab === 'dungeon' && (
               <DungeonFinderTab

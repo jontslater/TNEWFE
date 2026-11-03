@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { loginWithTwitch } from '../utils/twitchOAuth';
 import logo from '../Logos/TheNeverEndingWarLogo.png';
+import BattlefieldQuickAccess from './BattlefieldQuickAccess';
 import { useHeroListener } from '../hooks/useHeroListener';
 import { questAPI } from '../api/client';
 import { getStoredSelectedHeroId } from '../utils/selectedHeroStorage';
@@ -280,6 +281,9 @@ export default function Navigation() {
             {PUBLIC_LINKS.map((item) => renderNavButton(item, 'mobile'))}
             {isAuthenticated &&
               visibleAuthLinks.map((item) => renderNavButton(item, 'mobile'))}
+            {isAuthenticated && user?.twitchId && (
+              <BattlefieldQuickAccess twitchId={user.twitchId} variant="nav" />
+            )}
             <div className="mt-3 border-t border-gray-800 pt-3">
               {isAuthenticated ? (
                 <button

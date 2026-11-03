@@ -1382,7 +1382,21 @@ export const questAPI = {
   },
 };
 
-// Skills API
+// Skills API — `:heroId` is the Firestore hero document id (same as quests/inventory).
+async function withSkillsRouteFallback<T>(
+  primary: () => Promise<T>,
+  fallback: () => Promise<T>
+): Promise<T> {
+  try {
+    return await primary();
+  } catch (err: any) {
+    if (err.response?.status === 404) {
+      return await fallback();
+    }
+    throw err;
+  }
+}
+
 export const skillsAPI = {
   async getAllSkills() {
     const response = await apiClient.get('/api/skills');
@@ -1394,23 +1408,43 @@ export const skillsAPI = {
     return response.data;
   },
   
-  async getHeroSkills(userId: string) {
-    const response = await apiClient.get(`/api/skills/${userId}`);
-    return response.data;
+  async getHeroSkills(heroId: string) {
+    const encoded = encodeURIComponent(heroId);
+    return withSkillsRouteFallback(
+      async () => {
+        const response = await apiClient.get(`/api/heroes/${encoded}/skills`);
+        return response.data;
+      },
+      async () => {
+        const response = await apiClient.get(`/api/skills/${encoded}`);
+        return response.data;
+      }
+    );
   },
   
-  async allocateSkillPoint(userId: string, skillId: string) {
-    const response = await apiClient.post(`/api/skills/${userId}/allocate`, { skillId });
-    return response.data;
+  async allocateSkillPoint(heroId: string, skillId: string) {
+    const encoded = encodeURIComponent(heroId);
+    return withSkillsRouteFallback(
+      async () => {
+        const response = await apiClient.post(`/api/heroes/${encoded}/skills/allocate`, { skillId });
+        return response.data;
+      },
+      async () => {
+        const response = await apiClient.post(`/api/skills/${encoded}/allocate`, { skillId });
+        return response.data;
+      }
+    );
   },
   
-  async resetSkills(userId: string, cost?: number) {
-    const response = await apiClient.post(`/api/skills/${userId}/reset`, { cost });
+  async resetSkills(heroId: string, cost?: number) {
+    const encoded = encodeURIComponent(heroId);
+    const response = await apiClient.post(`/api/skills/${encoded}/reset`, { cost });
     return response.data;
   },
 
-  async addRetroactivePoints(userId: string) {
-    const response = await apiClient.post(`/api/skills/retroactive-points/${userId}`);
+  async addRetroactivePoints(heroId: string) {
+    const encoded = encodeURIComponent(heroId);
+    const response = await apiClient.post(`/api/skills/retroactive-points/${encoded}`);
     return response.data;
   }
 };

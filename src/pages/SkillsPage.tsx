@@ -1,6 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../hooks/useAuth';
+import { useHero } from '../hooks/useHero';
 import { skillsAPI } from '../api/client';
+import { resolveHeroDocId } from '../utils/resolveHeroDocId';
 
 interface Skill {
   id: string;
@@ -16,36 +18,61 @@ interface Skill {
 
 interface SkillsPageProps {
   hero?: any;
+  /** Firestore hero document id (not Twitch user id) */
+  heroId?: string;
+  /** @deprecated use heroId — kept for call sites passing user.id from JWT */
   userId?: string;
 }
 
-export default function SkillsPage({ hero, userId }: SkillsPageProps) {
+export default function SkillsPage({ hero, heroId, userId }: SkillsPageProps) {
   const { user } = useAuth();
+  const { hero: authHero } = useHero(user?.twitchId || null);
   const [skills, setSkills] = useState<Skill[]>([]);
   const [skillPoints, setSkillPoints] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const resolvedHero = hero ?? authHero;
+  const targetHeroId = useMemo(
+    () =>
+      resolveHeroDocId({
+        hero: resolvedHero,
+        explicitHeroId: heroId ?? userId,
+        twitchUserId: user?.twitchId,
+        authHeroId: user?.id,
+      }),
+    [resolvedHero, heroId, userId, user?.twitchId, user?.id]
+  );
+
   useEffect(() => {
-    // Use hero.id (document ID) if available, otherwise fall back to userId/user.id
-    const targetHeroId = hero?.id || userId || user?.id;
     if (targetHeroId) {
       loadSkills();
+    } else {
+      setLoading(false);
+      setError('Select a hero in the Player Portal to manage skills.');
     }
-  }, [user, userId, hero]);
+  }, [targetHeroId]);
 
   const loadSkills = async () => {
-    // Use hero.id (document ID) if available, otherwise fall back to userId/user.id
-    const targetHeroId = hero?.id || userId || user?.id;
     if (!targetHeroId) return;
     
     try {
       setLoading(true);
+      setError(null);
       const data = await skillsAPI.getHeroSkills(targetHeroId);
       setSkills(data.skills || []);
       setSkillPoints(data.skillPoints || 0);
     } catch (err: any) {
-      setError(err.message || 'Failed to load skills');
+      const status = err.response?.status;
+      const apiError = err.response?.data?.error;
+      if (status === 404) {
+        setError(
+          apiError ||
+            'Hero not found for skills. Re-select your hero in the Portal or log in again.'
+        );
+      } else {
+        setError(apiError || err.message || 'Failed to load skills');
+      }
     } finally {
       setLoading(false);
     }
@@ -67,7 +94,7 @@ export default function SkillsPage({ hero, userId }: SkillsPageProps) {
   const pointsSpent = skills.reduce((sum, skill) => sum + (skill.points || 0), 0);
   
   // Calculate what they should have (total earned minus spent)
-  const heroLevel = hero?.level || 0;
+  const heroLevel = resolvedHero?.level || 0;
   const expectedTotal = calculateExpectedPoints(heroLevel);
   const shouldHavePoints = expectedTotal - pointsSpent;
   
@@ -75,38 +102,33 @@ export default function SkillsPage({ hero, userId }: SkillsPageProps) {
   const needsRetroactivePoints = heroLevel >= 6 && skillPoints < shouldHavePoints;
 
   const allocatePoint = async (skillId: string) => {
-    const targetHeroId = hero?.id || userId || user?.id;
     if (!targetHeroId) return;
     
     try {
+      setError(null);
       const result = await skillsAPI.allocateSkillPoint(targetHeroId, skillId);
       setSkillPoints(result.remainingPoints);
       await loadSkills();
     } catch (err: any) {
-      setError(err.message || 'Failed to allocate skill point');
+      const apiError = err.response?.data?.error;
+      setError(apiError || err.message || 'Failed to allocate skill point');
     }
   };
 
   const resetSkills = async () => {
     if (!confirm('Reset all skills? This costs 500 tokens.')) return;
-    
-    const targetHeroId = hero?.id || userId || user?.id;
     if (!targetHeroId) return;
     
     try {
       await skillsAPI.resetSkills(targetHeroId, 500);
       await loadSkills();
     } catch (err: any) {
-      setError(err.message || 'Failed to reset skills');
+      const apiError = err.response?.data?.error;
+      setError(apiError || err.message || 'Failed to reset skills');
     }
   };
 
-  if (loading) {
-    return <div className="p-8">Loading skills...</div>;
-  }
-
   const handleRetroactivePoints = async () => {
-    const targetHeroId = hero?.id || userId || user?.id;
     if (!targetHeroId) {
       alert('No hero ID available');
       return;
@@ -130,8 +152,12 @@ export default function SkillsPage({ hero, userId }: SkillsPageProps) {
     }
   };
 
-  const unlockedSkills = skills.filter(s => (hero?.level || 0) >= s.unlockLevel);
-  const lockedSkills = skills.filter(s => (hero?.level || 0) < s.unlockLevel);
+  if (loading) {
+    return <div className="p-8">Loading skills...</div>;
+  }
+
+  const unlockedSkills = skills.filter(s => (resolvedHero?.level || 0) >= s.unlockLevel);
+  const lockedSkills = skills.filter(s => (resolvedHero?.level || 0) < s.unlockLevel);
 
   return (
     <div className="space-y-6">
