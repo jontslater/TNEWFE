@@ -15,9 +15,8 @@ fs.mkdirSync(outDir, { recursive: true });
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
 await page.goto(`${baseUrl}/battlefield-facing`, { waitUntil: 'networkidle', timeout: 120000 });
-await page.waitForSelector('[data-hero-id="demo-chronomancer"]', { timeout: 60000 });
-await page.waitForSelector('[data-hero-id="demo-stormwarrior"]', { timeout: 60000 });
-await page.waitForTimeout(3500);
+await page.waitForSelector('[data-enemy-id="demo-dragon1"]', { timeout: 60000 });
+await page.waitForTimeout(5000);
 
 await page.screenshot({
   path: path.join(outDir, 'battlefield-facing-preview.png'),

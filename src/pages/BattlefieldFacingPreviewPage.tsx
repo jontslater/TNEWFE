@@ -1,9 +1,10 @@
 /**
  * Visual QA: heroes on the left facing right, enemies on the right facing left.
- * Uses the same sprite components and facing helpers as CleanBattlefieldSource.
+ * Uses the same sprite components, scaling, and positioning helpers as CleanBattlefieldSource.
  */
 import HeroSpriteJS from '../components/HeroSpriteJS';
 import EnemySpriteJS from '../components/EnemySpriteJS';
+import { getBattlefieldEnemyPosition } from '../utils/battlefieldEnemyPosition';
 import { getBattlefieldSpriteScale } from '../utils/spriteDisplayScale';
 import {
   BATTLEFIELD_ENEMY_FACING,
@@ -19,7 +20,7 @@ const DEMO_HEROES = [
   { id: 'demo-monk', role: 'monk', label: 'Monk' },
 ] as const;
 
-const DEMO_ENEMIES = [
+const DEMO_MOBS = [
   {
     id: 'demo-imp',
     enemyType: 'Imp',
@@ -32,26 +33,38 @@ const DEMO_ENEMIES = [
     enemyName: 'Kobold Warrior',
     label: 'Kobold',
   },
-  {
-    id: 'demo-dragon1',
-    enemyType: 'Dragon_1',
-    enemyName: 'Dragon Whelp',
-    label: 'Dragon Whelp',
-  },
-  {
-    id: 'demo-elder',
-    enemyType: 'Elder Dragon',
-    enemyName: 'Elder Dragon',
-    label: 'Elder Dragon',
-    isBoss: true,
-  },
 ] as const;
 
+const DEMO_DRAGON_WHELP = {
+  id: 'demo-dragon1',
+  enemyType: 'Dragon_1',
+  enemyName: 'Dragon Whelp',
+  label: 'Dragon Whelp',
+} as const;
+
+const DEMO_ELDER = {
+  id: 'demo-elder',
+  enemyType: 'Elder Dragon',
+  enemyName: 'Elder Dragon',
+  label: 'Elder Dragon',
+} as const;
+
 export default function BattlefieldFacingPreviewPage() {
+  const whelpPos = getBattlefieldEnemyPosition(0, 1, false, DEMO_DRAGON_WHELP.enemyType, 'idle');
+  const elderPos = getBattlefieldEnemyPosition(0, 1, true, DEMO_ELDER.enemyType, 'idle');
+  const whelpScale = getBattlefieldSpriteScale({
+    enemyType: DEMO_DRAGON_WHELP.enemyType,
+    enemyName: DEMO_DRAGON_WHELP.enemyName,
+  });
+  const elderScale = getBattlefieldSpriteScale({
+    enemyType: DEMO_ELDER.enemyType,
+    enemyName: DEMO_ELDER.enemyName,
+    isBoss: true,
+  });
+
   return (
     <div
       id="battlefield-facing-preview"
-      className="clean-battlefield-page"
       style={{
         width: '1920px',
         height: '1080px',
@@ -119,52 +132,92 @@ export default function BattlefieldFacingPreviewPage() {
       <div
         style={{
           position: 'absolute',
-          left: '50%',
-          right: 48,
+          right: 120,
           bottom: 72,
           display: 'flex',
           flexDirection: 'row',
           alignItems: 'flex-end',
-          justifyContent: 'flex-end',
-          gap: 32,
-          paddingLeft: 24,
+          gap: 40,
           borderBottom: '2px solid rgba(239,68,68,0.35)',
-          minHeight: 220,
+          minHeight: 120,
+          paddingBottom: 8,
         }}
       >
-        {DEMO_ENEMIES.map((e) => {
-          const isBoss = 'isBoss' in e && Boolean(e.isBoss);
-          const scale = getBattlefieldSpriteScale({
-            enemyType: e.enemyType,
-            enemyName: e.enemyName,
-            isBoss,
-          });
-          return (
-            <div
-              key={e.id}
-              data-side="enemy"
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: 8,
-              }}
-            >
-              <div style={{ overflow: 'visible', minWidth: isBoss ? 720 : undefined }}>
-                <EnemySpriteJS
-                  enemyId={e.id}
-                  enemyType={e.enemyType}
-                  enemyName={e.enemyName}
-                  facing={BATTLEFIELD_ENEMY_FACING}
-                  scale={scale}
-                />
-              </div>
-              <span style={{ color: '#e2e8f0', fontSize: 13, textAlign: 'center' }}>
-                {e.label}
-              </span>
-            </div>
-          );
-        })}
+        {DEMO_MOBS.map((e) => (
+          <div
+            key={e.id}
+            data-side="enemy"
+            data-enemy-id={e.id}
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 8,
+            }}
+          >
+            <EnemySpriteJS
+              enemyId={e.id}
+              enemyType={e.enemyType}
+              enemyName={e.enemyName}
+              facing={BATTLEFIELD_ENEMY_FACING}
+              scale={getBattlefieldSpriteScale({
+                enemyType: e.enemyType,
+                enemyName: e.enemyName,
+              })}
+            />
+            <span style={{ color: '#e2e8f0', fontSize: 13 }}>{e.label}</span>
+          </div>
+        ))}
+      </div>
+
+      <div
+        data-side="enemy"
+        data-enemy-id={DEMO_DRAGON_WHELP.id}
+        style={{
+          position: 'absolute',
+          ...whelpPos,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          zIndex: 20,
+        }}
+      >
+        <EnemySpriteJS
+          enemyId={DEMO_DRAGON_WHELP.id}
+          enemyType={DEMO_DRAGON_WHELP.enemyType}
+          enemyName={DEMO_DRAGON_WHELP.enemyName}
+          facing={BATTLEFIELD_ENEMY_FACING}
+          scale={whelpScale}
+        />
+        <span style={{ color: '#e2e8f0', fontSize: 13, marginTop: 8 }}>
+          {DEMO_DRAGON_WHELP.label}
+        </span>
+      </div>
+
+      <div
+        data-side="enemy"
+        data-enemy-id={DEMO_ELDER.id}
+        style={{
+          position: 'absolute',
+          ...elderPos,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          zIndex: 10,
+        }}
+      >
+        <div style={{ width: 1200, display: 'flex', justifyContent: 'center', alignItems: 'flex-end' }}>
+          <EnemySpriteJS
+            enemyId={DEMO_ELDER.id}
+            enemyType={DEMO_ELDER.enemyType}
+            enemyName={DEMO_ELDER.enemyName}
+            facing={BATTLEFIELD_ENEMY_FACING}
+            scale={elderScale}
+          />
+        </div>
+        <span style={{ color: '#fbbf24', fontSize: 14, marginTop: 8 }}>
+          {DEMO_ELDER.label}
+        </span>
       </div>
     </div>
   );

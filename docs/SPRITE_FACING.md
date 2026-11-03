@@ -12,7 +12,7 @@
 | `src/utils/spriteFacing.ts` | Shared helpers: `BATTLEFIELD_HERO_FACING`, `BATTLEFIELD_ENEMY_FACING`, `shouldMirrorSpriteForFacing`, `getSpriteContainerTransform`, `resolveBattlefieldFacing` |
 | `src/utils/spriteFacingConfig.ts` | Per-enemy `ENEMY_NATIVE_FACES_LEFT`; `getHeroFacesLeft` / `getEnemyFacesLeft` |
 | `src/utils/spriteConfig.ts` + `luizmeloHeroSpriteConfig.ts` | Optional `facesLeft` on hero entries (LuizMelo packs set from pack map) |
-| `HeroSpriteJS` / `EnemySpriteJS` | Apply container transform with `transformOrigin: bottom center` (feet anchor) |
+| `HeroSpriteJS` / `EnemySpriteJS` | Apply container scale on outer box; mirror via inner wrapper (`scaleX(-1)`). Enemy sprite sheets use viewport-sized `background-position` framing (PR #8 dragon layout). |
 | `ClassSpriteGalleryPage` | `BATTLEFIELD_HERO_FACING` + `freezeIdleFrame` (idle frame 0 for screenshots) |
 
 Per-class native facing uses `HERO_FACES_LEFT_OVERRIDES` (LuizMelo bodies) and `HERO_NATIVE_FACES_LEFT` (legacy rigs). Regenerate overrides with gallery QA:

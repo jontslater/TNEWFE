@@ -23,9 +23,7 @@ export function shouldMirrorSpriteForFacing(
   desiredFacing: ScreenFacing,
   facesLeft: boolean
 ): boolean {
-  // Mirror only when native sheet faces left but we need screen-right (typical LuizMelo heroes).
-  // Enemies facing battlefield-left use native orientation without extra mirror (see spriteFacing.test.ts).
-  return facesLeft && desiredFacing === 'right';
+  return facesLeft !== (desiredFacing === 'left');
 }
 
 export function getSpriteContainerTransform(
