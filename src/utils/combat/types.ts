@@ -64,6 +64,8 @@ export interface Hero {
 export interface Enemy {
   id: string;
   name: string;
+  /** Sprite / template key (may differ from display name) */
+  enemyType?: string;
   level: number;
   hp: number;
   maxHp: number;

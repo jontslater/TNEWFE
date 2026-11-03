@@ -12,7 +12,8 @@
     "sprites:check": "node scripts/generate-sprite-dimensions.mjs --check",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "sim:ttk": "vitest run src/game/stats/enemyCombatScaling.test.ts -t \"before/after\""
   },
   "dependencies": {
     "@stripe/stripe-js": "^8.5.3",

@@ -1,10 +1,11 @@
 /**
  * Dungeon Enemy Generation Utility
  * Generates enemies for dungeon rooms based on dungeon definitions
- * Maps dungeon enemy types to existing enemy templates or creates new ones
  */
 
 import { Enemy } from './combat/types';
+import { scaleEnemyForCombat } from '../game/stats/enemyCombatScaling';
+import type { HeroStatInput } from '../game/stats/types';
 
 // Map dungeon enemy type names to existing enemy template types
 const DUNGEON_ENEMY_MAP: Record<string, string> = {
@@ -38,9 +39,6 @@ function getDungeonEnemyBaseStats(enemyType: string, level: number): {
   xp: number;
 } {
   // Map to existing enemy template base stats, scaled by level
-  const mappedType = DUNGEON_ENEMY_MAP[enemyType] || enemyType;
-  
-  // Base stats per level (similar to existing enemy templates)
   const levelMultiplier = 1 + (level * 0.15);
   
   // Default base stats (can be customized per type)
@@ -118,23 +116,41 @@ export function generateDungeonEnemies(
     
     // Generate count number of this enemy type
     for (let i = 0; i < count; i++) {
-      // Apply difficulty modifier
-      const hp = Math.floor(baseStats.baseHp * difficultyModifier);
-      const attack = Math.floor(baseStats.baseAttack * difficultyModifier);
-      const defense = Math.floor(baseStats.baseDefense * difficultyModifier);
-      
-      // Bosses get 1.5x HP boost
-      const finalHp = isBoss ? Math.floor(hp * 1.5) : hp;
+      const referenceHeroes: HeroStatInput[] = heroes.map((h) => ({
+        role: h.role || 'berserker',
+        level: h.level || avgHeroLevel,
+        equipment: h.equipment,
+        skills: h.skills,
+      }));
+
+      const scaled = scaleEnemyForCombat(
+        {
+          hp: baseStats.baseHp,
+          attack: baseStats.baseAttack,
+          defense: baseStats.baseDefense,
+        },
+        {
+          packSize: 1,
+          isBoss: isBoss || false,
+          referenceHeroes,
+          waveCount: enemyLevel,
+          difficultyModifier,
+          contentTier: 'dungeon',
+          tierMultiplier: difficultyModifier,
+        }
+      );
+
+      const finalHp = scaled.hp;
       
       const enemy: Enemy = {
         id: `dungeon-${type}-${Date.now()}-${i}`,
-        name: count > 1 ? `${type} ${i + 1}` : type, // Display name (can have numbers like "Goblin 1")
-        enemyType: mappedSpriteType, // Sprite type for animation lookup - MUST match sprite config (e.g., "Goblin", "Goblin Chief")
+        name: count > 1 ? `${type} ${i + 1}` : type,
+        enemyType: mappedSpriteType,
         level: enemyLevel,
         hp: finalHp,
         maxHp: finalHp,
-        attack: attack,
-        defense: defense,
+        attack: scaled.attack,
+        defense: scaled.defense,
         xp: isBoss ? Math.floor(baseStats.xp * 1.5) : baseStats.xp,
         isBoss: isBoss || false,
         isDead: false // CRITICAL: Must match idle and raid enemy creation
