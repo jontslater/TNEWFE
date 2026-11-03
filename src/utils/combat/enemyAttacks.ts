@@ -43,7 +43,7 @@ function getDebugDisableHeroDamage(): boolean {
   }
   return false; // Default to false - hero damage is ENABLED by default
 }
-import { ENEMY_SPRITES } from '../enemySpriteConfig';
+import { ENEMY_SPRITES } from '../spriteAnimationData';
 import { createProjectile } from '../projectiles';
 
 // Track active enemy attacks to prevent duplicates (e.g., multiple projectiles from same enemy)

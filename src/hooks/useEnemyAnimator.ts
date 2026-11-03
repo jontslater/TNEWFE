@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { getEnemyAnimations } from "../utils/spriteAnimationData";
-import { ENEMY_SPRITES, EnemyAnimationType } from "../utils/enemySpriteConfig";
 
 export interface AnimationData {
   name: string;
@@ -129,8 +128,9 @@ export function useEnemyAnimator({
   }, [enemyName]);
 
   const playAnimation = useCallback((name: string) => {
+    const normalizedName = name === 'transform' ? 'transformation' : name;
     // Select attack variant if needed
-    const actualName = selectAttackVariant(name);
+    const actualName = selectAttackVariant(normalizedName);
     
     const animation = animations[actualName];
     if (!animation) {

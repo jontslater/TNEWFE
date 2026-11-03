@@ -13,7 +13,7 @@ import EnemySprite from '../components/EnemySprite';
 import { PreviewSpriteContainer } from '../components/PreviewSpriteContainer';
 import { SpriteLayout } from '../utils/spriteManipulation';
 import { getSpriteKey, loadAllSpriteLayouts, saveSpriteLayoutToStorage, getHeroCategory } from '../utils/spriteLayoutKeys';
-import { getEnemySpriteClass } from '../utils/enemySpriteConfig';
+import { getEnemySpriteClass } from '../utils/spriteAnimationData';
 
 /**
  * Chat Update Settings Component

@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import { useHeroAnimator } from "../hooks/useHeroAnimator";
+import { SPRITE_DISPLAY_SCALE } from "../utils/spriteDisplayScale";
 
 export interface HeroSpriteJSHandle {
   playAnimation: (animation: string) => void;
@@ -37,7 +38,7 @@ const HeroSpriteJS = forwardRef<HeroSpriteJSHandle, HeroSpriteJSProps>(
       className,
       facing = "right",
       style,
-      scale = 2.5,
+      scale = SPRITE_DISPLAY_SCALE,
       shield = 0,
       enrageActive = false,
       abilityEffect = null,

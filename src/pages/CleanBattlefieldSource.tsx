@@ -30,6 +30,7 @@ import { getAuraFilter } from '../utils/auraEffects';
 import { createProjectile } from '../utils/projectiles';
 import { createExhaustEffect, shouldShowExhaustEffect } from '../utils/exhaustEffects';
 import { createMusicalNoteEffect } from '../utils/musicalNoteEffects';
+import { getBattlefieldSpriteScale } from '../utils/spriteDisplayScale';
 import {
   applyHeroCombatStats,
   applyRewardBonus,
@@ -8613,7 +8614,7 @@ export default function CleanBattlefieldSource() {
                   enemyType={enemy.enemyType || enemy.name}
                   enemyName={enemy.name}
                   facing="left"
-                  scale={enemy.isBoss ? 12.0 : 3.0}
+                  scale={getBattlefieldSpriteScale({ isBoss: enemy.isBoss, enemyType: enemy.enemyType, enemyName: enemy.name })}
                 />
               </div>
             </div>
@@ -9063,43 +9064,24 @@ export default function CleanBattlefieldSource() {
                 }}
               >
                 {(() => {
-                  // Bosses should NEVER get cultist scale - they need to be huge!
-                  const isCultist = !enemy.isBoss && (enemy.enemyType === 'Cultist' || enemy.enemyType === 'Corrupted High Priest');
-                  const cultistScale = 0.075; // Half of 0.15
-                  const cultistFacing = 'left';
-                  
-                  // Map enemy names to sprite folder names
                   const spriteMap: Record<string, string> = {
                     'Baby Dragon': 'Baby Dragon',
                     'Dragon Whelp': 'Dragon_1',
                     'Dragon Guardian': 'Dragon_2',
                     'Dragon Sentinel': 'Dragon_3',
-                    'Elder Dragon': 'Elder Dragon' // MUST match getEnemyAnimationKey mapping!
+                    'Elder Dragon': 'Elder Dragon'
                   };
                   const mappedType = spriteMap[enemy.name] || enemy.name;
-                  
-                  // For raid mode, default facing should be 'right' (opposite of idle/dungeon)
                   const defaultRaidFacing = 'right';
-                  const defaultFacing = defaultRaidFacing;
-                  
-                  // Boss facing: Corrupted High Priest should face left, others use default
-                  const baseFacing = enemy.isBoss && enemy.enemyType === 'Corrupted High Priest' 
-                    ? 'left' 
-                    : isCultist 
-                      ? cultistFacing 
-                      : (mappedType.startsWith('Dragon_') ? 'left' : getFacingDirection(enemy.enemyType || mappedType, defaultFacing));
-                  
-                  // Boss scale: Corrupted High Priest boss should be smaller than other bosses
-                  const finalScale = enemy.isBoss 
-                    ? (enemy.enemyType === 'Corrupted High Priest' ? 3.0 : 12.0) // Corrupted High Priest boss gets normal enemy scale
-                    : isCultist 
-                      ? cultistScale 
-                      : (mappedType.startsWith('Dragon_') ? 6.0 : 3.0);
-                  
-                  if (enemy.isBoss) {
-                    console.log(`[Raid Boss Scale] ${enemy.name} - enemyType: "${enemy.enemyType}", isBoss: ${enemy.isBoss}, finalScale: ${finalScale}`);
-                  }
-                  
+                  const baseFacing = enemy.isBoss && enemy.enemyType === 'Corrupted High Priest'
+                    ? 'left'
+                    : (mappedType.startsWith('Dragon_') ? 'left' : getFacingDirection(enemy.enemyType || mappedType, defaultRaidFacing));
+                  const finalScale = getBattlefieldSpriteScale({
+                    isBoss: enemy.isBoss,
+                    enemyType: enemy.enemyType || mappedType,
+                    enemyName: enemy.name,
+                  });
+
                   return (
                     <EnemySpriteJS
                       ref={getEnemySpriteRef(enemy.id)}
@@ -9581,27 +9563,19 @@ export default function CleanBattlefieldSource() {
               }}
             >
               {(() => {
-                // Bosses should NEVER get cultist scale
+                const defaultFacing = gameMode === 'raid' ? 'right' : 'left';
                 const isCultist = !enemy.isBoss && (enemy.enemyType === 'Cultist' || enemy.enemyType === 'Corrupted High Priest');
-                // Scale down: 200x200 sprite -> 48px viewport (0.24x) -> then 0.075x multiplier = ~3.6px final
-                const cultistScale = 0.075; // Half of 0.15
-                const cultistFacing = 'left'; // Sprite faces right by default, so 'left' flips it with scaleX(-1)
-                
-                // For raid mode, default facing should be 'right' (opposite of idle/dungeon)
-                // Most enemies face left by default, but in raid they should face right
-                const defaultRaidFacing = 'right';
-                const defaultFacing = gameMode === 'raid' ? defaultRaidFacing : 'left';
-                
-                // Boss facing: Corrupted High Priest should face left, others use default
                 const baseFacing = enemy.isBoss && enemy.enemyType === 'Corrupted High Priest'
                   ? 'left'
                   : isCultist
-                    ? cultistFacing
+                    ? 'left'
                     : getFacingDirection(enemy.enemyType || enemy.name, defaultFacing);
-                
-                // Scale: cultist gets small scale, bosses get normal scale (3.0), others get 3.0
-                const finalScale = isCultist ? cultistScale : 3.0;
-                
+                const finalScale = getBattlefieldSpriteScale({
+                  isBoss: enemy.isBoss,
+                  enemyType: enemy.enemyType || enemy.name,
+                  enemyName: enemy.name,
+                });
+
                 return (
                   <EnemySpriteJS
                     ref={getEnemySpriteRef(enemy.id)}

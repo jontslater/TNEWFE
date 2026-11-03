@@ -5,9 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
-    "build:check": "tsc && vite build",
+    "build": "npm run sprites:check && vite build",
+    "build:check": "npm run sprites:check && tsc && vite build",
     "preview": "vite preview",
+    "sprites:generate": "node scripts/generate-sprite-dimensions.mjs",
+    "sprites:check": "node scripts/generate-sprite-dimensions.mjs --check",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "test": "vitest run",
     "test:watch": "vitest"

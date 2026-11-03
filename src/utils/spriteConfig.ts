@@ -493,5 +493,5 @@ export function getHeroSpritePath(role: string, animation: 'idle' | 'attack' | '
   return spriteConfig.sprite;
 }
 
-// Default scale factor matching Electron app
-export const SPRITE_SCALE_FACTOR = 2.5;
+// Default scale factor for battlefield sprites (48px viewport → 144px on screen)
+export { SPRITE_DISPLAY_SCALE as SPRITE_SCALE_FACTOR } from './spriteDisplayScale';

@@ -7,6 +7,7 @@ import {
   useRef,
 } from "react";
 import { useEnemyAnimator } from "../hooks/useEnemyAnimator";
+import { SPRITE_DISPLAY_SCALE } from "../utils/spriteDisplayScale";
 
 export interface EnemySpriteJSHandle {
   playAnimation: (animation: string) => void;
@@ -36,7 +37,7 @@ const EnemySpriteJS = forwardRef<EnemySpriteJSHandle, EnemySpriteJSProps>(
       className,
       facing = "left",
       style,
-      scale = 2.5,
+      scale = SPRITE_DISPLAY_SCALE,
       isTransformed = false,
     } = props;
     
