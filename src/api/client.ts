@@ -1440,6 +1440,20 @@ export const skillsAPI = {
       }
     );
   },
+
+  /** No batch route on backend yet — one allocate call per point, server validates each step. */
+  async allocateSkillPointsBatch(
+    heroId: string,
+    plan: Array<{ skillId: string; count: number }>
+  ) {
+    let lastResult: { remainingPoints?: number } | null = null;
+    for (const { skillId, count } of plan) {
+      for (let i = 0; i < count; i++) {
+        lastResult = await this.allocateSkillPoint(heroId, skillId);
+      }
+    }
+    return lastResult;
+  },
   
   async resetSkills(heroId: string, cost?: number) {
     const encoded = encodeURIComponent(heroId);
