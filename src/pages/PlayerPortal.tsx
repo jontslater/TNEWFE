@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useHero } from '../hooks/useHero';
@@ -41,6 +41,39 @@ export default function PlayerPortal() {
   const [raids, setRaids] = useState<Raid[]>([]);
   const [worldBoss, setWorldBoss] = useState<WorldBoss | null>(null);
   const [activeTab, setActiveTab] = useState<'hero' | 'inventory' | 'profession' | 'guild' | 'raids' | 'skills' | 'dungeon' | 'browserSource' | 'achievements' | 'allHeroes' | 'auction' | 'quests' | 'prestige'>('hero');
+  const [skillsDraftDirty, setSkillsDraftDirty] = useState(false);
+
+  const changeTab = useCallback(
+    (tab: typeof activeTab) => {
+      if (activeTab === 'skills' && tab !== 'skills' && skillsDraftDirty) {
+        if (
+          !window.confirm(
+            'You have unsaved skill point changes. Leave without saving?'
+          )
+        ) {
+          return;
+        }
+      }
+      setActiveTab(tab);
+    },
+    [activeTab, skillsDraftDirty]
+  );
+
+  const guardedSelectHero = useCallback(
+    (heroDocId: string) => {
+      if (activeTab === 'skills' && skillsDraftDirty) {
+        if (
+          !window.confirm(
+            'You have unsaved skill point changes. Switch heroes without saving?'
+          )
+        ) {
+          return;
+        }
+      }
+      selectHero(heroDocId);
+    },
+    [activeTab, skillsDraftDirty, selectHero]
+  );
   const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
   const [adminSelectedHero, setAdminSelectedHero] = useState<Hero | null>(null);
   const [testHeroId, setTestHeroId] = useState<string>('9CcbfbvtTt3ckqyn7sBH'); // Dingo Dynasty hero ID
@@ -69,7 +102,7 @@ export default function PlayerPortal() {
   useEffect(() => {
     const state = location.state as any;
     if (state?.activeTab) {
-      setActiveTab(state.activeTab);
+      changeTab(state.activeTab);
     }
     // Also check URL query params
     const params = new URLSearchParams(location.search);
@@ -80,14 +113,14 @@ export default function PlayerPortal() {
       normalizedTab &&
       ['hero', 'inventory', 'profession', 'guild', 'raids', 'skills', 'dungeon', 'browserSource', 'achievements', 'allHeroes', 'auction', 'quests', 'prestige'].includes(normalizedTab)
     ) {
-      setActiveTab(normalizedTab as any);
+      changeTab(normalizedTab as any);
     }
     
     // Handle guild invite link
     const guildInviteParam = params.get('guildInvite');
     if (guildInviteParam && hero) {
       // Switch to guild tab and show invite acceptance
-      setActiveTab('guild');
+      changeTab('guild');
       // Store the invite ID (not guild ID) for GuildPanel to handle
       sessionStorage.setItem('pendingGuildInvite', guildInviteParam);
       // Clean up URL
@@ -95,7 +128,7 @@ export default function PlayerPortal() {
       newParams.delete('guildInvite');
       navigate({ search: newParams.toString() }, { replace: true });
     }
-  }, [location.state, location.search, hero, navigate]);
+  }, [location.state, location.search, hero, navigate, changeTab]);
 
   const groupedAllHeroes = useMemo(() => {
     const groups = new Map<string, { twitchId: string; label: string; heroes: Hero[] }>();
@@ -409,7 +442,7 @@ export default function PlayerPortal() {
             aria-label="Portal sections"
           >
             <button
-              onClick={() => setActiveTab('hero')}
+              onClick={() => changeTab('hero')}
               className={`px-3 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 min-h-[44px] text-sm sm:text-base ${
                 activeTab === 'hero'
                   ? 'text-blue-400 border-blue-400'
@@ -419,7 +452,7 @@ export default function PlayerPortal() {
               Hero
             </button>
             <button
-              onClick={() => setActiveTab('browserSource')}
+              onClick={() => changeTab('browserSource')}
               className={`px-3 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 min-h-[44px] text-sm sm:text-base ring-1 ring-cyan-700/40 sm:ring-0 ${
                 activeTab === 'browserSource'
                   ? 'text-cyan-400 border-cyan-400'
@@ -430,7 +463,7 @@ export default function PlayerPortal() {
               <span className="hidden sm:inline">Browser Source</span>
             </button>
             <button
-              onClick={() => setActiveTab('inventory')}
+              onClick={() => changeTab('inventory')}
               className={`px-3 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 min-h-[44px] text-sm sm:text-base ${
                 activeTab === 'inventory'
                   ? 'text-yellow-400 border-yellow-400'
@@ -440,7 +473,7 @@ export default function PlayerPortal() {
               Inventory
             </button>
             <button
-              onClick={() => setActiveTab('profession')}
+              onClick={() => changeTab('profession')}
               className={`px-3 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 min-h-[44px] text-sm sm:text-base ${
                 activeTab === 'profession'
                   ? 'text-green-400 border-green-400'
@@ -450,7 +483,7 @@ export default function PlayerPortal() {
               Profession
             </button>
             <button
-              onClick={() => setActiveTab('guild')}
+              onClick={() => changeTab('guild')}
               className={`px-3 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 min-h-[44px] text-sm sm:text-base ${
                 activeTab === 'guild'
                   ? 'text-purple-400 border-purple-400'
@@ -460,7 +493,7 @@ export default function PlayerPortal() {
               Guild
             </button>
             <button
-              onClick={() => setActiveTab('raids')}
+              onClick={() => changeTab('raids')}
               className={`px-3 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 min-h-[44px] text-sm sm:text-base ${
                 activeTab === 'raids'
                   ? 'text-red-400 border-red-400'
@@ -470,7 +503,7 @@ export default function PlayerPortal() {
               Raids
             </button>
             <button
-              onClick={() => setActiveTab('skills')}
+              onClick={() => changeTab('skills')}
               className={`px-3 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 min-h-[44px] text-sm sm:text-base ${
                 activeTab === 'skills'
                   ? 'text-indigo-400 border-indigo-400'
@@ -480,7 +513,7 @@ export default function PlayerPortal() {
               Skills
             </button>
             <button
-              onClick={() => setActiveTab('achievements')}
+              onClick={() => changeTab('achievements')}
               className={`px-3 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 min-h-[44px] text-sm sm:text-base ${
                 activeTab === 'achievements'
                   ? 'text-amber-400 border-amber-400'
@@ -490,7 +523,7 @@ export default function PlayerPortal() {
               Achievements
             </button>
             <button
-              onClick={() => setActiveTab('dungeon')}
+              onClick={() => changeTab('dungeon')}
               className={`px-3 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 relative min-h-[44px] text-sm sm:text-base ${
                 activeTab === 'dungeon'
                   ? 'text-orange-400 border-orange-400'
@@ -503,7 +536,7 @@ export default function PlayerPortal() {
               )}
             </button>
             <button
-              onClick={() => setActiveTab('auction')}
+              onClick={() => changeTab('auction')}
               className={`px-3 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 min-h-[44px] text-sm sm:text-base ${
                 activeTab === 'auction'
                   ? 'text-emerald-400 border-emerald-400'
@@ -513,7 +546,7 @@ export default function PlayerPortal() {
               Auction House
             </button>
             <button
-              onClick={() => setActiveTab('quests')}
+              onClick={() => changeTab('quests')}
               className={`px-3 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 relative min-h-[44px] text-sm sm:text-base ${
                 activeTab === 'quests'
                   ? 'text-orange-400 border-orange-400'
@@ -523,7 +556,7 @@ export default function PlayerPortal() {
               Quests
             </button>
             <button
-              onClick={() => setActiveTab('prestige')}
+              onClick={() => changeTab('prestige')}
               className={`px-3 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 min-h-[44px] text-sm sm:text-base ${
                 activeTab === 'prestige'
                   ? 'text-amber-400 border-amber-400'
@@ -534,7 +567,7 @@ export default function PlayerPortal() {
             </button>
             {isAdmin && (
               <button
-                onClick={() => setActiveTab('allHeroes')}
+                onClick={() => changeTab('allHeroes')}
                 className={`px-3 sm:px-6 py-3 sm:py-4 font-semibold transition-colors border-b-2 min-h-[44px] text-sm sm:text-base ${
                   activeTab === 'allHeroes'
                     ? 'text-pink-400 border-pink-400'
@@ -604,7 +637,7 @@ export default function PlayerPortal() {
                     return (
                       <div
                         key={key}
-                        onClick={() => selectHero(h.id)}
+                        onClick={() => guardedSelectHero(h.id)}
                         className={`cursor-pointer bg-gray-900 rounded-lg p-4 border transition-all relative ${
                           isSelected
                             ? 'border-blue-500 shadow-lg ring-2 ring-blue-500/50'
@@ -662,7 +695,7 @@ export default function PlayerPortal() {
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                selectHero(h.id);
+                                guardedSelectHero(h.id);
                               }}
                               className="flex-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded transition-colors"
                             >
@@ -847,7 +880,7 @@ export default function PlayerPortal() {
                 heroes={heroes} // Pass all user's heroes for invite selection
                 onStartWhisper={(heroId, heroName) => {
                   setWhisperRequest({ heroId, heroName });
-                  setActiveTab('hero'); // Switch to hero tab where SocialSidebar is visible
+                  changeTab('hero'); // Switch to hero tab where SocialSidebar is visible
                 }}
               />
             )}
@@ -859,7 +892,13 @@ export default function PlayerPortal() {
                 twitchId={user?.twitchId}
               />
             )}
-            {activeTab === 'skills' && <SkillsPage hero={hero} heroId={hero.id} />}
+            {activeTab === 'skills' && (
+              <SkillsPage
+                hero={hero}
+                heroId={hero.id}
+                onDraftDirtyChange={setSkillsDraftDirty}
+              />
+            )}
             {activeTab === 'achievements' && <AchievementsPanel hero={hero} onUpdate={refetchHero} />}
             {activeTab === 'dungeon' && (
               <DungeonFinderTab
@@ -891,7 +930,7 @@ export default function PlayerPortal() {
                     </label>
                     <select
                       value={hero?.id || ''}
-                      onChange={(e) => selectHero(e.target.value)}
+                      onChange={(e) => guardedSelectHero(e.target.value)}
                       disabled={heroes.length === 1}
                       className="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                     >
