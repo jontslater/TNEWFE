@@ -36,17 +36,30 @@ describe('shouldMirrorSpriteForFacing', () => {
 });
 
 describe('runtime override facing (live battlefield vs editor)', () => {
-  it('uses canonical hero facing when a runtime override exists', () => {
+  it('always uses canonical hero facing (ignores streamer prefs)', () => {
+    expect(resolveHeroFacingForSpriteOverride('left', false)).toBe(BATTLEFIELD_HERO_FACING);
     expect(resolveHeroFacingForSpriteOverride('left', true)).toBe(BATTLEFIELD_HERO_FACING);
-    expect(resolveHeroFacingForSpriteOverride('left', false)).toBe('left');
   });
 
-  it('uses canonical enemy facing when a runtime override exists', () => {
+  it('always uses canonical enemy facing (ignores streamer prefs)', () => {
+    expect(resolveEnemyFacingForSpriteOverride('right', false)).toBe(BATTLEFIELD_ENEMY_FACING);
     expect(resolveEnemyFacingForSpriteOverride('right', true)).toBe(BATTLEFIELD_ENEMY_FACING);
-    expect(resolveEnemyFacingForSpriteOverride('right', false)).toBe('right');
   });
 
-  it('bard flip:true on live matches editor when override bypasses streamer pref', () => {
+  it('chronomancer (wizard sheet, facesLeft) matches editor mirror on live', () => {
+    const facesLeft = getHeroFacesLeft('chronomancer');
+    expect(facesLeft).toBe(true);
+    const editorTransform = getSpriteContainerTransform(3, BATTLEFIELD_HERO_FACING, facesLeft);
+    const liveTransform = getSpriteContainerTransform(
+      3,
+      resolveHeroFacingForSpriteOverride('left', false),
+      facesLeft
+    );
+    expect(liveTransform).toBe(editorTransform);
+    expect(liveTransform).toContain('scaleX(-1)');
+  });
+
+  it('bard flip:true on live matches editor when streamer pref was left', () => {
     const facesLeft = getHeroFacesLeft('bard');
     const editorTransform = getSpriteContainerTransform(3, BATTLEFIELD_HERO_FACING, facesLeft, {
       flip: true,
